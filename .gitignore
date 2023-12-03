@@ -1,0 +1,6 @@
+\.*\.sw[p-x]
+__pycache__/*
+storage/*
+tmp/*
+uploads/*
+countdown/*

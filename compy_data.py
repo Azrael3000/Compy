@@ -32,6 +32,7 @@ import requests
 import re
 import country_converter
 import os
+import json
 
 import athlete
 from compy_config import CompyConfig
@@ -39,6 +40,7 @@ from compy_config import CompyConfig
 class CompyData:
 
     def __init__(self, comp_file=''):
+        self.name_ = "undefined"
         self.config_ = CompyConfig()
         self.version_ = None
         self.lane_style_ = "numeric"
@@ -47,8 +49,16 @@ class CompyData:
         self.end_date_ = None
         self.athletes_ = []
         self.countries_ = None
+        self.nrs_ = None
 
         self.NR = namedtuple("NR", ["country", "gender", "discipline"])
+
+        for i in range(512):
+            if not os.path.exists(self.file_path):
+                break
+            self.name_ = "undefined" + str(i)
+
+        self.save()
 
     @property
     def version(self):
@@ -58,7 +68,11 @@ class CompyData:
         return self.version_
 
     @property
-    def config:
+    def file_path(self):
+        return os.path.join(self.config.storage_folder, self.name_ + ".cpy")
+
+    @property
+    def config(self):
         return self.config_
 
     @property
@@ -115,6 +129,8 @@ class CompyData:
         # Requires update of country_converter
         #self.nrs_ = self.getNationalRecords()
 
+        self.save()
+
     def getNationalRecords(self):
         empty_req = requests.post('https://www.aidainternational.org/public_pages/all_national_records.php', data={})
         html = empty_req.text
@@ -166,8 +182,34 @@ class CompyData:
         for a in self.athletes_:
             if a.id == athlete_id:
                 a.setNewcomer(newcomer)
+                self.save()
                 found = True
                 return 0
         if not found:
             logging.warning("Tried setting newcomer (" + str(newcomer) + ") to athlete with id '" + athlete_id + "' but this id could not be found")
         return 1
+
+    def changeName(self, new_name, overwrite):
+        prev_name = self.name_
+        prev_path = self.file_path
+        self.name_ = new_name
+        if os.path.exists(self.file_path) and not overwrite:
+            self.name_ = prev_name
+            return [1, self.name_]
+        else:
+            if os.path.exists(self.file_path):
+                os.remove(prev_path)
+            self.save()
+            return [0, self.name_]
+
+    def save(self):
+        data = {}
+        data["name"] = self.name_
+        data["version"] = self.version
+        data["lane_style"] = self.lane_style
+        data["comp_file"] = self.comp_file
+        data["start_date"] = self.start_date_
+        data["end_date"] = self.end_date_
+        data["athletes"] = [a.saveData() for a in self.athletes]
+        with open(self.file_path, "w") as write_file:
+            json.dump(data, write_file)

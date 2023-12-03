@@ -47,6 +47,10 @@ class CompyFlask:
         def uploadFile():
             return self.uploadFile()
 
+        @app.route('/change_comp_name', methods=['POST'])
+        def changeCompName():
+            return self.changeCompName()
+
         @app.route('/change_newcomer', methods=['POST'])
         def changeNewcomer():
             return self.changeNewcomer()
@@ -90,4 +94,19 @@ class CompyFlask:
             data = {"status": "success", "status_msg": "Successfully updated athlete with id '" + athlete_id + "' to value '" + str(is_newcomer) + "'"}
         else:
             data = {"status": "success", "status_msg": "Failed to update athlete with id '" + athlete_id + "' to value '" + str(is_newcomer) + "'"}
+        return data, 200
+
+    def changeCompName(self):
+        content = request.json
+        if "comp_name" not in content and "overwrite" not in content:
+            logging.debug("Post request to change_comp_name without comp_name and overwrite")
+            return {}, 400
+        comp_name = content["comp_name"]
+        overwrite = content["overwrite"]
+        file_exists, name = self.data_.changeName(comp_name, overwrite)
+        data = {}
+        if file_exists == 0:
+            data = {"status": "success", "status_msg": "Successfully changed competition name to '" + comp_name + "'", "file_exists": False, "prev_name": ""}
+        else:
+            data = {"status": "success", "status_msg": "File exists", "file_exists": True, "prev_name": name}
         return data, 200

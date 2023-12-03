@@ -61,3 +61,12 @@ class Athlete:
 
     def setNewcomer(self, newcomer):
         self.newcomer_ = newcomer
+
+    def saveData(self):
+        data = {}
+        data["id"] = self.id
+        data["first_name"] = self.first_name
+        data["last_name"] = self.last_name
+        data["gender"] = self.gender
+        data["newcomer"] = self.newcomer
+        return data

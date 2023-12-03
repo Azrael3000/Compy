@@ -26,6 +26,8 @@
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 */
 
+var global_prev_name = "";
+
 $(document).ready(function() {
     $('#upload_file_button').click(function() {
         let form_data = new FormData($('#upload_file')[0]);
@@ -69,6 +71,45 @@ $(document).ready(function() {
                 }
             },
         })
+    });
+    $('#comp_name').change(function() {
+        let data = {comp_name: this.value, overwrite: false};
+        $.ajax({
+            type: "POST",
+            url: "/change_comp_name",
+            data: JSON.stringify(data),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data) {
+                console.log(data.status_msg);
+                if (data.file_exists) {
+                    let overwrite_div = document.getElementById("overwrite");
+                    overwrite_div.style.display = "block";
+                    global_prev_name = data.prev_name;
+                }
+            }
+        })
+    });
+    $('#overwrite_yes').click(function() {
+        let comp_name = document.getElementById("comp_name").value;
+        let data = {comp_name: comp_name, overwrite: true};
+        $.ajax({
+            type: "POST",
+            url: "/change_comp_name",
+            data: JSON.stringify(data),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data) {
+                console.log(data.status_msg);
+                let overwrite_div = document.getElementById("overwrite");
+                overwrite_div.style.display = "none";
+            }
+        })
+    });
+    $('#overwrite_no').click(function() {
+        document.getElementById("comp_name").value = global_prev_name;
+        let overwrite_div = document.getElementById("overwrite");
+        overwrite_div.style.display = "none";
     });
     $("#newcomer").delegate(".newcomer_checkbox", "change", function() {
         let athlete_id = this.id.substring(6); // checkbox id is equal to "nc_cb_" + athlete_id

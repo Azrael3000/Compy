@@ -1,4 +1,5 @@
-
+#!/usr/bin/python3
+#
 #  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #
 #           ━━━━━━━━━━━━━
@@ -25,25 +26,19 @@
 #
 #  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-from os import path,mkdir
+from flask import Flask
+import argparse
 import logging
 
-class CompyConfig:
+import compy_flask
+import compy_data
 
-    def __init__(self):
-        self.upload_folder_ = self.initFolder(path.join(path.dirname(path.abspath(__file__)), 'uploads'))
-        self.storage_folder_ = self.initFolder(path.join(path.dirname(path.abspath(__file__)), 'storage'))
+logging.basicConfig(level=logging.DEBUG)
 
-    def initFolder(self, folder):
-        if not path.isdir(folder):
-            mkdir(folder)
-            logging.debug("Created folder: " + folder)
-        return folder
+parser = argparse.ArgumentParser(prog='Compy', description='User interface for AIDA competitions')
+#parser.add_argument('--data_file', type=str, default='', required=False)
+#args = parser.parse_args()
 
-    @property
-    def upload_folder(self):
-        return self.upload_folder_
-
-    @property
-    def storage_folder(self):
-        return self.storage_folder_
+app = Flask(__name__)
+data = compy_data.CompyData()
+compy_flask.CompyFlask(app, data)

@@ -42,9 +42,18 @@
         </tr>
     </table>
     <div id="settings">
-        <p>Competition file</p>
+        <p>Competition settings</p>
         <form id="upload_file" method="post" enctype="multipart/form-data">
         <div>
+            <label for="comp_name">Competition name</label>
+            <br>
+            <input type="text" id="comp_name"/>
+            <div id="overwrite" style="display:none">
+                <p>Overwrite?</p>
+                <button id="overwrite_yes" type="button">Yes</button>
+                <button id="overwrite_no" type="button">No</button>
+            </div>
+            <br>
             <label for="file">Choose file to upload</label>
             <br>
             <input type="file" id="file" name="file" accept=".xlsx"/>
