@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<!---
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+           ━━━━━━━━━━━━━
+            ┏┓┏┓┳┳┓┏┓┓┏
+            ┃ ┃┃┃┃┃┃┃┗┫
+            ┗┛┗┛┛ ┗┣┛┗┛
+           ━━━━━━━━━━━━━
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Competition organization tool
+  for AIDA International
+  competitions.
+
+  Copyright 2023 - Arno Mayrhofer
+
+  Licensed under the GNU AGPL
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Authors:
+
+  - Arno Mayrhofer
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-->
+<head>
+    <title>Compy {{version}}</title>
+    <script src="{{ url_for('static', filename='jquery-3.7.1.js') }}"></script>
+    <script src="{{ url_for('static', filename='compy.js') }}"></script>
+</head>
+
+<body>
+    <h1>Compy {{version}}</h1>
+    <table>
+        <tr>
+            <td id="settings_button" style="font-weight:bold"><a href="#" onclick="switchTo('settings')">Settings</a></td>
+            <td id="newcomer_button"><a href="#" onclick="switchTo('newcomer')">Newcomer</a></td>
+        </tr>
+    </table>
+    <div id="settings">
+        <p>Competition file</p>
+        <form id="upload_file" method="post" enctype="multipart/form-data">
+        <div>
+            <label for="file">Choose file to upload</label>
+            <br>
+            <input type="file" id="file" name="file" accept=".xlsx"/>
+        </div>
+        <div>
+            <button id="upload_file_button" type="button">Refresh data</button>
+        </div>
+        <div id="file_upload_status" style="display:none">
+        </div>
+    </div>
+    <div id="newcomer" style="display:none">
+        <table id="newcomer_table">
+            <tr>
+                <td>Last name</td>
+                <td>First name</td>
+                <td>Gender</td>
+                <td>Country</td>
+                <td>Newcomer</td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>
