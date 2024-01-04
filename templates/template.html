@@ -44,24 +44,36 @@
     <div id="settings">
         <p>Competition settings</p>
         <form id="upload_file" method="post" enctype="multipart/form-data">
-        <div>
-            <label for="comp_name">Competition name</label>
-            <br>
-            <input type="text" id="comp_name"/>
-            <div id="overwrite" style="display:none">
-                <p>Overwrite?</p>
-                <button id="overwrite_yes" type="button">Yes</button>
-                <button id="overwrite_no" type="button">No</button>
+            <div>
+                <label for="comp_name">Competition name</label>
+                <br>
+                <input type="text" id="comp_name" value="{{ comp_name }}"/>
+                <div id="overwrite" style="display:none">
+                    <p>Overwrite?</p>
+                    <button id="overwrite_yes" type="button">Yes</button>
+                    <button id="overwrite_no" type="button">No</button>
+                </div>
+                <br>
+                <label for="file">Choose file to upload</label>
+                <br>
+                <input type="file" id="file" name="file" accept=".xlsx"/>
             </div>
-            <br>
-            <label for="file">Choose file to upload</label>
-            <br>
-            <input type="file" id="file" name="file" accept=".xlsx"/>
-        </div>
+            <div>
+                <button id="upload_file_button" type="button">Refresh data</button>
+            </div>
+        </form>
+        <div id="file_upload_status" style="display:none"></div>
         <div>
-            <button id="upload_file_button" type="button">Refresh data</button>
-        </div>
-        <div id="file_upload_status" style="display:none">
+            Load competition
+            <ul id="competition_list">
+                {% if competitions is none %}
+                    <li>No previous competition available</li>
+                {% else %}
+                    {% for comp in competitions %}
+                        <li>{{ comp.name }} (last save: {{ comp.save_date }}) <button id="load_{{ comp.name}}" class="load_comp_button" type="button">Load</button></li>
+                    {% endfor %}
+                {% endif %}
+            </ul>
         </div>
     </div>
     <div id="newcomer" style="display:none">

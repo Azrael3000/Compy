@@ -33,6 +33,8 @@ import re
 import country_converter
 import os
 import json
+import glob
+from datetime import datetime
 
 import athlete
 from compy_config import CompyConfig
@@ -66,6 +68,10 @@ class CompyData:
             with open('VERSION', 'r') as f:
                 self.version_ = str(f.read().strip())
         return self.version_
+
+    @property
+    def name(self):
+        return self.name_
 
     @property
     def file_path(self):
@@ -115,8 +121,8 @@ class CompyData:
 
         # read second sheet (list of athletes)
         df = pd.read_excel(self.comp_file_, sheet_name="Athletes and Judges", skiprows=1)
-        self.athletes_ = [athlete.Athlete(r['Id'], r['LastName'], r['FirstName'], r['Gender'], r['Country']) for i,r in df.iterrows()]
-        [logging.debug("Athlete: %s %s %s %s %s", r['Id'], r['LastName'], r['FirstName'], r['Gender'], r['Country']) for i,r in df.iterrows()]
+        self.athletes_ = [athlete.Athlete.fromArgs(r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country']) for i,r in df.iterrows()]
+        [logging.debug("Athlete: %s %s %s %s %s", r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country']) for i,r in df.iterrows()]
         logging.debug("Number of athletes: %d", len(self.athletes_))
 
         # count countries
@@ -189,6 +195,19 @@ class CompyData:
             logging.warning("Tried setting newcomer (" + str(newcomer) + ") to athlete with id '" + athlete_id + "' but this id could not be found")
         return 1
 
+    def getSavedCompetitions(self):
+        os.chdir(self.config.storage_folder)
+        saved_comp_files = glob.glob("*.cpy")
+        logging.debug(saved_comp_files)
+        if len(saved_comp_files) == 0:
+            return None
+        saved_comp_info = []
+        for f in saved_comp_files:
+            with open(f, "r") as comp_file_data:
+                comp_data = json.load(comp_file_data)
+                saved_comp_info.append({"name": comp_data["name"], "save_date": comp_data["save_date"]})
+        return sorted(saved_comp_info, key=lambda ci: ci["save_date"], reverse=True)
+
     def changeName(self, new_name, overwrite):
         prev_name = self.name_
         prev_path = self.file_path
@@ -205,6 +224,7 @@ class CompyData:
     def save(self):
         data = {}
         data["name"] = self.name_
+        data["save_date"] = datetime.now().isoformat()
         data["version"] = self.version
         data["lane_style"] = self.lane_style
         data["comp_file"] = self.comp_file
@@ -213,3 +233,32 @@ class CompyData:
         data["athletes"] = [a.saveData() for a in self.athletes]
         with open(self.file_path, "w") as write_file:
             json.dump(data, write_file)
+        logging.debug("Saved to file: " + self.file_path)
+
+    def load(self, name):
+        prev_name = self.name
+        self.name_ = name
+        if not os.path.exists(self.file_path):
+            logging.error("Could not find save file with name '" + name + "'")
+            self.name_ = prev_name
+            return 1
+        else:
+            with open(self.file_path, "r") as read_file:
+                data = json.load(read_file)
+            if not "name" in data:
+                logging.error("Invalid file, no 'name' found")
+                return 1
+            if data["name"] != self.name:
+                logging.error("Invalid file, 'name' does not match (" + self.name + " != " + data["name"] + ")")
+                return 1
+            read_keys = ["save_date", "version", "lane_style", "comp_file", "start_date", "end_date", "athletes"]
+            for key in read_keys:
+                if not key in data:
+                    logging.error("Invalid file, no '" + key + "' found")
+                    return 1
+            self.version_ = data["version"]
+            self.lane_style_ = data["lane_style"]
+            self.comp_file_ = data["comp_file"]
+            self.start_date_ = data["start_date"]
+            self.end_date_ = data["end_date"]
+            self.athletes_ = [athlete.Athlete.fromDict(a) for a in data["athletes"]]

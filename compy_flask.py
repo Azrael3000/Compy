@@ -41,7 +41,10 @@ class CompyFlask:
 
         @app.route('/', methods=['GET'])
         def main():
-            return render_template('template.html', version=self.data_.version)
+            content = {"version": self.data_.version,
+                       "competitions": self.data_.getSavedCompetitions(),
+                       "comp_name": self.data_.name}
+            return render_template('template.html', **content)
 
         @app.route('/upload_file', methods=['POST'])
         def uploadFile():
@@ -54,6 +57,10 @@ class CompyFlask:
         @app.route('/change_newcomer', methods=['POST'])
         def changeNewcomer():
             return self.changeNewcomer()
+
+        @app.route('/load_comp', methods=['POST'])
+        def loadComp():
+            return self.loadComp()
 
         app.run()
 
@@ -75,8 +82,9 @@ class CompyFlask:
                 status_msg = "File uploaded (" + filename + ") is not a *.xlsx file"
             else:
                 status_msg = "File '" + filename + "' uploaded successfully"
-                data_file.save(path.join(self.app_.config['UPLOAD_FOLDER'], filename))
-                self.data_.compFileChange(filename)
+                fpath = path.join(self.app_.config['UPLOAD_FOLDER'], filename)
+                data_file.save(fpath)
+                self.data_.compFileChange(fpath)
                 data["athletes"] = []
                 for athlete in self.data_.athletes:
                     data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id})
@@ -109,4 +117,21 @@ class CompyFlask:
             data = {"status": "success", "status_msg": "Successfully changed competition name to '" + comp_name + "'", "file_exists": False, "prev_name": ""}
         else:
             data = {"status": "success", "status_msg": "File exists", "file_exists": True, "prev_name": name}
+        return data, 200
+
+    def loadComp(self):
+        content = request.json
+        if "comp_name" not in content:
+            logging.debug("Post request to load_comp without comp_name")
+            return {}, 400
+        comp_name = content["comp_name"]
+        self.data_.load(comp_name)
+        data = {}
+        data["athletes"] = []
+        for athlete in self.data_.athletes:
+            data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id, "newcomer": athlete.newcomer})
+        data["comp_name"] = comp_name
+        data["status"] = "success"
+        data["status_msg"] = "Loaded competition with name " + comp_name
+        logging.debug("Loaded comp " + comp_name + " with " + str(len(self.data_.athletes)) + " athletes")
         return data, 200
