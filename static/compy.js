@@ -26,7 +26,8 @@
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 */
 
-var global_prev_name = "";
+var _global_prev_name = "";
+var _days_with_disciplines = null;
 
 $(window).on('load', function() {
     let comp_name = document.getElementById('comp_name');
@@ -50,6 +51,7 @@ $(document).ready(function() {
                 element.style.display = "block";
                 element.innerHTML = data.status_msg;
                 populateNewcomer(data);
+                initSubmenus(data);
             },
         })
     });
@@ -66,7 +68,7 @@ $(document).ready(function() {
                 if (data.file_exists) {
                     let overwrite_div = document.getElementById("overwrite");
                     overwrite_div.style.display = "block";
-                    global_prev_name = data.prev_name;
+                    _global_prev_name = data.prev_name;
                 }
             }
         })
@@ -88,7 +90,7 @@ $(document).ready(function() {
         })
     });
     $('#overwrite_no').click(function() {
-        document.getElementById("comp_name").value = global_prev_name;
+        document.getElementById("comp_name").value = _global_prev_name;
         let overwrite_div = document.getElementById("overwrite");
         overwrite_div.style.display = "none";
     });
@@ -117,6 +119,7 @@ $(document).ready(function() {
             {
                 console.log(data.status_msg);
                 populateNewcomer(data);
+                initSubmenus(data);
                 if (data.hasOwnProperty("comp_name")) {
                     let comp_name = document.getElementById('comp_name');
                     comp_name.value = data.comp_name;
@@ -124,10 +127,50 @@ $(document).ready(function() {
             }
         })
     });
+    $("#sl_discipline_menu").on("click", "a", function() {
+        day = this.id.substr(3, 10); // button id is equal to "sl_" + day + "_" + discipline
+        discipline = this.id.substr(3 + 10 + 1);
+        let data = {
+            day: day,
+            discipline: discipline
+        };
+        $.ajax({
+            type: "GET",
+            url: "/start_list?" + $.param(data),
+            success: function(data) {
+                console.log(data.status_msg);
+                let sl = "";
+                if (data.start_list) {
+                    sl += "<table>";
+                    sl += `
+                        <tr>
+                            <td>Name</td>
+                            <td>AP</td>
+                            <td>Warmup</td>
+                            <td>OT</td>
+                            <td>Lane</td>
+                        </tr>`;
+                    for (let i = 0; i < data.start_list.length; i++) {
+                        sl += `
+                            <tr>
+                                <td>${data.start_list[i].name}</td>
+                                <td>${data.start_list[i].ap}</td>
+                                <td>${data.start_list[i].warmup}</td>
+                                <td>${data.start_list[i].ot}</td>
+                                <td>${data.start_list[i].lane}</td>
+                            </tr>`;
+                    }
+                    sl += "</table>";
+                }
+                let sl_content = document.getElementById('sl_content');
+                sl_content.innerHTML = sl;
+            }
+        })
+    });
 });
 
 function switchTo(id) {
-    let tab_ids = ['settings', 'newcomer']
+    let tab_ids = ['settings', 'newcomer', 'start_lists']
     for (let i = 0; i < tab_ids.length; i++) {
         let element = document.getElementById(tab_ids[i]);
         if (tab_ids[i] === id) {
@@ -165,6 +208,42 @@ function populateNewcomer(data) {
                     <td><input type="checkbox" id="nc_cb_${athletes[i].id}" name="${athletes[i].id}" value="true" class="newcomer_checkbox" ${chkd_str}/></td>
                 </tr>
             `;
+        }
+    }
+}
+
+function initSubmenus(data)
+{
+    if (data.hasOwnProperty("days_with_disciplines") && data.days_with_disciplines != null)
+    {
+        _days_with_disciplines = data.days_with_disciplines;
+        // start_list submenu
+        let sl_date_menu = document.getElementById('sl_date_menu');
+        sl_date_menu.innerHTML = "";
+        keys = Object.keys(_days_with_disciplines);
+        for (let i = 0; i < keys.length; i++)
+        {
+            let day = keys[i];
+            sl_date_menu.innerHTML += "<a href='#' onclick='selectStartListDay(\"" + day + "\")'>" + day + "</a>&nbsp;";
+        }
+    }
+    else
+        _days_with_disciplines = null;
+}
+
+function selectStartListDay(day)
+{
+    if (_days_with_disciplines != null && _days_with_disciplines.hasOwnProperty(day))
+    {
+        let sl_discipline_menu = document.getElementById('sl_discipline_menu');
+        sl_discipline_menu.innerHTML = "";
+        disciplines = _days_with_disciplines[day];
+        for (let i = 0; i < disciplines.length; i++)
+        {
+            let dis = disciplines[i];
+            sl_discipline_menu.innerHTML += "<a href='#' class='sl_discipline_button' id='sl_" + day + "_" + dis + "'>" + dis + "</a>&nbsp;";
+            let sl_content = document.getElementById('sl_content');
+            sl_content.innerHTML = "";
         }
     }
 }

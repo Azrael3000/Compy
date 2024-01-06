@@ -34,7 +34,7 @@ import country_converter
 import os
 import json
 import glob
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import athlete
 from compy_config import CompyConfig
@@ -99,6 +99,14 @@ class CompyData:
     @property
     def number_of_athletes(self):
         return len(self.athletes_)
+
+    @property
+    def start_date(self):
+        return self.start_date_
+
+    @property
+    def end_date(self):
+        return self.end_date_
 
     def compFileChange(self, comp_file):
         self.comp_file_ = comp_file
@@ -262,3 +270,37 @@ class CompyData:
             self.start_date_ = data["start_date"]
             self.end_date_ = data["end_date"]
             self.athletes_ = [athlete.Athlete.fromDict(a) for a in data["athletes"]]
+
+    def getDays(self):
+        days = []
+        d0 = datetime.strptime(self.start_date, '%Y-%m-%d')
+        d1 = datetime.strptime(self.end_date, '%Y-%m-%d')
+        delta = d1 - d0
+        for i in range(delta.days + 1):
+            d = (d0 + timedelta(days=i)).strftime('%Y-%m-%d')
+            days.append(d)
+        return days
+
+    def getDaysWithDisciplines(self):
+        dwd = {}
+        days = self.getDays()
+        for day in days:
+            df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
+            disciplines_on_day = list({r['Discipline'] for i,r in df.iterrows()})
+            dwd[day] = disciplines_on_day
+        logging.debug(dwd)
+        return dwd
+
+    def getStartList(self, day, discipline):
+        df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
+        ap_lambda = lambda x, y: str(x)
+        if discipline == "STA":
+            ap_lambda = lambda x, y: str(x) + ":" + str(int(y)).zfill(2)
+        # RPs are 'Meters or Min.1'
+        start_list = [{'name': r['Diver Name'],
+                       'ap': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
+                       'warmup': r['WT'],
+                       'ot': r['OT'],
+                       'lane': r['Zone']}
+                       for i,r in df.iterrows() if r['Discipline'] == discipline]
+        return start_list

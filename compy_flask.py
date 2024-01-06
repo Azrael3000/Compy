@@ -62,6 +62,10 @@ class CompyFlask:
         def loadComp():
             return self.loadComp()
 
+        @app.route('/start_list', methods=['GET'])
+        def startList():
+            return self.startList()
+
         app.run()
 
     def uploadFile(self):
@@ -88,6 +92,7 @@ class CompyFlask:
                 data["athletes"] = []
                 for athlete in self.data_.athletes:
                     data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id})
+                data["days_with_disciplines"] = self.data_.getDaysWithDisciplines()
         data["status_msg"] = status_msg
         return data, 200
 
@@ -131,7 +136,25 @@ class CompyFlask:
         for athlete in self.data_.athletes:
             data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id, "newcomer": athlete.newcomer})
         data["comp_name"] = comp_name
+        data["days_with_disciplines"] = self.data_.getDaysWithDisciplines()
         data["status"] = "success"
         data["status_msg"] = "Loaded competition with name " + comp_name
         logging.debug("Loaded comp " + comp_name + " with " + str(len(self.data_.athletes)) + " athletes")
         return data, 200
+
+    def startList(self):
+        day = request.args.get('day')
+        discipline = request.args.get('discipline')
+        if day is None or discipline is None:
+            logging.debug("Get request to start_list without day and discipline")
+            return {}, 400
+        data = {}
+        start_list = self.data_.getStartList(day, discipline)
+        if not start_list is None:
+            data["start_list"] = start_list
+            data["status"] = "success"
+            data["status_msg"] = "Transfered start list for " + day + ": " + discipline
+            return data, 200
+        else:
+            logging.debug("Could not get start list for " + day + ": " + discipline)
+            return {}, 400
