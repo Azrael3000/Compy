@@ -35,6 +35,10 @@ import os
 import json
 import glob
 from datetime import datetime, timedelta
+import weasyprint as wp
+import base64
+from PIL import Image
+from io import BytesIO
 
 import athlete
 from compy_config import CompyConfig
@@ -52,6 +56,7 @@ class CompyData:
         self.athletes_ = []
         self.countries_ = None
         self.nrs_ = None
+        self.sponsor_img_ = None
 
         self.NR = namedtuple("NR", ["country", "gender", "discipline"])
 
@@ -107,6 +112,43 @@ class CompyData:
     @property
     def end_date(self):
         return self.end_date_
+
+    @property
+    def sponsor_img_data(self):
+        if self.sponsor_img_ is None:
+            return ""
+        else:
+            return self.sponsor_img_["data"]
+
+    @property
+    def sponsor_img_width(self):
+        if self.sponsor_img_ is None:
+            return 0
+        else:
+            aspect_ratio = self.sponsor_img_["aspect_ratio"]
+            if aspect_ratio < 1:
+                return 19.*self.sponsor_img_["aspect_ratio"]
+            else:
+                return 19.
+
+    @property
+    def sponsor_img_height(self):
+        if self.sponsor_img_ is None:
+            return 0
+        else:
+            aspect_ratio = self.sponsor_img_["aspect_ratio"]
+            if aspect_ratio > 1:
+                return 5./self.sponsor_img_["aspect_ratio"]
+            else:
+                return 5.
+
+    def changeSponsorImage(self, img_content):
+        self.sponsor_img_ = {}
+        img_base64 = base64.b64encode(img_content).decode('utf-8')
+        self.sponsor_img_["data"] = 'data:image/png;base64,' + img_base64
+        img = Image.open(BytesIO(img_content))
+        width, height = img.size # in pixels
+        self.sponsor_img_["aspect_ratio"] = float(width)*5./float(height)/19. # < 1 if too high, > 1 if too wide
 
     def compFileChange(self, comp_file):
         self.comp_file_ = comp_file
@@ -239,6 +281,7 @@ class CompyData:
         data["start_date"] = self.start_date_
         data["end_date"] = self.end_date_
         data["athletes"] = [a.saveData() for a in self.athletes]
+        data["sponsor_img"] = self.sponsor_img_
         with open(self.file_path, "w") as write_file:
             json.dump(data, write_file)
         logging.debug("Saved to file: " + self.file_path)
@@ -270,6 +313,9 @@ class CompyData:
             self.start_date_ = data["start_date"]
             self.end_date_ = data["end_date"]
             self.athletes_ = [athlete.Athlete.fromDict(a) for a in data["athletes"]]
+            self.sponsor_img_ = data["sponsor_img"]
+            # debug
+            self.getStartListPDF("2023-10-21", "STA")
 
     def getDays(self):
         days = []
@@ -304,3 +350,80 @@ class CompyData:
                        'lane': r['Zone']}
                        for i,r in df.iterrows() if r['Discipline'] == discipline]
         return start_list
+
+    def getStartListPDF(self, day, discipline):
+        df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
+        df = df[df["Discipline"] == "STA"]
+        start_df = pd.DataFrame().assign(Name = df["Diver Name"])
+        if discipline == "STA":
+            start_df = start_df.assign(AP = df["Meters or Min"].astype(str) + ":" + df["Sec(STA only)"].astype(int).astype(str).apply(lambda x: x.zfill(2)))
+        else:
+            start_df = start_df.assign(AP = df["Meters or Min"])
+        start_df = start_df.assign(Warmup = df["WT"])
+        start_df = start_df.assign(OT = df["OT"])
+        start_df = start_df.assign(Lane = df["Zone"])
+        html_string = start_df.to_html(index=False, justify="left", classes="df_table")
+        day_obj = datetime.strptime(day, "%Y-%m-%d")
+        human_day = day_obj.strftime("%d. %m. %Y")
+        html_string = """
+            <html>
+            <head>
+            <style>
+            tr th:first-child {{
+                padding-left:0px;
+                text-align: left;
+            }}
+            tr td:first-child {{
+                padding-left:0px;
+                text-align: left;
+            }}
+            th, td {{
+                padding:10px 0px 10px 50px;
+                text-align: center;
+                border-bottom: 1px solid #ddd;
+            }}
+            @page {{
+                margin: 4cm 1cm 6cm 1cm;
+                size: A4;
+                @top-right {{
+                    content: counter(page) "/" counter(pages);
+                }}
+            }}
+            header, footer {{
+                position: fixed;
+                left: 0;
+                right: 0;
+            }}
+            header {{
+                /* subtract @page margin */
+                top: -4cm;
+                height: 4cm;
+                text-align: center;
+                vertical-align: center;
+            }}
+            footer {{
+                /* subtract @page margin */
+                bottom: -6cm;
+                height: 6cm;
+                text-align: center;
+                vertical-align: center;
+            }}
+            </style>
+            </head>
+            <body>
+            <header>
+                <h1>{}</h1>
+                <h2>Start list {} - {}</h2>
+            </header>
+            {}
+            <footer><img src="{}" style="width:{}cm; height:{}cm;"></footer>
+            </body>
+            </html>
+            """.format(self.name, discipline, human_day, html_string, self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
+        html = wp.HTML(string=html_string, base_url="/")
+        fname = os.path.join(self.config.download_folder, "test.html")
+        with open(fname, "w") as f:
+            f.write(html_string)
+        fname = os.path.join(self.config.download_folder, "test.pdf")
+        html.write_pdf(fname)
+        return fname

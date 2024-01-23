@@ -55,6 +55,26 @@ $(document).ready(function() {
             },
         })
     });
+    $('#upload_sponsor_img_button').click(function() {
+        let form_data = new FormData($('#upload_sponsor_img')[0]);
+        $.ajax({
+            type: 'POST',
+            url: '/upload_sponsor_img',
+            data: form_data,
+            contentType: false,
+            cache: false,
+            processData: false,
+            success: function(data) {
+                let element = document.getElementById('file_upload_status');
+                console.log(data.status_msg)
+                // show status msg
+                element.style.display = "block";
+                element.innerHTML = data.status_msg;
+                populateNewcomer(data);
+                initSubmenus(data);
+            },
+        })
+    });
     $('#comp_name').change(function() {
         let data = {comp_name: this.value, overwrite: false};
         $.ajax({
@@ -128,8 +148,8 @@ $(document).ready(function() {
         })
     });
     $("#sl_discipline_menu").on("click", "a", function() {
-        day = this.id.substr(3, 10); // button id is equal to "sl_" + day + "_" + discipline
-        discipline = this.id.substr(3 + 10 + 1);
+        let day = this.id.substr(3, 10); // button id is equal to "sl_" + day + "_" + discipline
+        let discipline = this.id.substr(3 + 10 + 1);
         let data = {
             day: day,
             discipline: discipline
@@ -141,6 +161,7 @@ $(document).ready(function() {
                 console.log(data.status_msg);
                 let sl = "";
                 if (data.start_list) {
+                    sl += "<a href='#' class='sl_pdf_button' id='sl_pdf_" + day + "_" + discipline + "'>Print PDF</a>";
                     sl += "<table>";
                     sl += `
                         <tr>
@@ -164,6 +185,32 @@ $(document).ready(function() {
                 }
                 let sl_content = document.getElementById('sl_content');
                 sl_content.innerHTML = sl;
+            }
+        })
+    });
+    $("#sl_content").on("click", ".sl_pdf_button", function() {
+        day = this.id.substr(7, 10); // button id is equal to "sl_pdf_" + day + "_" + discipline
+        discipline = this.id.substr(7 + 10 + 1);
+        let data = {
+            day: day,
+            discipline: discipline
+        };
+        $.ajax({
+            type: "GET",
+            url: "/start_list_pdf?" + $.param(data),
+            xhrFields: {
+                responseType: 'blob'
+            },
+            success: function(data) {
+                let link = document.createElement('a');
+                link.href = window.URL.createObjectURL(data);
+                let comp_name = document.getElementById("comp_name").value;
+                link.download = comp_name + "_" + day + "_" + discipline + ".pdf";
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                console.log("Served pdf");
             }
         })
     });

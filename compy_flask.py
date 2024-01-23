@@ -26,7 +26,7 @@
 #  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 import logging
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_file, Response
 from os import path, mkdir
 from werkzeug.utils import secure_filename
 
@@ -50,6 +50,10 @@ class CompyFlask:
         def uploadFile():
             return self.uploadFile()
 
+        @app.route('/upload_sponsor_img', methods=['POST'])
+        def uploadSponsorImg():
+            return self.uploadSponsorImg()
+
         @app.route('/change_comp_name', methods=['POST'])
         def changeCompName():
             return self.changeCompName()
@@ -65,6 +69,10 @@ class CompyFlask:
         @app.route('/start_list', methods=['GET'])
         def startList():
             return self.startList()
+
+        @app.route('/start_list_pdf', methods=['GET'])
+        def startListPDF():
+            return self.startListPDF()
 
         app.run()
 
@@ -93,6 +101,30 @@ class CompyFlask:
                 for athlete in self.data_.athletes:
                     data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id})
                 data["days_with_disciplines"] = self.data_.getDaysWithDisciplines()
+        data["status_msg"] = status_msg
+        return data, 200
+
+    def uploadSponsorImg(self):
+        if 'sponsor_img' not in request.files:
+            logging.debug("Post request without image upload")
+            return {}, 400
+        logging.debug("Received sponsor image upload")
+        img_file = request.files['sponsor_img']
+        status_msg = ""
+        data = {"status": "success"}
+        if img_file.filename == '':
+            logging.debug("Image upload with empty filename")
+            status_msg = "No image uploaded due to empty filename"
+        else:
+            filename = secure_filename(img_file.filename)
+            ext = path.splitext(filename)[1].lower()
+            if ext != ".png":
+                status_msg = "Image uploaded (" + filename + ") is not a *.png file"
+            else:
+                status_msg = "Image '" + filename + "' uploaded successfully"
+                fpath = path.join(self.app_.config['UPLOAD_FOLDER'], filename)
+                img_content = img_file.read()
+                self.data_.changeSponsorImage(img_content)
         data["status_msg"] = status_msg
         return data, 200
 
@@ -155,6 +187,21 @@ class CompyFlask:
             data["status"] = "success"
             data["status_msg"] = "Transfered start list for " + day + ": " + discipline
             return data, 200
+        else:
+            logging.debug("Could not get start list for " + day + ": " + discipline)
+            return {}, 400
+
+    def startListPDF(self):
+        day = request.args.get('day')
+        discipline = request.args.get('discipline')
+        if day is None or discipline is None:
+            logging.debug("Get request to start_list without day and discipline")
+            return {}, 400
+        data = {}
+        start_list_pdf = self.data_.getStartListPDF(day, discipline)
+        if not start_list_pdf is None:
+            logging.debug("Sending: " + start_list_pdf)
+            return send_file(start_list_pdf, as_attachment=True)
         else:
             logging.debug("Could not get start list for " + day + ": " + discipline)
             return {}, 400

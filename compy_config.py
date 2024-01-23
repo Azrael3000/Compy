@@ -33,6 +33,7 @@ class CompyConfig:
     def __init__(self):
         self.upload_folder_ = self.initFolder(path.join(path.dirname(path.abspath(__file__)), 'uploads'))
         self.storage_folder_ = self.initFolder(path.join(path.dirname(path.abspath(__file__)), 'storage'))
+        self.download_folder_ = self.initFolder(path.join(path.dirname(path.abspath(__file__)), 'download'))
 
     def initFolder(self, folder):
         if not path.isdir(folder):
@@ -47,3 +48,7 @@ class CompyConfig:
     @property
     def storage_folder(self):
         return self.storage_folder_
+
+    @property
+    def download_folder(self):
+        return self.download_folder_

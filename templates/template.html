@@ -63,6 +63,16 @@
                 <button id="upload_file_button" type="button">Refresh data</button>
             </div>
         </form>
+        <form id="upload_sponsor_img" method="post" enctype="multipart/form-data">
+            <div>
+                <label for="sponsor_img">Sponsor image (ideal aspect ratio: 19x5, format: png)</label>
+                <br>
+                <input type="file" id="sponsor_img" name="sponsor_img" accept=".png"/>
+            </div>
+            <div>
+                <button id="upload_sponsor_img_button" type="button">Upload Sponsor Image</button>
+            </div>
+        </form>
         <div id="file_upload_status" style="display:none"></div>
         <div>
             Load competition
