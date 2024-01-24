@@ -74,6 +74,10 @@ class CompyFlask:
         def startListPDF():
             return self.startListPDF()
 
+        @app.route('/change_lane_style', methods=['POST'])
+        def changeLaneStyle():
+            return self.changeLaneStyle()
+
         app.run()
 
     def uploadFile(self):
@@ -204,4 +208,19 @@ class CompyFlask:
             return send_file(start_list_pdf, as_attachment=True)
         else:
             logging.debug("Could not get start list for " + day + ": " + discipline)
+            return {}, 400
+
+    def changeLaneStyle(self):
+        content = request.json
+        if "lane_style" not in content:
+            logging.debug("Change request for lane style missing variable")
+            return {}, 400
+        option = content["lane_style"]
+        if self.data_.changeLaneStyle(option) == 0:
+            data = {}
+            data["status_msg"] = "Successfully changed lane style"
+            data["status"] = "success"
+            return data, 200
+        else:
+            logging.debug("Invalid lane style")
             return {}, 400

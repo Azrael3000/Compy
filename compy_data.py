@@ -90,8 +90,18 @@ class CompyData:
     def lane_style(self):
         return self.lane_style_
 
-    def laneStyleChange(self, lane_style):
+    def changeLaneStyle(self, lane_style):
+        allowed_lane_styles = ["numeric", "alphabetic"]
+        if lane_style not in allowed_lane_styles:
+            return 1
         self.lane_style_ = lane_style
+        return 0
+
+    def laneStyleConverter(self, lane):
+        if self.lane_style_ == "alphabetic":
+            return chr(lane + 64)
+        else: # numeric
+            return lane
 
     @property
     def comp_file(self):
@@ -314,8 +324,6 @@ class CompyData:
             self.end_date_ = data["end_date"]
             self.athletes_ = [athlete.Athlete.fromDict(a) for a in data["athletes"]]
             self.sponsor_img_ = data["sponsor_img"]
-            # debug
-            self.getStartListPDF("2023-10-21", "STA")
 
     def getDays(self):
         days = []
@@ -343,25 +351,30 @@ class CompyData:
         if discipline == "STA":
             ap_lambda = lambda x, y: str(x) + ":" + str(int(y)).zfill(2)
         # RPs are 'Meters or Min.1'
-        start_list = [{'name': r['Diver Name'],
-                       'ap': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
-                       'warmup': r['WT'],
-                       'ot': r['OT'],
-                       'lane': r['Zone']}
+        start_list = [{'Name': r['Diver Name'],
+                       'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
+                       'Warmup': r['WT'],
+                       'OT': r['OT'],
+                       'Lane': self.laneStyleConverter(r['Zone'])}
                        for i,r in df.iterrows() if r['Discipline'] == discipline]
         return start_list
 
-    def getStartListPDF(self, day, discipline):
-        df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
-        df = df[df["Discipline"] == "STA"]
-        start_df = pd.DataFrame().assign(Name = df["Diver Name"])
-        if discipline == "STA":
-            start_df = start_df.assign(AP = df["Meters or Min"].astype(str) + ":" + df["Sec(STA only)"].astype(int).astype(str).apply(lambda x: x.zfill(2)))
-        else:
-            start_df = start_df.assign(AP = df["Meters or Min"])
-        start_df = start_df.assign(Warmup = df["WT"])
-        start_df = start_df.assign(OT = df["OT"])
-        start_df = start_df.assign(Lane = df["Zone"])
+    def getStartListPDF(self, day, discipline, in_memory=False):
+        if day=="all" and discipline=="all":
+            dwd = self.getDaysWithDisciplines()
+            files = []
+            for d in dwd:
+                for dis in dwd[d]:
+                    files.append(self.getStartListPDF(d, dis, True))
+            pages = []
+            for doc in files:
+                for page in doc.pages:
+                    pages.append(page)
+            merged_pdf = files[0].copy(pages)
+            fname = os.path.join(self.config.download_folder, self.name + "_start_lists.pdf")
+            merged_pdf.write_pdf(fname)
+            return fname
+        start_df = pd.DataFrame(self.getStartList(day, discipline))
         html_string = start_df.to_html(index=False, justify="left", classes="df_table")
         day_obj = datetime.strptime(day, "%Y-%m-%d")
         human_day = day_obj.strftime("%d. %m. %Y")
@@ -421,9 +434,12 @@ class CompyData:
             </html>
             """.format(self.name, discipline, human_day, html_string, self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
         html = wp.HTML(string=html_string, base_url="/")
-        fname = os.path.join(self.config.download_folder, "test.html")
-        with open(fname, "w") as f:
-            f.write(html_string)
-        fname = os.path.join(self.config.download_folder, "test.pdf")
-        html.write_pdf(fname)
-        return fname
+        #fname = os.path.join(self.config.download_folder, "test.html")
+        #with open(fname, "w") as f:
+        #    f.write(html_string)
+        if in_memory:
+            return html.render()
+        else:
+            fname = os.path.join(self.config.download_folder, self.name + "_start_list_" + day + "_" + discipline + ".pdf")
+            html.write_pdf(fname)
+            return fname

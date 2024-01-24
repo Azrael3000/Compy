@@ -70,8 +70,6 @@ $(document).ready(function() {
                 // show status msg
                 element.style.display = "block";
                 element.innerHTML = data.status_msg;
-                populateNewcomer(data);
-                initSubmenus(data);
             },
         })
     });
@@ -174,11 +172,11 @@ $(document).ready(function() {
                     for (let i = 0; i < data.start_list.length; i++) {
                         sl += `
                             <tr>
-                                <td>${data.start_list[i].name}</td>
-                                <td>${data.start_list[i].ap}</td>
-                                <td>${data.start_list[i].warmup}</td>
-                                <td>${data.start_list[i].ot}</td>
-                                <td>${data.start_list[i].lane}</td>
+                                <td>${data.start_list[i].Name}</td>
+                                <td>${data.start_list[i].AP}</td>
+                                <td>${data.start_list[i].Warmup}</td>
+                                <td>${data.start_list[i].OT}</td>
+                                <td>${data.start_list[i].Lane}</td>
                             </tr>`;
                     }
                     sl += "</table>";
@@ -188,33 +186,61 @@ $(document).ready(function() {
             }
         })
     });
+    $("#sl_all_pdf_button").click(function() {
+        getStartList("all", "all");
+    });
     $("#sl_content").on("click", ".sl_pdf_button", function() {
         day = this.id.substr(7, 10); // button id is equal to "sl_pdf_" + day + "_" + discipline
         discipline = this.id.substr(7 + 10 + 1);
+        getStartList(day, discipline);
+    });
+    $('input[name="lane_style"]').change(function() {
+        let selectedOption = $("input[name='lane_style']:checked").val();
         let data = {
-            day: day,
-            discipline: discipline
+            lane_style: selectedOption
         };
         $.ajax({
-            type: "GET",
-            url: "/start_list_pdf?" + $.param(data),
-            xhrFields: {
-                responseType: 'blob'
-            },
+            url: '/change_lane_style',
+            data: JSON.stringify(data),
+            contentType: "application/json",
+            dataType: "json",
+            type: 'POST',
             success: function(data) {
-                let link = document.createElement('a');
-                link.href = window.URL.createObjectURL(data);
-                let comp_name = document.getElementById("comp_name").value;
-                link.download = comp_name + "_" + day + "_" + discipline + ".pdf";
-                link.style.display = 'none';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                console.log("Served pdf");
+                console.log(data.status_msg);
             }
-        })
+        });
     });
 });
+
+function getStartList(day, discipline)
+{
+    let data = {
+        day: day,
+        discipline: discipline
+    };
+    $.ajax({
+        type: "GET",
+        url: "/start_list_pdf?" + $.param(data),
+        xhrFields: {
+            responseType: 'blob'
+        },
+        success: function(data) {
+            let link = document.createElement('a');
+            link.href = window.URL.createObjectURL(data);
+            let comp_name = document.getElementById("comp_name").value;
+            if (day == "all" && discipline == "all") {
+                link.download = comp_name + "_start_lists.pdf";
+            } else {
+                link.download = comp_name + "_start_list_" + day + "_" + discipline + ".pdf";
+            }
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            console.log("Served pdf");
+        }
+    })
+}
 
 function switchTo(id) {
     let tab_ids = ['settings', 'newcomer', 'start_lists']

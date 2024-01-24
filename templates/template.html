@@ -74,6 +74,13 @@
             </div>
         </form>
         <div id="file_upload_status" style="display:none"></div>
+        <label>Choose Lane Style:</label>
+        <div id="lane_style_chooser">
+            <input type="radio" name="lane_style" value="numeric" id="numeric_radio" checked>
+            <label for="numeric_radio">Numeric</label>
+            <input type="radio" name="lane_style" value="alphabetic" id="alphabetic_radio">
+            <label for="alphabetic_radio">Alphabetic</label>
+        </div>
         <div>
             Load competition
             <ul id="competition_list">
@@ -101,7 +108,7 @@
     <div id="start_lists" style="display:none">
         <div id="sl_date_menu"></div>
         <div id="sl_discipline_menu"></div>
-        TODO: print-all button
+        <a href="#" id="sl_all_pdf_button">Print all</a>
         <div id="sl_content"></div>
     </div>
 </body>
