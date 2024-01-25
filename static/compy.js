@@ -27,11 +27,12 @@
 */
 
 var _global_prev_name = "";
-var _days_with_disciplines = null;
+var _days_with_disciplines_lanes = null;
 
 $(window).on('load', function() {
     let comp_name = document.getElementById('comp_name');
     comp_name.value = "undefined";
+    $('#numeric_radio').prop('checked', true);
 });
 
 $(document).ready(function() {
@@ -142,12 +143,18 @@ $(document).ready(function() {
                     let comp_name = document.getElementById('comp_name');
                     comp_name.value = data.comp_name;
                 }
+                if ("lane_style" in data && data.lane_style == "alphabetic") {
+                    $('#alphabetic_radio').prop('checked', true);
+                } else {
+                    $('#numeric_radio').prop('checked', true);
+                }
             }
         })
     });
     $("#sl_discipline_menu").on("click", "a", function() {
-        let day = this.id.substr(3, 10); // button id is equal to "sl_" + day + "_" + discipline
-        let discipline = this.id.substr(3 + 10 + 1);
+        let id_arr = this.id.split('_'); // button id is equal to "sl_" + day + "_" + discipline
+        day = id_arr[1];
+        discipline = id_arr[2];
         let data = {
             day: day,
             discipline: discipline
@@ -187,12 +194,80 @@ $(document).ready(function() {
         })
     });
     $("#sl_all_pdf_button").click(function() {
-        getStartList("all", "all");
+        getPDF("start_list");
     });
     $("#sl_content").on("click", ".sl_pdf_button", function() {
-        day = this.id.substr(7, 10); // button id is equal to "sl_pdf_" + day + "_" + discipline
-        discipline = this.id.substr(7 + 10 + 1);
-        getStartList(day, discipline);
+        let id_arr = this.id.split('_'); // button id is equal to "sl_pdf_" + day + "_" + discipline
+        day = id_arr[2];
+        discipline = id_arr[3];
+        let data = {
+            day: day,
+            discipline: discipline
+        };
+        getPDF("start_list", data);
+    });
+    $("#ll_lane_menu").on("click", "a", function() {
+        let id_arr = this.id.split('_'); // button id is equal to "ll_" + day + "_" + discipline + "_" + lane
+        day = id_arr[1];
+        discipline = id_arr[2];
+        lane = id_arr[3];
+        let data = {
+            day: day,
+            discipline: discipline,
+            lane: lane
+        };
+        $.ajax({
+            type: "GET",
+            url: "/lane_list?" + $.param(data),
+            success: function(data) {
+                console.log(data.status_msg);
+                let ll = "";
+                if (data.lane_list) {
+                    ll += "<a href='#' class='ll_pdf_button' id='ll_pdf_" + day + "_" + discipline + "_" + lane + "'>Print PDF</a>";
+                    ll += "<table>";
+                    ll += `
+                        <tr>
+                            <td>OT</td>
+                            <td>Name</td>
+                            <td>AP</td>
+                            <td>NR</td>
+                            <td>RP</td>
+                            <td>Card</td>
+                            <td>Remarks</td>
+                        </tr>`;
+                    for (let i = 0; i < data.lane_list.length; i++) {
+                        ll += `
+                            <tr>
+                                <td>${data.lane_list[i].OT}</td>
+                                <td>${data.lane_list[i].Name}</td>
+                                <td>${data.lane_list[i].AP}</td>
+                                <td>${data.lane_list[i].NR}</td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                            </tr>`;
+                    }
+                    ll += "</table>";
+                }
+                let ll_content = document.getElementById('ll_content');
+                ll_content.innerHTML = ll;
+            }
+        })
+    });
+    $("#ll_all_pdf_button").click(function() {
+        getPDF("lane_list");
+    });
+    $("#ll_content").on("click", ".ll_pdf_button", function() {
+        let id_arr = this.id.split('_'); // button id is equal to "ll_pdf_" + day + "_" + discipline + "_" + lane
+        day = id_arr[2];
+        discipline = id_arr[3];
+        lane = id_arr[4];
+        let data = {
+            day: day,
+            discipline: discipline,
+            lane: lane
+        };
+        getPDF("lane_list", data);
     });
     $('input[name="lane_style"]').change(function() {
         let selectedOption = $("input[name='lane_style']:checked").val();
@@ -206,21 +281,18 @@ $(document).ready(function() {
             dataType: "json",
             type: 'POST',
             success: function(data) {
+                initSubmenus(data);
                 console.log(data.status_msg);
             }
         });
     });
 });
 
-function getStartList(day, discipline)
+function getPDF(type, params = {type: "all"})
 {
-    let data = {
-        day: day,
-        discipline: discipline
-    };
     $.ajax({
         type: "GET",
-        url: "/start_list_pdf?" + $.param(data),
+        url: "/" + type + "_pdf?" + $.param(params),
         xhrFields: {
             responseType: 'blob'
         },
@@ -228,22 +300,28 @@ function getStartList(day, discipline)
             let link = document.createElement('a');
             link.href = window.URL.createObjectURL(data);
             let comp_name = document.getElementById("comp_name").value;
-            if (day == "all" && discipline == "all") {
-                link.download = comp_name + "_start_lists.pdf";
+            if ("type" in params && params.type == "all") {
+                link.download = comp_name + "_" + type + "s.pdf";
             } else {
-                link.download = comp_name + "_start_list_" + day + "_" + discipline + ".pdf";
+                if (type == "start_list") {
+                    link.download = comp_name + "_" + type + "_" + params.day + "_" + params.discipline + ".pdf";
+                } else if (type == "lane_list") {
+                    link.download = comp_name + "_" + type + "_" + params.day + "_" + params.discipline + "_" + params.lane + ".pdf";
+                } else /* if (type == "result") */ {
+                    link.download = comp_name + "_" + type + "_" + params.discipline + "_" + params.country + "_" + params.gender + ".pdf";
+                }
             }
             link.style.display = 'none';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            console.log("Served pdf");
+            console.log("Served pdf: " + link.download);
         }
     })
 }
 
 function switchTo(id) {
-    let tab_ids = ['settings', 'newcomer', 'start_lists']
+    let tab_ids = ['settings', 'newcomer', 'start_lists', 'lane_lists', 'results']
     for (let i = 0; i < tab_ids.length; i++) {
         let element = document.getElementById(tab_ids[i]);
         if (tab_ids[i] === id) {
@@ -287,36 +365,69 @@ function populateNewcomer(data) {
 
 function initSubmenus(data)
 {
-    if (data.hasOwnProperty("days_with_disciplines") && data.days_with_disciplines != null)
+    if (data.hasOwnProperty("days_with_disciplines_lanes") && data.days_with_disciplines_lanes != null)
     {
-        _days_with_disciplines = data.days_with_disciplines;
-        // start_list submenu
+        _days_with_disciplines_lanes = data.days_with_disciplines_lanes;
+        // start_list and lane_list submenu
         let sl_date_menu = document.getElementById('sl_date_menu');
+        let ll_date_menu = document.getElementById('ll_date_menu');
         sl_date_menu.innerHTML = "";
-        keys = Object.keys(_days_with_disciplines);
+        ll_date_menu.innerHTML = "";
+        keys = Object.keys(_days_with_disciplines_lanes);
         for (let i = 0; i < keys.length; i++)
         {
             let day = keys[i];
-            sl_date_menu.innerHTML += "<a href='#' onclick='selectStartListDay(\"" + day + "\")'>" + day + "</a>&nbsp;";
+            sl_date_menu.innerHTML += "<a href='#' onclick='selectListDay(\"start\", \"" + day + "\")'>" + day + "</a>&nbsp;";
+            ll_date_menu.innerHTML += "<a href='#' onclick='selectListDay(\"lane\", \"" + day + "\")'>" + day + "</a>&nbsp;";
         }
     }
     else
-        _days_with_disciplines = null;
+        _days_with_disciplines_lanes = null;
+    document.getElementById('sl_discipline_menu').innerHTML = "";
+    document.getElementById('ll_discipline_menu').innerHTML = "";
+    document.getElementById('ll_lane_menu').innerHTML = "";
 }
 
-function selectStartListDay(day)
+function selectListDay(type, day)
 {
-    if (_days_with_disciplines != null && _days_with_disciplines.hasOwnProperty(day))
-    {
-        let sl_discipline_menu = document.getElementById('sl_discipline_menu');
-        sl_discipline_menu.innerHTML = "";
-        disciplines = _days_with_disciplines[day];
+    if (_days_with_disciplines_lanes != null && _days_with_disciplines_lanes.hasOwnProperty(day)) {
+        let type_char = "";
+        if (type == "start") {
+            type_char = "s";
+        } else if (type == "lane") {
+            type_char = "l";
+        } else {
+            return;
+        }
+        let l_discipline_menu = document.getElementById(type_char + 'l_discipline_menu');
+        l_discipline_menu.innerHTML = "";
+        disciplines = Object.keys(_days_with_disciplines_lanes[day]);
         for (let i = 0; i < disciplines.length; i++)
         {
             let dis = disciplines[i];
-            sl_discipline_menu.innerHTML += "<a href='#' class='sl_discipline_button' id='sl_" + day + "_" + dis + "'>" + dis + "</a>&nbsp;";
-            let sl_content = document.getElementById('sl_content');
-            sl_content.innerHTML = "";
+            if (type == "start") {
+                l_discipline_menu.innerHTML += "<a href='#' class='sl_discipline_button' id='sl_" + day + "_" + dis + "'>" + dis + "</a>&nbsp;";
+            } else {
+                l_discipline_menu.innerHTML += "<a href='#' onclick='selectLaneListDayDiscipline(\"" + day + "\", \"" + dis + "\")'>" + dis + "</a>&nbsp;";
+            }
+            let l_content = document.getElementById(type_char + 'l_content');
+            l_content.innerHTML = "";
+        }
+    }
+}
+
+function selectLaneListDayDiscipline(day, discipline)
+{
+    if (_days_with_disciplines_lanes != null && _days_with_disciplines_lanes.hasOwnProperty(day)) {
+        let l_lane_menu = document.getElementById('ll_lane_menu');
+        l_lane_menu.innerHTML = "";
+        lanes = _days_with_disciplines_lanes[day][discipline];
+        for (let i = 0; i < lanes.length; i++)
+        {
+            let lane = lanes[i];
+            l_lane_menu.innerHTML += "<a href='#' class='ll_lane_button' id='sl_" + day + "_" + discipline + "_" + lane + "'>" + lane + "</a>&nbsp;";
+            let l_content = document.getElementById('ll_content');
+            l_content.innerHTML = "";
         }
     }
 }

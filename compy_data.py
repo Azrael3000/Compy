@@ -95,6 +95,7 @@ class CompyData:
         if lane_style not in allowed_lane_styles:
             return 1
         self.lane_style_ = lane_style
+        self.save()
         return 0
 
     def laneStyleConverter(self, lane):
@@ -159,6 +160,7 @@ class CompyData:
         img = Image.open(BytesIO(img_content))
         width, height = img.size # in pixels
         self.sponsor_img_["aspect_ratio"] = float(width)*5./float(height)/19. # < 1 if too high, > 1 if too wide
+        self.save()
 
     def compFileChange(self, comp_file):
         self.comp_file_ = comp_file
@@ -192,7 +194,8 @@ class CompyData:
             logging.debug("%s     | %s", c, self.countries_[c])
         logging.debug("-----------------------------")
 
-        # Requires update of country_converter
+        # Do check if country converter is >= 1.2
+        # only update if new nationalities are available (or forced)
         #self.nrs_ = self.getNationalRecords()
 
         self.save()
@@ -326,6 +329,8 @@ class CompyData:
             self.sponsor_img_ = data["sponsor_img"]
 
     def getDays(self):
+        if self.start_date is None:
+            return []
         days = []
         d0 = datetime.strptime(self.start_date, '%Y-%m-%d')
         d1 = datetime.strptime(self.end_date, '%Y-%m-%d')
@@ -335,17 +340,22 @@ class CompyData:
             days.append(d)
         return days
 
-    def getDaysWithDisciplines(self):
+    def getDaysWithDisciplinesLanes(self):
         dwd = {}
         days = self.getDays()
         for day in days:
             df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
             disciplines_on_day = list({r['Discipline'] for i,r in df.iterrows()})
-            dwd[day] = disciplines_on_day
+            disciplines_w_lanes = {}
+            for dis in disciplines_on_day:
+                disciplines_w_lanes[dis] = list({self.laneStyleConverter(r['Zone']) for i,r in df.iterrows() if r['Discipline'] == dis})
+            dwd[day] = disciplines_w_lanes
         logging.debug(dwd)
         return dwd
 
     def getStartList(self, day, discipline):
+        if self.comp_file is None:
+            return []
         df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
         ap_lambda = lambda x, y: str(x)
         if discipline == "STA":
@@ -359,12 +369,12 @@ class CompyData:
                        for i,r in df.iterrows() if r['Discipline'] == discipline]
         return start_list
 
-    def getStartListPDF(self, day, discipline, in_memory=False):
+    def getStartListPDF(self, day="all", discipline="all", in_memory=False):
         if day=="all" and discipline=="all":
-            dwd = self.getDaysWithDisciplines()
+            dwd = self.getDaysWithDisciplinesLanes()
             files = []
             for d in dwd:
-                for dis in dwd[d]:
+                for dis in dwd[d].keys():
                     files.append(self.getStartListPDF(d, dis, True))
             pages = []
             for doc in files:
@@ -441,5 +451,106 @@ class CompyData:
             return html.render()
         else:
             fname = os.path.join(self.config.download_folder, self.name + "_start_list_" + day + "_" + discipline + ".pdf")
+            html.write_pdf(fname)
+            return fname
+
+    def getLaneList(self, day, discipline, lane):
+        if self.comp_file is None:
+            return []
+        df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
+        ap_lambda = lambda x, y: str(x)
+        if discipline == "STA":
+            ap_lambda = lambda x, y: str(x) + ":" + str(int(y)).zfill(2)
+        # RPs are 'Meters or Min.1'
+        lane_list = [{'Name': r['Diver Name'],
+                       'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
+                       'OT': r['OT'],
+                       'NR': r['Diver Country']}
+                       for i,r in df.iterrows() if r['Discipline'] == discipline and self.laneStyleConverter(r['Zone']) == lane]
+        return lane_list
+
+    def getLaneListPDF(self, day="all", discipline="all", lane="all", in_memory=False):
+        if day=="all" and discipline=="all":
+            dwd = self.getDaysWithDisciplinesLanes()
+            files = []
+            for d in dwd:
+                for dis in dwd[d].keys():
+                    for l in dwd[d][dis]:
+                        files.append(self.getLaneListPDF(d, dis, l, True))
+            pages = []
+            for doc in files:
+                for page in doc.pages:
+                    pages.append(page)
+            merged_pdf = files[0].copy(pages)
+            fname = os.path.join(self.config.download_folder, self.name + "_lane_lists.pdf")
+            merged_pdf.write_pdf(fname)
+            return fname
+        lane_df = pd.DataFrame(self.getLaneList(day, discipline, lane))
+        html_string = lane_df.to_html(index=False, justify="left", classes="df_table")
+        day_obj = datetime.strptime(day, "%Y-%m-%d")
+        human_day = day_obj.strftime("%d. %m. %Y")
+        html_string = """
+            <html>
+            <head>
+            <style>
+            tr th:first-child {{
+                padding-left:0px;
+                text-align: left;
+            }}
+            tr td:first-child {{
+                padding-left:0px;
+                text-align: left;
+            }}
+            th, td {{
+                padding:10px 0px 10px 50px;
+                text-align: center;
+                border-bottom: 1px solid #ddd;
+            }}
+            @page {{
+                margin: 4cm 1cm 6cm 1cm;
+                size: A4;
+                @top-right {{
+                    content: counter(page) "/" counter(pages);
+                }}
+            }}
+            header, footer {{
+                position: fixed;
+                left: 0;
+                right: 0;
+            }}
+            header {{
+                /* subtract @page margin */
+                top: -4cm;
+                height: 4cm;
+                text-align: center;
+                vertical-align: center;
+            }}
+            footer {{
+                /* subtract @page margin */
+                bottom: -6cm;
+                height: 6cm;
+                text-align: center;
+                vertical-align: center;
+            }}
+            </style>
+            </head>
+            <body>
+            <header>
+                <h1>{}</h1>
+                <h2>Lane list {} - lane {} - {}</h2>
+            </header>
+            {}
+            <footer><img src="{}" style="width:{}cm; height:{}cm;"></footer>
+            </body>
+            </html>
+            """.format(self.name, discipline, lane, human_day, html_string, self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
+        html = wp.HTML(string=html_string, base_url="/")
+        #fname = os.path.join(self.config.download_folder, "test.html")
+        #with open(fname, "w") as f:
+        #    f.write(html_string)
+        if in_memory:
+            return html.render()
+        else:
+            fname = os.path.join(self.config.download_folder, self.name + "_lane_list_" + day + "_" + discipline + "_" + lane + ".pdf")
             html.write_pdf(fname)
             return fname

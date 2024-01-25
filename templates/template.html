@@ -40,6 +40,8 @@
             <td id="settings_button" style="font-weight:bold"><a href="#" onclick="switchTo('settings')">Settings</a></td>
             <td id="newcomer_button"><a href="#" onclick="switchTo('newcomer')">Newcomer</a></td>
             <td id="start_lists_button"><a href="#" onclick="switchTo('start_lists')">Start lists</a></td>
+            <td id="lane_lists_button"><a href="#" onclick="switchTo('lane_lists')">Lane lists</a></td>
+            <td id="results_button"><a href="#" onclick="switchTo('results')">Results</a></td>
         </tr>
     </table>
     <div id="settings">
@@ -110,6 +112,20 @@
         <div id="sl_discipline_menu"></div>
         <a href="#" id="sl_all_pdf_button">Print all</a>
         <div id="sl_content"></div>
+    </div>
+    <div id="lane_lists" style="display:none">
+        <div id="ll_date_menu"></div>
+        <div id="ll_discipline_menu"></div>
+        <div id="ll_lane_menu"></div>
+        <a href="#" id="ll_all_pdf_button">Print all</a>
+        <div id="ll_content"></div>
+    </div>
+    <div id="results" style="display:none">
+        <div id="result_discipline_menu"></div>
+        <div id="result_gender_menu"></div>
+        <div id="result_country_menu"></div>
+        <a href="#" id="results_all_pdf_button">Print all</a>
+        <div id="results_content"></div>
     </div>
 </body>
 </html>

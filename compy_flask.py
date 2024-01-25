@@ -74,6 +74,14 @@ class CompyFlask:
         def startListPDF():
             return self.startListPDF()
 
+        @app.route('/lane_list', methods=['GET'])
+        def laneList():
+            return self.laneList()
+
+        @app.route('/lane_list_pdf', methods=['GET'])
+        def laneListPDF():
+            return self.laneListPDF()
+
         @app.route('/change_lane_style', methods=['POST'])
         def changeLaneStyle():
             return self.changeLaneStyle()
@@ -104,7 +112,7 @@ class CompyFlask:
                 data["athletes"] = []
                 for athlete in self.data_.athletes:
                     data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id})
-                data["days_with_disciplines"] = self.data_.getDaysWithDisciplines()
+                data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
         data["status_msg"] = status_msg
         return data, 200
 
@@ -172,7 +180,8 @@ class CompyFlask:
         for athlete in self.data_.athletes:
             data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id, "newcomer": athlete.newcomer})
         data["comp_name"] = comp_name
-        data["days_with_disciplines"] = self.data_.getDaysWithDisciplines()
+        data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
+        data["lane_style"] = self.data_.lane_style
         data["status"] = "success"
         data["status_msg"] = "Loaded competition with name " + comp_name
         logging.debug("Loaded comp " + comp_name + " with " + str(len(self.data_.athletes)) + " athletes")
@@ -198,16 +207,58 @@ class CompyFlask:
     def startListPDF(self):
         day = request.args.get('day')
         discipline = request.args.get('discipline')
-        if day is None or discipline is None:
-            logging.debug("Get request to start_list without day and discipline")
+        req_type = request.args.get('type')
+        if (day is None or discipline is None) and req_type is None:
+            logging.debug("Get request to start_list without day, discipline or type")
             return {}, 400
         data = {}
-        start_list_pdf = self.data_.getStartListPDF(day, discipline)
+        if req_type is not None and req_type == "all":
+            start_list_pdf = self.data_.getStartListPDF()
+        else:
+            start_list_pdf = self.data_.getStartListPDF(day, discipline)
         if not start_list_pdf is None:
             logging.debug("Sending: " + start_list_pdf)
             return send_file(start_list_pdf, as_attachment=True)
         else:
             logging.debug("Could not get start list for " + day + ": " + discipline)
+            return {}, 400
+
+    def laneList(self):
+        day = request.args.get('day')
+        discipline = request.args.get('discipline')
+        lane = request.args.get('lane')
+        if day is None or discipline is None or lane is None:
+            logging.debug("Get request to lane_list without day, discipline or lane")
+            return {}, 400
+        data = {}
+        lane_list = self.data_.getLaneList(day, discipline, lane)
+        if not lane_list is None:
+            data["lane_list"] = lane_list
+            data["status"] = "success"
+            data["status_msg"] = "Transfered lane list for " + day + ": " + discipline + "/" + lane
+            return data, 200
+        else:
+            logging.debug("Could not get lane list for " + day + ": " + discipline + "/" + lane)
+            return {}, 400
+
+    def laneListPDF(self):
+        day = request.args.get('day')
+        discipline = request.args.get('discipline')
+        lane = request.args.get('lane')
+        req_type = request.args.get('type')
+        if (day is None or discipline is None or lane is None) and req_type is None:
+            logging.debug("Get request to lane_list without day, discipline, lane or type")
+            return {}, 400
+        data = {}
+        if req_type is not None and req_type == "all":
+            lane_list_pdf = self.data_.getLaneListPDF()
+        else:
+            lane_list_pdf = self.data_.getLaneListPDF(day, discipline, lane)
+        if not lane_list_pdf is None:
+            logging.debug("Sending: " + lane_list_pdf)
+            return send_file(lane_list_pdf, as_attachment=True)
+        else:
+            logging.debug("Could not get lane list for " + day + ": " + discipline + "/" + lane)
             return {}, 400
 
     def changeLaneStyle(self):
@@ -218,6 +269,7 @@ class CompyFlask:
         option = content["lane_style"]
         if self.data_.changeLaneStyle(option) == 0:
             data = {}
+            data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
             data["status_msg"] = "Successfully changed lane style"
             data["status"] = "success"
             return data, 200
