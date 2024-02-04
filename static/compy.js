@@ -28,11 +28,16 @@
 
 var _global_prev_name = "";
 var _days_with_disciplines_lanes = null;
+var _disciplines = null;
+var _countries = null
 
 $(window).on('load', function() {
     let comp_name = document.getElementById('comp_name');
     comp_name.value = "undefined";
     $('#numeric_radio').prop('checked', true);
+    _days_with_disciplines_lanes = null;
+    _disciplines = null;
+    _countries = null;
 });
 
 $(document).ready(function() {
@@ -52,7 +57,7 @@ $(document).ready(function() {
                 element.style.display = "block";
                 element.innerHTML = data.status_msg;
                 populateNewcomer(data);
-                initSubmenus(data);
+                initSubmenus(data, true);
             },
         })
     });
@@ -122,7 +127,10 @@ $(document).ready(function() {
             data: JSON.stringify(data),
             contentType: "application/json",
             dataType: "json",
-            success: function(data) { console.log(data.status_msg); }
+            success: function(data) {
+                console.log(data.status_msg);
+                initSubmenus(data);
+            }
         })
     });
     $("#competition_list").delegate(".load_comp_button", "click", function() {
@@ -138,7 +146,7 @@ $(document).ready(function() {
             {
                 console.log(data.status_msg);
                 populateNewcomer(data);
-                initSubmenus(data);
+                initSubmenus(data, true);
                 if (data.hasOwnProperty("comp_name")) {
                     let comp_name = document.getElementById('comp_name');
                     comp_name.value = data.comp_name;
@@ -254,6 +262,96 @@ $(document).ready(function() {
             }
         })
     });
+    $("#result_country_menu").on("click", "a", function() {
+        let id_arr = this.id.split('_'); // button id is equal to "result_" + discipline + "_" + gender + "_" + country
+        discipline = id_arr[1];
+        gender = id_arr[2];
+        country = id_arr[3];
+        let data = {
+            discipline: discipline,
+            gender: gender,
+            country: country
+        };
+        $.ajax({
+            type: "GET",
+            url: "/result?" + $.param(data),
+            success: function(data) {
+                console.log(data.status_msg);
+                let res = "";
+                if (data.result) {
+                    res += "<a href='#' class='results_pdf_button' id='result_pdf_" + discipline + "_" + gender + "_" + country + "'>Print PDF</a>";
+                    res += "<table>";
+                    if (discipline == "Overall" || discipline == "Newcomer")
+                    {
+                        res += `
+                            <tr>
+                                <td>Rank</td>
+                                <td>Name</td>
+                                <td>Country</td>`;
+                        for (let j = 0; j < _disciplines.length; j++)
+                        {
+                            if (_disciplines[j] == "Overall" || _disciplines[j] == "Newcomer")
+                                continue;
+                            res += `
+                                <td>${_disciplines[j]}</td>`;
+                        }
+                        res += `
+                                <td>Points</td>
+                            </tr>`;
+                        for (let i = 0; i < data.result.length; i++) {
+                            res += `
+                                <tr>
+                                    <td>${data.result[i].Rank}</td>
+                                    <td>${data.result[i].Name}</td>
+                                    <td>${data.result[i].Country}</td>`;
+                            for (let j = 0; j < _disciplines.length; j++)
+                            {
+                                if (_disciplines[j] == "Overall" || _disciplines[j] == "Newcomer")
+                                    continue;
+                                res += "<td>" + data.result[i][_disciplines[j]] + "</td>";
+                            }
+                            res += `
+                                    <td>${data.result[i].Points}</td>
+                                </tr>`;
+                        }
+                        res += "</table>";
+                    }
+                    else
+                    {
+                        res += `
+                            <tr>
+                                <td>Rank</td>
+                                <td>Name</td>
+                                <td>Country</td>
+                                <td>AP</td>
+                                <td>RP</td>
+                                <td>Penalty</td>
+                                <td>Card</td>
+                                <td>Remarks</td>
+                                <td>Points</td>
+                            </tr>`;
+                        for (let i = 0; i < data.result.length; i++) {
+                            res += `
+                                <tr>
+                                    <td>${data.result[i].Rank}</td>
+                                    <td>${data.result[i].Name}</td>
+                                    <td>${data.result[i].Country}</td>
+                                    <td>${data.result[i].AP}</td>
+                                    <td>${data.result[i].RP}</td>
+                                    <td>${data.result[i].Penalty}</td>
+                                    <td>${data.result[i].Card}</td>
+                                    <td>${data.result[i].Remarks}</td>
+                                    <td>${data.result[i].Points}</td>
+                                </tr>`;
+                        }
+                        res += "</table>";
+                    }
+                }
+                let results_content = document.getElementById('results_content');
+                results_content.innerHTML = res;
+            }
+        })
+    });
     $("#ll_all_pdf_button").click(function() {
         getPDF("lane_list");
     });
@@ -324,10 +422,13 @@ function switchTo(id) {
     let tab_ids = ['settings', 'newcomer', 'start_lists', 'lane_lists', 'results']
     for (let i = 0; i < tab_ids.length; i++) {
         let element = document.getElementById(tab_ids[i]);
+        let button = document.getElementById(tab_ids[i] + "_button");
         if (tab_ids[i] === id) {
             element.style.display = "block";
+            button.style.fontWeight = "bold";
         } else {
             element.style.display = "none";
+            button.style.fontWeight = "normal";
         }
     }
 }
@@ -363,29 +464,52 @@ function populateNewcomer(data) {
     }
 }
 
-function initSubmenus(data)
+function initSubmenus(data, reset=false)
 {
+    if (reset) {
+        _days_with_disciplines_lanes = null;
+        _disciplines = null;
+        _countries = null;
+    }
+
     if (data.hasOwnProperty("days_with_disciplines_lanes") && data.days_with_disciplines_lanes != null)
-    {
         _days_with_disciplines_lanes = data.days_with_disciplines_lanes;
+
+    if (_days_with_disciplines_lanes != null) {
         // start_list and lane_list submenu
         let sl_date_menu = document.getElementById('sl_date_menu');
         let ll_date_menu = document.getElementById('ll_date_menu');
         sl_date_menu.innerHTML = "";
         ll_date_menu.innerHTML = "";
         keys = Object.keys(_days_with_disciplines_lanes);
-        for (let i = 0; i < keys.length; i++)
-        {
+        for (let i = 0; i < keys.length; i++) {
             let day = keys[i];
             sl_date_menu.innerHTML += "<a href='#' onclick='selectListDay(\"start\", \"" + day + "\")'>" + day + "</a>&nbsp;";
             ll_date_menu.innerHTML += "<a href='#' onclick='selectListDay(\"lane\", \"" + day + "\")'>" + day + "</a>&nbsp;";
         }
     }
-    else
-        _days_with_disciplines_lanes = null;
+
+    // submenu for results
+    if ("disciplines" in data && data.disciplines != null)
+        _disciplines = data.disciplines;
+    if ("countries" in data && data.countries != null)
+        _countries = data.countries;
+
+    if (_disciplines != null && _countries != null) {
+        let result_dis_menu = document.getElementById('result_discipline_menu');
+        result_dis_menu.innerHTML = "";
+        for (let i = 0; i < _disciplines.length; i++) {
+            let dis = _disciplines[i];
+            result_dis_menu.innerHTML += "<a href='#' onclick='selectResultDiscipline(\"" + dis + "\")'>" + dis + "</a>&nbsp;";
+        }
+    }
+
+    // lower tier menus
     document.getElementById('sl_discipline_menu').innerHTML = "";
     document.getElementById('ll_discipline_menu').innerHTML = "";
     document.getElementById('ll_lane_menu').innerHTML = "";
+    document.getElementById('result_gender_menu').innerHTML = "";
+    document.getElementById('result_country_menu').innerHTML = "";
 }
 
 function selectListDay(type, day)
@@ -430,4 +554,27 @@ function selectLaneListDayDiscipline(day, discipline)
             l_content.innerHTML = "";
         }
     }
+}
+
+function selectResultDiscipline(discipline)
+{
+    if (_disciplines != null && _countries != null) {
+        let result_gender_menu = document.getElementById('result_gender_menu');
+        result_gender_menu.innerHTML = "";
+        result_gender_menu.innerHTML += "<a href='#' onclick='selectResultDisciplineGender(\"" + discipline + "\", \"F\")'>Female</a>&nbsp;";
+        result_gender_menu.innerHTML += "<a href='#' onclick='selectResultDisciplineGender(\"" + discipline + "\", \"M\")'>Male</a>&nbsp;";
+    }
+    document.getElementById('result_country_menu').innerHTML = "";
+    document.getElementById('results_content').innerHTML = "";
+}
+
+function selectResultDisciplineGender(discipline, gender)
+{
+    if (_disciplines != null && _countries != null) {
+        let result_country_menu = document.getElementById('result_country_menu');
+        result_country_menu.innerHTML = "";
+        for (let i = 0; i < _countries.length; i++)
+            result_country_menu.innerHTML += "<a href='#' class='result_button' id='result_" + discipline + "_" + gender + "_" + _countries[i] + "'>" + _countries[i] + "</a>&nbsp;";
+    }
+    document.getElementById('results_content').innerHTML = "";
 }

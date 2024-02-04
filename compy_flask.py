@@ -82,6 +82,10 @@ class CompyFlask:
         def laneListPDF():
             return self.laneListPDF()
 
+        @app.route('/result', methods=['GET'])
+        def result():
+            return self.result()
+
         @app.route('/change_lane_style', methods=['POST'])
         def changeLaneStyle():
             return self.changeLaneStyle()
@@ -112,7 +116,7 @@ class CompyFlask:
                 data["athletes"] = []
                 for athlete in self.data_.athletes:
                     data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id})
-                data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
+                self.setSubmenuData(data)
         data["status_msg"] = status_msg
         return data, 200
 
@@ -151,6 +155,7 @@ class CompyFlask:
             data = {"status": "success", "status_msg": "Successfully updated athlete with id '" + athlete_id + "' to value '" + str(is_newcomer) + "'"}
         else:
             data = {"status": "success", "status_msg": "Failed to update athlete with id '" + athlete_id + "' to value '" + str(is_newcomer) + "'"}
+        data["disciplines"] = self.data_.getDisciplines()
         return data, 200
 
     def changeCompName(self):
@@ -180,7 +185,7 @@ class CompyFlask:
         for athlete in self.data_.athletes:
             data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id, "newcomer": athlete.newcomer})
         data["comp_name"] = comp_name
-        data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
+        self.setSubmenuData(data)
         data["lane_style"] = self.data_.lane_style
         data["status"] = "success"
         data["status_msg"] = "Loaded competition with name " + comp_name
@@ -275,4 +280,27 @@ class CompyFlask:
             return data, 200
         else:
             logging.debug("Invalid lane style")
+            return {}, 400
+
+    def setSubmenuData(self, data):
+        data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
+        data["disciplines"] = self.data_.getDisciplines()
+        data["countries"] = self.data_.getCountries()
+
+    def result(self):
+        discipline = request.args.get('discipline')
+        gender = request.args.get('gender')
+        country = request.args.get('country')
+        if discipline is None or gender is None or country is None:
+            logging.debug("Get request to result without discipline, gender, country")
+            return {}, 400
+        data = {}
+        result = self.data_.getResult(discipline, gender, country)
+        if not result is None:
+            data["result"] = result
+            data["status"] = "success"
+            data["status_msg"] = "Transfered result for " + discipline + "/" + gender + " country: " + country
+            return data, 200
+        else:
+            logging.debug("Could not get result for " + discipline + "/" + gender + " country: " + country)
             return {}, 400

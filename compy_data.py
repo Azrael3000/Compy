@@ -39,6 +39,7 @@ import weasyprint as wp
 import base64
 from PIL import Image
 from io import BytesIO
+import numpy as np
 
 import athlete
 from compy_config import CompyConfig
@@ -57,6 +58,7 @@ class CompyData:
         self.countries_ = None
         self.nrs_ = None
         self.sponsor_img_ = None
+        self.disciplines_ = None
 
         self.NR = namedtuple("NR", ["country", "gender", "discipline"])
 
@@ -125,6 +127,10 @@ class CompyData:
         return self.end_date_
 
     @property
+    def disciplines(self):
+        return self.disciplines_
+
+    @property
     def sponsor_img_data(self):
         if self.sponsor_img_ is None:
             return ""
@@ -178,6 +184,8 @@ class CompyData:
                 self.start_date_ = df[df.keys()[1]][i]
             if l == "Ends:":
                 self.end_date_ = df[df.keys()[1]][i]
+            if l == "Disciplines:":
+                self.disciplines_ = df[df.keys()[1]][i].split(",")
             i += 1
         logging.debug("Start date: %s. End date: %s", self.start_date_, self.end_date_)
 
@@ -293,6 +301,8 @@ class CompyData:
         data["comp_file"] = self.comp_file
         data["start_date"] = self.start_date_
         data["end_date"] = self.end_date_
+        data["disciplines"] = self.disciplines_
+        data["countries"] = self.countries_
         data["athletes"] = [a.saveData() for a in self.athletes]
         data["sponsor_img"] = self.sponsor_img_
         with open(self.file_path, "w") as write_file:
@@ -325,25 +335,25 @@ class CompyData:
             self.comp_file_ = data["comp_file"]
             self.start_date_ = data["start_date"]
             self.end_date_ = data["end_date"]
+            self.disciplines_ = data["disciplines"]
+            self.countries_ = data["countries"]
             self.athletes_ = [athlete.Athlete.fromDict(a) for a in data["athletes"]]
             self.sponsor_img_ = data["sponsor_img"]
+            self.getResult('Overall', 'F', 'International')
 
     def getDays(self):
         if self.start_date is None:
-            return []
+            return
         days = []
         d0 = datetime.strptime(self.start_date, '%Y-%m-%d')
         d1 = datetime.strptime(self.end_date, '%Y-%m-%d')
         delta = d1 - d0
         for i in range(delta.days + 1):
-            d = (d0 + timedelta(days=i)).strftime('%Y-%m-%d')
-            days.append(d)
-        return days
+            yield (d0 + timedelta(days=i)).strftime('%Y-%m-%d')
 
     def getDaysWithDisciplinesLanes(self):
         dwd = {}
-        days = self.getDays()
-        for day in days:
+        for day in self.getDays():
             df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
             disciplines_on_day = list({r['Discipline'] for i,r in df.iterrows()})
             disciplines_w_lanes = {}
@@ -353,13 +363,31 @@ class CompyData:
         logging.debug(dwd)
         return dwd
 
+    def getDisciplines(self):
+        if self.disciplines is None:
+            return []
+        dwc = ["Overall"]
+        # only add newcomer result if we have at least one newcomer
+        for a in self.athletes_:
+            if a.newcomer:
+                dwc.append("Newcomer")
+                break
+        dwc += self.disciplines
+        return dwc
+
+    def getCountries(self):
+        countries = ["International"]
+        for c in self.countries_:
+            countries.append(c) # in the future this should be only the countries that are requested
+        return countries
+
     def getStartList(self, day, discipline):
         if self.comp_file is None:
-            return []
+            return None
         df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
         ap_lambda = lambda x, y: str(x)
         if discipline == "STA":
-            ap_lambda = lambda x, y: str(x) + ":" + str(int(y)).zfill(2)
+            ap_lambda = lambda x, y: str(int(x)) + ":" + str(int(y)).zfill(2)
         # RPs are 'Meters or Min.1'
         start_list = [{'Name': r['Diver Name'],
                        'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
@@ -456,11 +484,11 @@ class CompyData:
 
     def getLaneList(self, day, discipline, lane):
         if self.comp_file is None:
-            return []
+            return None
         df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
         ap_lambda = lambda x, y: str(x)
         if discipline == "STA":
-            ap_lambda = lambda x, y: str(x) + ":" + str(int(y)).zfill(2)
+            ap_lambda = lambda x, y: str(int(x)) + ":" + str(int(y)).zfill(2)
         # RPs are 'Meters or Min.1'
         lane_list = [{'Name': r['Diver Name'],
                        'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
@@ -486,6 +514,9 @@ class CompyData:
             merged_pdf.write_pdf(fname)
             return fname
         lane_df = pd.DataFrame(self.getLaneList(day, discipline, lane))
+        lane_df["RP"] = ""
+        lane_df["Card"] = ""
+        lane_df["Remarks"] = ""
         html_string = lane_df.to_html(index=False, justify="left", classes="df_table")
         day_obj = datetime.strptime(day, "%Y-%m-%d")
         human_day = day_obj.strftime("%d. %m. %Y")
@@ -493,6 +524,9 @@ class CompyData:
             <html>
             <head>
             <style>
+            table {{
+                width: 100%;
+            }}
             tr th:first-child {{
                 padding-left:0px;
                 text-align: left;
@@ -506,9 +540,30 @@ class CompyData:
                 text-align: center;
                 border-bottom: 1px solid #ddd;
             }}
+            table th:nth-child(1) {{
+                width: 20%;
+            }}
+            table th:nth-child(2) {{
+                width: 7%;
+            }}
+            table th:nth-child(3) {{
+                width: 7%;
+            }}
+            table th:nth-child(4) {{
+                width: 7%;
+            }}
+            table th:nth-child(5) {{
+                width: 10%;
+            }}
+            table th:nth-child(6) {{
+                width: 10%;
+            }}
+            table th:nth-child(7) {{
+                width: 39%;
+            }}
             @page {{
                 margin: 4cm 1cm 6cm 1cm;
-                size: A4;
+                size: A4 landscape;
                 @top-right {{
                     content: counter(page) "/" counter(pages);
                 }}
@@ -545,12 +600,84 @@ class CompyData:
             </html>
             """.format(self.name, discipline, lane, human_day, html_string, self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
         html = wp.HTML(string=html_string, base_url="/")
-        #fname = os.path.join(self.config.download_folder, "test.html")
-        #with open(fname, "w") as f:
-        #    f.write(html_string)
+        fname = os.path.join(self.config.download_folder, "test.html")
+        with open(fname, "w") as f:
+            f.write(html_string)
         if in_memory:
             return html.render()
         else:
             fname = os.path.join(self.config.download_folder, self.name + "_lane_list_" + day + "_" + discipline + "_" + lane + ".pdf")
             html.write_pdf(fname)
             return fname
+
+    def getResult(self, discipline, gender, country):
+        if self.comp_file is None:
+            return None
+        result = []
+        if discipline == "Overall" or discipline == "Newcomer":
+            dfs = []
+            for day in self.getDays():
+                dfs.append(pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1))
+            full_df = pd.concat(dfs)
+            full_df = full_df[(full_df['Gender'] == gender)]
+            if (country != 'International'):
+                full_df = full_df[(full_df['Diver Country'] == country)]
+            if discipline == "Newcomer":
+                newcomer_ids = []
+                for a in self.athletes_:
+                    if a.newcomer:
+                        newcomer_ids.append(a.id)
+                full_df = full_df[full_df['Diver Id'].isin(newcomer_ids)]
+            reduction_dict = {'Points': 'sum', 'Diver Name': 'first', 'Diver Country': 'first'}
+            for dis in self.disciplines:
+                reduction_dict[dis] = 'first'
+                if dis == "STA":
+                    full_df[dis] = full_df.apply(lambda row: str(int(row['Meters or Min.1'])) + str(int(row['Sec(STA only).1'])).zfill(2) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
+                else:
+                    full_df[dis] = full_df.apply(lambda row: str(row['Meters or Min.1']) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
+            columns = self.disciplines + ["Diver Name", "Diver Id", "Diver Country", "Points"]
+            exp_df = full_df[columns]
+            result_df = exp_df.groupby('Diver Id').agg(reduction_dict).reset_index()
+            result_df = result_df.sort_values(by=['Points'], ascending=[False])
+            result_df.fillna("", inplace=True)
+            result_df['Rank'] = result_df['Points'].rank(ascending=False)
+            columns = self.disciplines + ['Diver Name', 'Points', 'Diver Country', 'Rank']
+            result_df = result_df[columns]
+            result_df.rename(columns = {'Diver Name': 'Name', 'Diver Country': 'Country'}, inplace = True)
+            return result_df.to_dict('records')
+        else:
+            ap_lambda = lambda x, y: str(x)
+            if discipline == "STA":
+                ap_lambda = lambda x, y: str(int(x)) + ":" + str(int(y)).zfill(2)
+            dfs = []
+            for day in self.getDays():
+                dfs.append(pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1))
+            full_df = pd.concat(dfs)
+            result_df = full_df[(full_df['Discipline'] == discipline) & (full_df['Gender'] == gender)]
+            if (country != 'International'):
+                result_df = result_df[(result_df['Diver Country'] == country)]
+            result_df = result_df.sort_values(by=['Points', 'Meters or Min', 'Sec(STA only)'], ascending=[False, False, False])
+            # RPs are 'Meters or Min.1'
+            result_df.fillna(0., inplace=True)
+            result = [{'Rank': i,
+                       'Name': r['Diver Name'],
+                       'Country': r['Diver Country'],
+                       'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
+                       'RP': ap_lambda(r['Meters or Min.1'], r['Sec(STA only).1']),
+                       'Penalty': float(r['Pen(UNDER AP)']) + float(r['Pen(other)']),
+                       'Card': r['Card'],
+                       'Remarks': r['Remarks'],
+                       'Points': r['Points']}
+                       for i,r in result_df.iterrows()]
+            cur_points = 1000000
+            cur_ap = ""
+            for i in range(len(result)):
+                if result[i]["Points"] == 0:
+                    result[i]["Rank"] = ""
+                elif result[i]["Points"] == cur_points and result[i]["AP"] == cur_ap:
+                    result[i]["Rank"] = ""
+                else:
+                    cur_points = result[i]["Points"]
+                    cur_ap = result[i]["AP"]
+                    result[i]["Rank"] = i+1
+            return result
