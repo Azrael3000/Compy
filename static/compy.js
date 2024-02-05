@@ -367,6 +367,21 @@ $(document).ready(function() {
         };
         getPDF("lane_list", data);
     });
+    $("#result_all_pdf_button").click(function() {
+        getPDF("result");
+    });
+    $("#results_content").on("click", ".results_pdf_button", function() {
+        let id_arr = this.id.split('_'); // button id is equal to "result_pdf_" + discipline + "_" + gender + "_" + country
+        discipline = id_arr[2];
+        gender = id_arr[3];
+        country = id_arr[4];
+        let data = {
+            discipline: discipline,
+            gender: gender,
+            country: country
+        };
+        getPDF("result", data);
+    });
     $('input[name="lane_style"]').change(function() {
         let selectedOption = $("input[name='lane_style']:checked").val();
         let data = {
@@ -506,10 +521,13 @@ function initSubmenus(data, reset=false)
 
     // lower tier menus
     document.getElementById('sl_discipline_menu').innerHTML = "";
+    document.getElementById('sl_content').innerHTML = "";
     document.getElementById('ll_discipline_menu').innerHTML = "";
     document.getElementById('ll_lane_menu').innerHTML = "";
+    document.getElementById('ll_content').innerHTML = "";
     document.getElementById('result_gender_menu').innerHTML = "";
     document.getElementById('result_country_menu').innerHTML = "";
+    document.getElementById('results_content').innerHTML = "";
 }
 
 function selectListDay(type, day)

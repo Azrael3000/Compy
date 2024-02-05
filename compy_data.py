@@ -339,7 +339,7 @@ class CompyData:
             self.countries_ = data["countries"]
             self.athletes_ = [athlete.Athlete.fromDict(a) for a in data["athletes"]]
             self.sponsor_img_ = data["sponsor_img"]
-            self.getResult('Overall', 'F', 'International')
+            self.getResultPDF('Overall', 'M', 'International')
 
     def getDays(self):
         if self.start_date is None:
@@ -632,17 +632,21 @@ class CompyData:
             for dis in self.disciplines:
                 reduction_dict[dis] = 'first'
                 if dis == "STA":
-                    full_df[dis] = full_df.apply(lambda row: str(int(row['Meters or Min.1'])) + str(int(row['Sec(STA only).1'])).zfill(2) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
+                    full_df[dis] = full_df.apply(lambda row: str(int(row['Meters or Min.1'])) + ":" + str(int(row['Sec(STA only).1'])).zfill(2) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
                 else:
                     full_df[dis] = full_df.apply(lambda row: str(row['Meters or Min.1']) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
             columns = self.disciplines + ["Diver Name", "Diver Id", "Diver Country", "Points"]
             exp_df = full_df[columns]
             result_df = exp_df.groupby('Diver Id').agg(reduction_dict).reset_index()
+            # remove everyone with 0 points overall
+            mask = result_df['Points'] != 0.
+            result_df = result_df[mask]
             result_df = result_df.sort_values(by=['Points'], ascending=[False])
             result_df.fillna("", inplace=True)
             result_df['Rank'] = result_df['Points'].rank(ascending=False)
-            columns = self.disciplines + ['Diver Name', 'Points', 'Diver Country', 'Rank']
+            columns = ['Rank', 'Diver Name', 'Diver Country'] + self.disciplines + ['Points'] # order is important for pdf output
             result_df = result_df[columns]
+            result_df['Rank'] = result_df['Rank'].astype(int)
             result_df.rename(columns = {'Diver Name': 'Name', 'Diver Country': 'Country'}, inplace = True)
             return result_df.to_dict('records')
         else:
@@ -681,3 +685,118 @@ class CompyData:
                     cur_ap = result[i]["AP"]
                     result[i]["Rank"] = i+1
             return result
+
+    def getResultPDF(self, discipline="all", gender="all", country="all", in_memory=False):
+        if discipline=="all" and gender=="all":
+            dwd = self.getDaysWithDisciplinesLanes()
+            files = []
+            for d in self.disciplines + ["Overall", "Newcomer"]:
+                for g in ["F", "M"]:
+                    for c in self.getCountries():
+                        pdf = self.getResultPDF(d, g, c, True)
+                        if pdf is not None:
+                            files.append(pdf)
+            pages = []
+            for doc in files:
+                for page in doc.pages:
+                    pages.append(page)
+            merged_pdf = files[0].copy(pages)
+            fname = os.path.join(self.config.download_folder, self.name + "_results.pdf")
+            merged_pdf.write_pdf(fname)
+            return fname
+        result_df = pd.DataFrame(self.getResult(discipline, gender, country))
+        if len(result_df.index) == 0:
+            return None
+        gender_str = "Female" if gender == "F" else "Male"
+        html_string = result_df.to_html(index=False, justify="left", classes="df_table")
+        html_string = """
+            <html>
+            <head>
+            <style>
+            table {{
+                width: 100%;
+            }}
+            tr th:first-child {{
+                padding-left:0px;
+                text-align: left;
+            }}
+            tr td:first-child {{
+                padding-left:0px;
+                text-align: left;
+            }}
+            th, td {{
+                padding:10px 0px 10px 50px;
+                text-align: center;
+                border-bottom: 1px solid #ddd;
+            }}
+            /*
+            table th:nth-child(1) {{
+                width: 20%;
+            }}
+            table th:nth-child(2) {{
+                width: 7%;
+            }}
+            table th:nth-child(3) {{
+                width: 7%;
+            }}
+            table th:nth-child(4) {{
+                width: 7%;
+            }}
+            table th:nth-child(5) {{
+                width: 10%;
+            }}
+            table th:nth-child(6) {{
+                width: 10%;
+            }}
+            table th:nth-child(7) {{
+                width: 39%;
+            }}
+            */
+            @page {{
+                margin: 4cm 1cm 6cm 1cm;
+                size: A4 landscape;
+                @top-right {{
+                    content: counter(page) "/" counter(pages);
+                }}
+            }}
+            header, footer {{
+                position: fixed;
+                left: 0;
+                right: 0;
+            }}
+            header {{
+                /* subtract @page margin */
+                top: -4cm;
+                height: 4cm;
+                text-align: center;
+                vertical-align: center;
+            }}
+            footer {{
+                /* subtract @page margin */
+                bottom: -6cm;
+                height: 6cm;
+                text-align: center;
+                vertical-align: center;
+            }}
+            </style>
+            </head>
+            <body>
+            <header>
+                <h1>{}</h1>
+                <h2>Result {} - {} - {}</h2>
+            </header>
+            {}
+            <footer><img src="{}" style="width:{}cm; height:{}cm;"></footer>
+            </body>
+            </html>
+            """.format(self.name, discipline, country, gender_str, html_string, self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
+        html = wp.HTML(string=html_string, base_url="/")
+        fname = os.path.join(self.config.download_folder, "test.html")
+        with open(fname, "w") as f:
+            f.write(html_string)
+        if in_memory:
+            return html.render()
+        else:
+            fname = os.path.join(self.config.download_folder, self.name + "_result_" + discipline + "_" + gender + "_" + country + ".pdf")
+            html.write_pdf(fname)
+            return fname

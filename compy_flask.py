@@ -84,7 +84,11 @@ class CompyFlask:
 
         @app.route('/result', methods=['GET'])
         def result():
-            return self.result()
+            return self.result(False)
+
+        @app.route('/result_pdf', methods=['GET'])
+        def resultPDF():
+            return self.result(True)
 
         @app.route('/change_lane_style', methods=['POST'])
         def changeLaneStyle():
@@ -287,7 +291,7 @@ class CompyFlask:
         data["disciplines"] = self.data_.getDisciplines()
         data["countries"] = self.data_.getCountries()
 
-    def result(self):
+    def result(self, pdf):
         discipline = request.args.get('discipline')
         gender = request.args.get('gender')
         country = request.args.get('country')
@@ -295,12 +299,21 @@ class CompyFlask:
             logging.debug("Get request to result without discipline, gender, country")
             return {}, 400
         data = {}
-        result = self.data_.getResult(discipline, gender, country)
-        if not result is None:
-            data["result"] = result
-            data["status"] = "success"
-            data["status_msg"] = "Transfered result for " + discipline + "/" + gender + " country: " + country
-            return data, 200
+        if pdf:
+            req_type = request.args.get('type')
+            if req_type is not None and req_type == "all":
+                result_pdf = self.data_.getResultPDF()
+            else:
+                result_pdf = self.data_.getResultPDF(discipline, gender, country)
+            if not result_pdf is None:
+                logging.debug("Sending: " + result_pdf)
+                return send_file(result_pdf, as_attachment=True)
         else:
-            logging.debug("Could not get result for " + discipline + "/" + gender + " country: " + country)
-            return {}, 400
+            result = self.data_.getResult(discipline, gender, country)
+            if not result is None:
+                data["result"] = result
+                data["status"] = "success"
+                data["status_msg"] = "Transfered result for " + discipline + "/" + gender + " country: " + country
+                return data, 200
+        logging.debug("Could not get result for " + discipline + "/" + gender + " country: " + country)
+        return {}, 400
