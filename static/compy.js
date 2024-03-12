@@ -29,7 +29,13 @@
 var _global_prev_name = "";
 var _days_with_disciplines_lanes = null;
 var _disciplines = null;
-var _countries = null
+var _countries = null;
+// TODO get from flask
+var _ots = []; // date in YYYY:MM:DD:HH:MM:SS
+// debug for ots
+fillOtsForDebuggin();
+var _autoplay_enabled = false;
+let _audioElement = new Audio('static/countdown.wav'); // Set the path to your audio file
 
 $(window).on('load', function() {
     let comp_name = document.getElementById('comp_name');
@@ -38,9 +44,97 @@ $(window).on('load', function() {
     _days_with_disciplines_lanes = null;
     _disciplines = null;
     _countries = null;
+    $('#country_chooser').hide();
 });
 
 $(document).ready(function() {
+
+    // Function to calculate the time until the next play
+    function getNextPlayTime(ot = false) {
+        let now = new Date();
+        let nextPlayTime = null;
+
+        _ots.forEach(function(timeStr) {
+            let timeParts = timeStr.split(':');
+            // -1 for month as 0 = Jan
+            let playTime = new Date(parseInt(timeParts[0]), parseInt(timeParts[1]-1), parseInt(timeParts[2]), parseInt(timeParts[3]), parseInt(timeParts[4]), parseInt(timeParts[5]));
+            // subtract 2 mins as play time starts 2 mins before ot
+            if (!ot)
+                playTime.setMinutes(playTime.getMinutes() - 2);
+
+            if (!nextPlayTime || (playTime >= now && (playTime < nextPlayTime || nextPlayTime < now))) {
+                nextPlayTime = playTime;
+            }
+        });
+
+        if (nextPlayTime <= now) {
+            return -1;
+        }
+
+        return nextPlayTime - now;
+    }
+
+    // Schedule the audio to play at the next play time
+    function schedulePlay() {
+        let delay = getNextPlayTime();
+
+        if (delay >= 0) {
+            setTimeout(function() {
+                _audioElement.play();
+                setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, 2*60*1000);
+                setTimeout(function() { $('#stop_countdown_btn').prop("disabled", true); }, (2*60 + 30)*1000);
+                // Reschedule the next play after the current one finishes
+                _audioElement.addEventListener('ended', schedulePlay, { once: true });
+            }, delay);
+        }
+    }
+
+    // Start scheduling the plays
+    schedulePlay();
+
+    setInterval(function() {
+        let now = new Date();
+        $('#time').text(formatTime(now));
+        $('#countdown_ot').text(formatTime(getNextPlayTime(true), true));
+        testAutoPlay();
+    },  100);
+
+    function testAutoPlay() {
+        // Attempt to play the audio immediately
+        if (!_autoplay_enabled)
+        {
+            _audioElement.play().then(function() {
+                    _autoplay_enabled = true;
+                    // Add a button to stop the audio
+                    $('#stop_countdown_div').html('<button id="stop_countdown_btn">Stop Countdown</button>');
+                    $('#stop_countdown_btn').prop("disabled", true);
+                    $('#stop_countdown_btn').click(function() {
+                        stopAudio();
+                    });
+                }).catch(function(error) {
+                    _autoplay_enabled = false;
+                    // If playback fails because of autoplay restrictions, show a prompt to the user
+                    if (error.name === 'NotAllowedError') {
+                        // Prompt the user to enable audio
+                        $('#stop_countdown_div').html('<b>Audio autoplay is disabled. Countdown will not be played!</b>');
+                    } else {
+                        // Handle other errors
+                        console.error('An error occurred while attempting to play audio:', error);
+                    }
+                });
+            _audioElement.pause();
+            _audioElement.currentTime =  0;
+        }
+    }
+
+    // Function to stop the audio and reset the playhead
+    function stopAudio() {
+        $('#stop_countdown_btn').prop("disabled", true);
+        _audioElement.pause();
+        _audioElement.currentTime =  0;
+        schedulePlay();
+    }
+
     $('#upload_file_button').click(function() {
         let form_data = new FormData($('#upload_file')[0]);
         $.ajax({
@@ -90,8 +184,7 @@ $(document).ready(function() {
             success: function(data) {
                 console.log(data.status_msg);
                 if (data.file_exists) {
-                    let overwrite_div = document.getElementById("overwrite");
-                    overwrite_div.style.display = "block";
+                    $('#overwrite').show();
                     _global_prev_name = data.prev_name;
                 }
             }
@@ -108,8 +201,7 @@ $(document).ready(function() {
             dataType: "json",
             success: function(data) {
                 console.log(data.status_msg);
-                let overwrite_div = document.getElementById("overwrite");
-                overwrite_div.style.display = "none";
+                $('#overwrite').hide();
             }
         })
     });
@@ -150,6 +242,11 @@ $(document).ready(function() {
                 if (data.hasOwnProperty("comp_name")) {
                     let comp_name = document.getElementById('comp_name');
                     comp_name.value = data.comp_name;
+                }
+                if ("selected_country" in data) {
+                    if ($('#country_select option:contains(' + data.selected_country + ')').length) {
+                        $('#country_select').val(data.selected_country);
+                    }
                 }
                 if ("lane_style" in data && data.lane_style == "alphabetic") {
                     $('#alphabetic_radio').prop('checked', true);
@@ -267,90 +364,7 @@ $(document).ready(function() {
         discipline = id_arr[1];
         gender = id_arr[2];
         country = id_arr[3];
-        let data = {
-            discipline: discipline,
-            gender: gender,
-            country: country
-        };
-        $.ajax({
-            type: "GET",
-            url: "/result?" + $.param(data),
-            success: function(data) {
-                console.log(data.status_msg);
-                let res = "";
-                if (data.result) {
-                    res += "<a href='#' class='results_pdf_button' id='result_pdf_" + discipline + "_" + gender + "_" + country + "'>Print PDF</a>";
-                    res += "<table>";
-                    if (discipline == "Overall" || discipline == "Newcomer")
-                    {
-                        res += `
-                            <tr>
-                                <td>Rank</td>
-                                <td>Name</td>
-                                <td>Country</td>`;
-                        for (let j = 0; j < _disciplines.length; j++)
-                        {
-                            if (_disciplines[j] == "Overall" || _disciplines[j] == "Newcomer")
-                                continue;
-                            res += `
-                                <td>${_disciplines[j]}</td>`;
-                        }
-                        res += `
-                                <td>Points</td>
-                            </tr>`;
-                        for (let i = 0; i < data.result.length; i++) {
-                            res += `
-                                <tr>
-                                    <td>${data.result[i].Rank}</td>
-                                    <td>${data.result[i].Name}</td>
-                                    <td>${data.result[i].Country}</td>`;
-                            for (let j = 0; j < _disciplines.length; j++)
-                            {
-                                if (_disciplines[j] == "Overall" || _disciplines[j] == "Newcomer")
-                                    continue;
-                                res += "<td>" + data.result[i][_disciplines[j]] + "</td>";
-                            }
-                            res += `
-                                    <td>${data.result[i].Points}</td>
-                                </tr>`;
-                        }
-                        res += "</table>";
-                    }
-                    else
-                    {
-                        res += `
-                            <tr>
-                                <td>Rank</td>
-                                <td>Name</td>
-                                <td>Country</td>
-                                <td>AP</td>
-                                <td>RP</td>
-                                <td>Penalty</td>
-                                <td>Card</td>
-                                <td>Remarks</td>
-                                <td>Points</td>
-                            </tr>`;
-                        for (let i = 0; i < data.result.length; i++) {
-                            res += `
-                                <tr>
-                                    <td>${data.result[i].Rank}</td>
-                                    <td>${data.result[i].Name}</td>
-                                    <td>${data.result[i].Country}</td>
-                                    <td>${data.result[i].AP}</td>
-                                    <td>${data.result[i].RP}</td>
-                                    <td>${data.result[i].Penalty}</td>
-                                    <td>${data.result[i].Card}</td>
-                                    <td>${data.result[i].Remarks}</td>
-                                    <td>${data.result[i].Points}</td>
-                                </tr>`;
-                        }
-                        res += "</table>";
-                    }
-                }
-                let results_content = document.getElementById('results_content');
-                results_content.innerHTML = res;
-            }
-        })
+        getResult(discipline, gender, country);
     });
     $("#ll_all_pdf_button").click(function() {
         getPDF("lane_list");
@@ -392,6 +406,23 @@ $(document).ready(function() {
             data: JSON.stringify(data),
             contentType: "application/json",
             dataType: "json",
+            type: 'POST',
+            success: function(data) {
+                initSubmenus(data);
+                console.log(data.status_msg);
+            }
+        });
+    });
+    $('#country_select').change(function() {
+        selected_country = $(this).find("option:selected").attr('value');
+        let data = {
+            selected_country: selected_country
+        };
+        $.ajax({
+            url: '/change_selected_country',
+            data: JSON.stringify(data),
+            contentType: 'application/json',
+            dataType: 'json',
             type: 'POST',
             success: function(data) {
                 initSubmenus(data);
@@ -508,7 +539,24 @@ function initSubmenus(data, reset=false)
     if ("disciplines" in data && data.disciplines != null)
         _disciplines = data.disciplines;
     if ("countries" in data && data.countries != null)
+    {
         _countries = data.countries;
+        let country_select = $('#country_select');
+        country_select.empty();
+        $('#country_select').append(new Option('None', 'none'));
+        for (let i = 0; i < _countries.length; i++)
+        {
+            if (_countries[i] == "International" || (i == 0 && _countries[i] != "International"))
+                continue;
+            country_select.append(new Option(_countries[i], _countries[i]));
+        }
+        if (_countries[0] != "International" && $('#country_select option:contains(' + _countries[0] + ')').length) {
+            $('#country_select').val(_countries[0]);
+        }
+        $('#country_chooser').show();
+    }
+    else
+        $('#country_chooser').hide();
 
     if (_disciplines != null && _countries != null) {
         let result_dis_menu = document.getElementById('result_discipline_menu');
@@ -568,9 +616,8 @@ function selectLaneListDayDiscipline(day, discipline)
         {
             let lane = lanes[i];
             l_lane_menu.innerHTML += "<a href='#' class='ll_lane_button' id='sl_" + day + "_" + discipline + "_" + lane + "'>" + lane + "</a>&nbsp;";
-            let l_content = document.getElementById('ll_content');
-            l_content.innerHTML = "";
         }
+        $('#ll_content').html("");
     }
 }
 
@@ -582,17 +629,171 @@ function selectResultDiscipline(discipline)
         result_gender_menu.innerHTML += "<a href='#' onclick='selectResultDisciplineGender(\"" + discipline + "\", \"F\")'>Female</a>&nbsp;";
         result_gender_menu.innerHTML += "<a href='#' onclick='selectResultDisciplineGender(\"" + discipline + "\", \"M\")'>Male</a>&nbsp;";
     }
-    document.getElementById('result_country_menu').innerHTML = "";
-    document.getElementById('results_content').innerHTML = "";
+    $('#result_country_menu').empty();
+    $('#results_content').empty();
 }
 
 function selectResultDisciplineGender(discipline, gender)
 {
+    let i = -1;
     if (_disciplines != null && _countries != null) {
         let result_country_menu = document.getElementById('result_country_menu');
         result_country_menu.innerHTML = "";
-        for (let i = 0; i < _countries.length; i++)
+        i = 0;
+        for (; i < _countries.length; i++)
+        {
             result_country_menu.innerHTML += "<a href='#' class='result_button' id='result_" + discipline + "_" + gender + "_" + _countries[i] + "'>" + _countries[i] + "</a>&nbsp;";
+            if (_countries[i] == "International") // the list contains the selected country first (if it exists), followed by all International and then all others, so this lists only up to International
+                break;
+        }
     }
-    document.getElementById('results_content').innerHTML = "";
+    if (i == 0)
+        getResult(discipline, gender, "International"); // if only international, show right away
+    else
+        $('#results_content').empty();
+}
+
+function getResult(discipline, gender, country)
+{
+    let data = {
+        discipline: discipline,
+        gender: gender,
+        country: country
+    };
+    $.ajax({
+        type: "GET",
+        url: "/result?" + $.param(data),
+        success: function(data) {
+            console.log(data.status_msg);
+            let res = "";
+            if (data.result) {
+                res += "<a href='#' class='results_pdf_button' id='result_pdf_" + discipline + "_" + gender + "_" + country + "'>Print PDF</a>";
+                res += "<table>";
+                if (discipline == "Overall" || discipline == "Newcomer")
+                {
+                    res += `
+                        <tr>
+                            <td>Rank</td>
+                            <td>Name</td>
+                            <td>Country</td>`;
+                    for (let j = 0; j < _disciplines.length; j++)
+                    {
+                        if (_disciplines[j] == "Overall" || _disciplines[j] == "Newcomer")
+                            continue;
+                        res += `
+                            <td>${_disciplines[j]}</td>`;
+                    }
+                    res += `
+                            <td>Points</td>
+                        </tr>`;
+                    for (let i = 0; i < data.result.length; i++) {
+                        res += `
+                            <tr>
+                                <td>${data.result[i].Rank}</td>
+                                <td>${data.result[i].Name}</td>
+                                <td>${data.result[i].Country}</td>`;
+                        for (let j = 0; j < _disciplines.length; j++)
+                        {
+                            if (_disciplines[j] == "Overall" || _disciplines[j] == "Newcomer")
+                                continue;
+                            res += "<td>" + data.result[i][_disciplines[j]] + "</td>";
+                        }
+                        res += `
+                                <td>${data.result[i].Points}</td>
+                            </tr>`;
+                    }
+                    res += "</table>";
+                }
+                else
+                {
+                    res += `
+                        <tr>
+                            <td>Rank</td>
+                            <td>Name</td>
+                            <td>Country</td>
+                            <td>AP</td>
+                            <td>RP</td>
+                            <td>Penalty</td>
+                            <td>Card</td>
+                            <td>Remarks</td>
+                            <td>Points</td>
+                        </tr>`;
+                    for (let i = 0; i < data.result.length; i++) {
+                        res += `
+                            <tr>
+                                <td>${data.result[i].Rank}</td>
+                                <td>${data.result[i].Name}</td>
+                                <td>${data.result[i].Country}</td>
+                                <td>${data.result[i].AP}</td>
+                                <td>${data.result[i].RP}</td>
+                                <td>${data.result[i].Penalty}</td>
+                                <td>${data.result[i].Card}</td>
+                                <td>${data.result[i].Remarks}</td>
+                                <td>${data.result[i].Points}</td>
+                            </tr>`;
+                    }
+                    res += "</table>";
+                }
+            }
+            let results_content = document.getElementById('results_content');
+            results_content.innerHTML = res;
+        }
+    });
+}
+
+function formatTime(date, countdown=false, full_date=false) {
+    let days = 0;
+    let hours = 0;
+    let minutes = 0;
+    let seconds = 0;
+    let tenth = 0;
+    if (countdown) {
+        if (date < 0)
+            return "n/a";
+        // in this case date = distance in ms
+        // add 1 second so that the flip from 59->00 in time is equivalent to the switch from 01->00 in the countdown
+        // using ceil here so that we align with the time output that is using getSeconds, which essentially is floor, but we use target - time, so we need ceil for the countdown;
+        date = Math.ceil((date + 1000) / 100);
+        days = Math.floor(date / (10 * 60 *  60 * 24));
+        hours = Math.floor((date % (10 * 60 *  60 * 24)) / (10 * 60 * 60));
+        minutes = Math.floor((date % (10 * 60 * 60)) / (10 * 60));
+        seconds = Math.floor(date % (10 * 60) / 10);
+        tenth = Math.round(date % 10);
+    }
+    else
+    {
+        days = date.getDate();
+        hours = date.getHours();
+        minutes = date.getMinutes();
+        seconds = date.getSeconds();
+        tenth = Math.floor(date.getMilliseconds()/100);
+    }
+    days = days.toString().padStart(2, '0');
+    hours = hours.toString().padStart(2, '0');
+    minutes = minutes.toString().padStart(2, '0');
+    seconds = seconds.toString().padStart(2, '0');
+    tenth = tenth.toString();
+    let time_str = hours + ':' + minutes + ':' + seconds; // + '.' + tenth;
+    if (full_date && !countdown)
+    {
+        let year = (date.getFullYear()).toString().padStart(4, '0');
+        let month = (date.getMonth() + 1).toString().padStart(2, '0');
+        time_str = year + ':' + month + ':' + days + ":" + time_str;
+    }
+    else if (days != "00")
+        time_str =  days + " days " + time_str;
+    return time_str;
+}
+
+function fillOtsForDebuggin() {
+    // countdown 1 = now + 2:10
+    let c1 = new Date();
+    c1.setMinutes(c1.getMinutes() + 2);
+    c1.setSeconds(c1.getSeconds() + 10);
+    // countdown 2 = now + 4:50
+    let c2 = new Date();
+    c2.setMinutes(c2.getMinutes() + 4);
+    c2.setSeconds(c2.getSeconds() + 50);
+    _ots.push(formatTime(c1, false, true));
+    _ots.push(formatTime(c2, false, true));
 }

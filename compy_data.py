@@ -59,6 +59,7 @@ class CompyData:
         self.nrs_ = None
         self.sponsor_img_ = None
         self.disciplines_ = None
+        self.selected_country_ = None
 
         self.NR = namedtuple("NR", ["country", "gender", "discipline"])
 
@@ -158,6 +159,13 @@ class CompyData:
                 return 5./self.sponsor_img_["aspect_ratio"]
             else:
                 return 5.
+
+    @property
+    def selected_country(self):
+        if self.selected_country_ is None:
+            return "none"
+        else:
+            return self.selected_country_
 
     def changeSponsorImage(self, img_content):
         self.sponsor_img_ = {}
@@ -305,6 +313,7 @@ class CompyData:
         data["countries"] = self.countries_
         data["athletes"] = [a.saveData() for a in self.athletes]
         data["sponsor_img"] = self.sponsor_img_
+        data["selected_country"] = self.selected_country_
         with open(self.file_path, "w") as write_file:
             json.dump(data, write_file)
         logging.debug("Saved to file: " + self.file_path)
@@ -339,7 +348,8 @@ class CompyData:
             self.countries_ = data["countries"]
             self.athletes_ = [athlete.Athlete.fromDict(a) for a in data["athletes"]]
             self.sponsor_img_ = data["sponsor_img"]
-            self.getResultPDF('Overall', 'M', 'International')
+            self.selected_country_ = data["selected_country"]
+            #self.getResultPDF('Overall', 'M', 'International')
 
     def getDays(self):
         if self.start_date is None:
@@ -375,10 +385,16 @@ class CompyData:
         dwc += self.disciplines
         return dwc
 
-    def getCountries(self):
-        countries = ["International"]
-        for c in self.countries_:
-            countries.append(c) # in the future this should be only the countries that are requested
+    def getCountries(self, for_result=False):
+        countries = []
+        if self.countries_ is None:
+            return []
+        if self.selected_country != "none":
+            countries.append(self.selected_country)
+        countries.append("International")
+        if not for_result:
+            for c in self.countries_:
+                countries.append(c)
         return countries
 
     def getStartList(self, day, discipline):
@@ -692,7 +708,7 @@ class CompyData:
             files = []
             for d in self.disciplines + ["Overall", "Newcomer"]:
                 for g in ["F", "M"]:
-                    for c in self.getCountries():
+                    for c in self.getCountries(True):
                         pdf = self.getResultPDF(d, g, c, True)
                         if pdf is not None:
                             files.append(pdf)
@@ -800,3 +816,17 @@ class CompyData:
             fname = os.path.join(self.config.download_folder, self.name + "_result_" + discipline + "_" + gender + "_" + country + ".pdf")
             html.write_pdf(fname)
             return fname
+
+    def changeSelectedCountry(self, country):
+        if country == "none":
+            self.selected_country_ = None
+        else:
+            found = False
+            for c in self.countries_:
+                if country == c:
+                    self.selected_country_ = country
+                    found = True
+            if not found:
+                return 1
+        self.save()
+        return 0

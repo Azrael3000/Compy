@@ -94,6 +94,10 @@ class CompyFlask:
         def changeLaneStyle():
             return self.changeLaneStyle()
 
+        @app.route('/change_selected_country', methods=['POST'])
+        def changeSelectedCountry():
+            return self.changeSelectedCountry()
+
         app.run()
 
     def uploadFile(self):
@@ -191,6 +195,7 @@ class CompyFlask:
         data["comp_name"] = comp_name
         self.setSubmenuData(data)
         data["lane_style"] = self.data_.lane_style
+        data["selected_country"] = self.data_.selected_country
         data["status"] = "success"
         data["status_msg"] = "Loaded competition with name " + comp_name
         logging.debug("Loaded comp " + comp_name + " with " + str(len(self.data_.athletes)) + " athletes")
@@ -286,6 +291,22 @@ class CompyFlask:
             logging.debug("Invalid lane style")
             return {}, 400
 
+    def changeSelectedCountry(self):
+        content = request.json
+        if "selected_country" not in content:
+            logging.debug("Change request for selected country missing variable")
+            return {}, 400
+        option = content["selected_country"]
+        if self.data_.changeSelectedCountry(option) == 0:
+            data = {}
+            data["countries"] = self.data_.getCountries()
+            data["status_msg"] = "Successfully changed selected country"
+            data["status"] = "success"
+            return data, 200
+        else:
+            logging.debug("Invalid country selected")
+            return {}, 400
+
     def setSubmenuData(self, data):
         data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
         data["disciplines"] = self.data_.getDisciplines()
@@ -295,12 +316,12 @@ class CompyFlask:
         discipline = request.args.get('discipline')
         gender = request.args.get('gender')
         country = request.args.get('country')
-        if discipline is None or gender is None or country is None:
-            logging.debug("Get request to result without discipline, gender, country")
+        req_type = request.args.get('type')
+        if (discipline is None or gender is None or country is None) and (req_type is None or not pdf):
+            logging.debug("Get request to result without discipline, gender, country or type")
             return {}, 400
         data = {}
         if pdf:
-            req_type = request.args.get('type')
             if req_type is not None and req_type == "all":
                 result_pdf = self.data_.getResultPDF()
             else:
