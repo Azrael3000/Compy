@@ -298,6 +298,45 @@ $(document).ready(function() {
             }
         })
     });
+    $("#breaks_date_menu").on("click", "a", function() {
+        let id_arr = this.id.split('_'); // button id is equal to "breaks_" + day
+        day = id_arr[1];
+        let data = {
+            day: day
+        };
+        $.ajax({
+            type: "GET",
+            url: "/breaks?" + $.param(data),
+            success: function(data) {
+                console.log(data.status_msg);
+                let out = "";
+                if (data.min_break) {
+                    out += `Minimal break: ${data.min_break}<br>\n`;
+                }
+                if (data.breaks_list) {
+                    out += "<table>";
+                    out += `
+                        <tr>
+                            <td>Name</td>
+                            <td>1st Discipline (OT)</td>
+                            <td>2nd Discipline (OT)</td>
+                            <td>Break</td>
+                        </tr>`;
+                    for (let i = 0; i < data.breaks_list.length; i++) {
+                        out += `
+                            <tr>
+                                <td>${data.breaks_list[i].Name}</td>
+                                <td>${data.breaks_list[i].Dis1} (${data.breaks_list[i].OT1})</td>
+                                <td>${data.breaks_list[i].Dis2} (${data.breaks_list[i].OT2})</td>
+                                <td>${data.breaks_list[i].Break}</td>
+                            </tr>`;
+                    }
+                    out += "</table>";
+                }
+                $('#breaks_content').html(out);
+            }
+        })
+    });
     $("#sl_all_pdf_button").click(function() {
         getPDF("start_list");
     });
@@ -465,7 +504,7 @@ function getPDF(type, params = {type: "all"})
 }
 
 function switchTo(id) {
-    let tab_ids = ['settings', 'newcomer', 'start_lists', 'lane_lists', 'results']
+    let tab_ids = ['settings', 'newcomer', 'breaks', 'start_lists', 'lane_lists', 'results']
     for (let i = 0; i < tab_ids.length; i++) {
         let element = document.getElementById(tab_ids[i]);
         let button = document.getElementById(tab_ids[i] + "_button");
@@ -525,13 +564,16 @@ function initSubmenus(data, reset=false)
         // start_list and lane_list submenu
         let sl_date_menu = document.getElementById('sl_date_menu');
         let ll_date_menu = document.getElementById('ll_date_menu');
+        let breaks_date_menu = $('#breaks_date_menu');
         sl_date_menu.innerHTML = "";
         ll_date_menu.innerHTML = "";
+        breaks_date_menu.empty();
         keys = Object.keys(_days_with_disciplines_lanes);
         for (let i = 0; i < keys.length; i++) {
             let day = keys[i];
             sl_date_menu.innerHTML += "<a href='#' onclick='selectListDay(\"start\", \"" + day + "\")'>" + day + "</a>&nbsp;";
             ll_date_menu.innerHTML += "<a href='#' onclick='selectListDay(\"lane\", \"" + day + "\")'>" + day + "</a>&nbsp;";
+            breaks_date_menu.append("<a href='#' id='breaks_" + day + "'>" + day + "</a>&nbsp;");
         }
     }
 
@@ -576,6 +618,7 @@ function initSubmenus(data, reset=false)
     document.getElementById('result_gender_menu').innerHTML = "";
     document.getElementById('result_country_menu').innerHTML = "";
     document.getElementById('results_content').innerHTML = "";
+    $('#breaks_content').empty();
 }
 
 function selectListDay(type, day)

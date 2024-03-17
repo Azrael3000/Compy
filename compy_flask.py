@@ -74,6 +74,10 @@ class CompyFlask:
         def startListPDF():
             return self.startListPDF()
 
+        @app.route('/breaks', methods=['GET'])
+        def breaks():
+            return self.breaks()
+
         @app.route('/lane_list', methods=['GET'])
         def laneList():
             return self.laneList()
@@ -235,6 +239,23 @@ class CompyFlask:
             return send_file(start_list_pdf, as_attachment=True)
         else:
             logging.debug("Could not get start list for " + day + ": " + discipline)
+            return {}, 400
+
+    def breaks(self):
+        day = request.args.get('day')
+        if day is None:
+            logging.debug("Get request to breaks without day")
+            return {}, 400
+        data = {}
+        breaks = self.data_.getBreaks(day)
+        if not breaks is None:
+            data["min_break"] = breaks["min_break"]
+            data["breaks_list"] = breaks["breaks_list"]
+            data["status"] = "success"
+            data["status_msg"] = "Transfered breaks for " + day
+            return data, 200
+        else:
+            logging.debug("Could not get breaks for " + day)
             return {}, 400
 
     def laneList(self):

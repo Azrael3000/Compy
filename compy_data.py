@@ -830,3 +830,34 @@ class CompyData:
                 return 1
         self.save()
         return 0
+
+    def getBreaks(self, day):
+        min_break = 24*60
+        breaks_list = []
+        found = False
+        for d in self.getDays():
+            if d == day:
+                found = True
+                break
+        if not found:
+            return None
+        df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
+        for a in self.athletes:
+            df_a = df[df['Diver Id'] == a.id]
+            n = len(df_a.index)
+            for i in range(n-1):
+                this_break = {"Name": a.first_name + " " + a.last_name}
+                this_break["Dis1"] = df_a['Discipline'].iloc[i+0]
+                this_break["Dis2"] = df_a['Discipline'].iloc[i+1]
+                this_break["OT1"] = df_a['OT'].iloc[i+0]
+                this_break["OT2"] = df_a['OT'].iloc[i+1]
+                ot1 = this_break["OT1"].split(":")
+                ot2 = this_break["OT2"].split(":")
+                time = int(ot2[0])*60 + int(ot2[1]) - int(ot1[0])*60 - int(ot1[1])
+                min_break = min(min_break, time)
+                this_break["Break"] = str(int(time/60)).zfill(2) + ":" + str(time%60).zfill(2)
+                breaks_list.append(this_break)
+        min_break = str(int(min_break/60)).zfill(2) + ":" + str(min_break%60).zfill(2)
+        breaks_list = sorted(breaks_list, key=lambda d: d["Break"])
+        print(breaks_list)
+        return {"min_break": min_break, "breaks_list": breaks_list}
