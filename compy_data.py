@@ -48,6 +48,7 @@ class CompyData:
 
     def __init__(self, comp_file=''):
         self.name_ = "undefined"
+        self.special_ranking_name_ = "Newcomer"
         self.config_ = CompyConfig()
         self.version_ = None
         self.lane_style_ = "numeric"
@@ -81,6 +82,10 @@ class CompyData:
     @property
     def name(self):
         return self.name_
+
+    @property
+    def special_ranking_name(self):
+        return self.special_ranking_name_
 
     @property
     def file_path(self):
@@ -328,6 +333,7 @@ class CompyData:
         data["athletes"] = [a.saveData() for a in self.athletes]
         data["sponsor_img"] = self.sponsor_img_
         data["selected_country"] = self.selected_country_
+        data["special_ranking_name"] = self.special_ranking_name
         with open(self.file_path, "w") as write_file:
             json.dump(data, write_file)
         logging.debug("Saved to file: " + self.file_path)
@@ -348,7 +354,7 @@ class CompyData:
             if data["name"] != self.name:
                 logging.error("Invalid file, 'name' does not match (" + self.name + " != " + data["name"] + ")")
                 return 1
-            read_keys = ["save_date", "version", "lane_style", "comp_type", "comp_file", "start_date", "end_date", "athletes"]
+            read_keys = ["save_date", "version", "lane_style", "comp_type", "comp_file", "start_date", "end_date", "athletes", "special_ranking_name"]
             for key in read_keys:
                 if not key in data:
                     logging.error("Invalid file, no '" + key + "' found")
@@ -364,6 +370,7 @@ class CompyData:
             self.athletes_ = [athlete.Athlete.fromDict(a) for a in data["athletes"]]
             self.sponsor_img_ = data["sponsor_img"]
             self.selected_country_ = data["selected_country"]
+            self.special_ranking_name_ = data["special_ranking_name"]
             #self.getResultPDF('Overall', 'M', 'International')
 
     def getDays(self):
@@ -886,3 +893,9 @@ class CompyData:
             dayc = ":".join(day.split("-"))
             ots += [dayc + ":" + ot + ":00" for ot in ots_on_day]
         data["ots"] = ots
+
+    def setSpecialRankingName(self, data):
+        data["special_ranking_name"] = self.special_ranking_name
+
+    def changeSpecialRankingName(self, name):
+        self.special_ranking_name_ = name

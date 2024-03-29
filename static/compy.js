@@ -38,13 +38,13 @@ var _autoplay_enabled = false;
 let _audioElement = new Audio('static/countdown.wav'); // Set the path to your audio file
 
 $(window).on('load', function() {
-    let comp_name = document.getElementById('comp_name');
-    comp_name.value = "undefined";
+    $('#comp_name').val("undefined");
     $('#numeric_radio').prop('checked', true);
     $('#aida_radio').prop('checked', true);
     _days_with_disciplines_lanes = null;
     _disciplines = null;
     _countries = null;
+    $('#special_ranking_name').val("Newcomer");
     $('#country_chooser').hide();
 });
 
@@ -175,6 +175,21 @@ $(document).ready(function() {
             },
         })
     });
+    $('#special_ranking_name').change(function() {
+        let name = this.value;
+        let data = {special_ranking_name: name};
+        $.ajax({
+            type: "POST",
+            url: "/change_special_ranking_name",
+            data: JSON.stringify(data),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data) {
+                console.log(data.status_msg);
+                $('#newcomer_button').children().text(name);
+            }
+        })
+    });
     $('#comp_name').change(function() {
         let data = {comp_name: this.value, overwrite: false};
         $.ajax({
@@ -242,14 +257,18 @@ $(document).ready(function() {
                 populateNewcomer(data);
                 setOTs(data);
                 initSubmenus(data, true);
-                if (data.hasOwnProperty("comp_name")) {
-                    let comp_name = document.getElementById('comp_name');
-                    comp_name.value = data.comp_name;
+                if ('comp_name' in data) {
+                    $('#comp_name').val(data.comp_name);
                 }
                 if ("selected_country" in data) {
                     if ($('#country_select option:contains(' + data.selected_country + ')').length) {
                         $('#country_select').val(data.selected_country);
                     }
+                }
+                if ('special_ranking_name' in data)
+                {
+                    $('#special_ranking_name').val(data.special_ranking_name);
+                    $('#newcomer_button').children().text(data.special_ranking_name);
                 }
                 if ("lane_style" in data && data.lane_style == "alphabetic") {
                     $('#alphabetic_radio').prop('checked', true);
@@ -552,7 +571,7 @@ function populateNewcomer(data) {
             <td>First name</td>
             <td>Gender</td>
             <td>Country</td>
-            <td>Newcomer</td>
+            <td>Active</td>
         </tr>
     `;
     if (data.hasOwnProperty("athletes")) {
@@ -744,7 +763,7 @@ function getResult(discipline, gender, country)
             if (data.result) {
                 res += "<a href='#' class='results_pdf_button' id='result_pdf_" + discipline + "_" + gender + "_" + country + "'>Print PDF</a>";
                 res += "<table>";
-                if (discipline == "Overall" || discipline == "Newcomer")
+                if (discipline == "Overall" || discipline == $('#special_ranking_name').val())
                 {
                     res += `
                         <tr>
@@ -753,7 +772,7 @@ function getResult(discipline, gender, country)
                             <td>Country</td>`;
                     for (let j = 0; j < _disciplines.length; j++)
                     {
-                        if (_disciplines[j] == "Overall" || _disciplines[j] == "Newcomer")
+                        if (_disciplines[j] == "Overall" || _disciplines[j] == $('#special_ranking_name'))
                             continue;
                         res += `
                             <td>${_disciplines[j]}</td>`;
@@ -769,7 +788,7 @@ function getResult(discipline, gender, country)
                                 <td>${data.result[i].Country}</td>`;
                         for (let j = 0; j < _disciplines.length; j++)
                         {
-                            if (_disciplines[j] == "Overall" || _disciplines[j] == "Newcomer")
+                            if (_disciplines[j] == "Overall" || _disciplines[j] == $('#special_ranking_name'))
                                 continue;
                             res += "<td>" + data.result[i][_disciplines[j]] + "</td>";
                         }

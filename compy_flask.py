@@ -58,6 +58,10 @@ class CompyFlask:
         def changeCompName():
             return self.changeCompName()
 
+        @app.route('/change_special_ranking_name', methods=['POST'])
+        def changeSpecialRankingName():
+            return self.changeSpecialRankingName()
+
         @app.route('/change_newcomer', methods=['POST'])
         def changeNewcomer():
             return self.changeNewcomer()
@@ -203,6 +207,7 @@ class CompyFlask:
             data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id, "newcomer": athlete.newcomer})
         data["comp_name"] = comp_name
         self.setSubmenuData(data)
+        self.data_.setSpecialRankingName(data)
         self.data_.setOTs(data)
         data["lane_style"] = self.data_.lane_style
         data["comp_type"] = self.data_.comp_type
@@ -382,3 +387,13 @@ class CompyFlask:
                 return data, 200
         logging.debug("Could not get result for " + discipline + "/" + gender + " country: " + country)
         return {}, 400
+
+    def changeSpecialRankingName(self):
+        content = request.json
+        if "special_ranking_name" not in content:
+            logging.debug("Post request to change_special_ranking_name without special_ranking_name")
+            return {}, 400
+        special_ranking_name = content["special_ranking_name"]
+        self.data_.changeSpecialRankingName(special_ranking_name)
+        data = {"status": "success", "status_msg": "Successfully changed special ranking name to '" + special_ranking_name + "'"}
+        return data, 200

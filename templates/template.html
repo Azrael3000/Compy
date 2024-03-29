@@ -94,6 +94,11 @@
             <input type="radio" name="comp_type" value="cmas" id="cmas_radio">
             <label for="cmas_radio">CMAS</label>
         </div>
+        <div id="special_ranking">
+            <label for="special_ranking_name">Name of special ranking</label>
+            <br>
+            <input type="text" id="special_ranking_name" value="{{ special_ranking_name }}"/>
+        </div>
         <div id="country_chooser" style="display:none">
             Country specific results for:
             <select id="country_select">
@@ -120,7 +125,7 @@
                 <td>First name</td>
                 <td>Gender</td>
                 <td>Country</td>
-                <td>Newcomer</td>
+                <td>Active</td>
             </tr>
         </table>
     </div>
