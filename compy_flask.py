@@ -137,7 +137,7 @@ class CompyFlask:
                 for athlete in self.data_.athletes:
                     data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id})
                 self.setSubmenuData(data)
-                self.setOTs(data)
+                self.data_.setOTs(data)
         data["status_msg"] = status_msg
         return data, 200
 
@@ -396,4 +396,5 @@ class CompyFlask:
         special_ranking_name = content["special_ranking_name"]
         self.data_.changeSpecialRankingName(special_ranking_name)
         data = {"status": "success", "status_msg": "Successfully changed special ranking name to '" + special_ranking_name + "'"}
+        self.setSubmenuData(data)
         return data, 200

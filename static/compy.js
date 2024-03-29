@@ -187,6 +187,7 @@ $(document).ready(function() {
             success: function(data) {
                 console.log(data.status_msg);
                 $('#newcomer_button').children().text(name);
+                initSubmenus(data, true);
             }
         })
     });
@@ -772,7 +773,7 @@ function getResult(discipline, gender, country)
                             <td>Country</td>`;
                     for (let j = 0; j < _disciplines.length; j++)
                     {
-                        if (_disciplines[j] == "Overall" || _disciplines[j] == $('#special_ranking_name'))
+                        if (_disciplines[j] == "Overall" || _disciplines[j] == $('#special_ranking_name').val())
                             continue;
                         res += `
                             <td>${_disciplines[j]}</td>`;
@@ -788,7 +789,7 @@ function getResult(discipline, gender, country)
                                 <td>${data.result[i].Country}</td>`;
                         for (let j = 0; j < _disciplines.length; j++)
                         {
-                            if (_disciplines[j] == "Overall" || _disciplines[j] == $('#special_ranking_name'))
+                            if (_disciplines[j] == "Overall" || _disciplines[j] == $('#special_ranking_name').val())
                                 continue;
                             res += "<td>" + data.result[i][_disciplines[j]] + "</td>";
                         }

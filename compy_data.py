@@ -402,7 +402,7 @@ class CompyData:
         # only add newcomer result if we have at least one newcomer
         for a in self.athletes_:
             if a.newcomer:
-                dwc.append("Newcomer")
+                dwc.append(self.special_ranking_name)
                 break
         dwc += self.disciplines
         return dwc
@@ -652,7 +652,7 @@ class CompyData:
         if self.comp_file is None:
             return None
         result = []
-        if discipline == "Overall" or discipline == "Newcomer":
+        if discipline == "Overall" or discipline == self.special_ranking_name:
             dfs = []
             for day in self.getDays():
                 dfs.append(pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1))
@@ -660,7 +660,7 @@ class CompyData:
             full_df = full_df[(full_df['Gender'] == gender)]
             if (country != 'International'):
                 full_df = full_df[(full_df['Diver Country'] == country)]
-            if discipline == "Newcomer":
+            if discipline == self.special_ranking_name:
                 newcomer_ids = []
                 for a in self.athletes_:
                     if a.newcomer:
@@ -728,7 +728,7 @@ class CompyData:
         if discipline=="all" and gender=="all":
             dwd = self.getDaysWithDisciplinesLanes()
             files = []
-            for d in self.disciplines + ["Overall", "Newcomer"]:
+            for d in self.disciplines + ["Overall", self.special_ranking_name]:
                 for g in ["F", "M"]:
                     for c in self.getCountries(True):
                         pdf = self.getResultPDF(d, g, c, True)
@@ -899,3 +899,4 @@ class CompyData:
 
     def changeSpecialRankingName(self, name):
         self.special_ranking_name_ = name
+        self.save()
