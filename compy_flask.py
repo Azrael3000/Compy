@@ -98,6 +98,10 @@ class CompyFlask:
         def changeLaneStyle():
             return self.changeLaneStyle()
 
+        @app.route('/change_comp_type', methods=['POST'])
+        def changeCompType():
+            return self.changeCompType()
+
         @app.route('/change_selected_country', methods=['POST'])
         def changeSelectedCountry():
             return self.changeSelectedCountry()
@@ -129,6 +133,7 @@ class CompyFlask:
                 for athlete in self.data_.athletes:
                     data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id})
                 self.setSubmenuData(data)
+                self.setOTs(data)
         data["status_msg"] = status_msg
         return data, 200
 
@@ -198,7 +203,9 @@ class CompyFlask:
             data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id, "newcomer": athlete.newcomer})
         data["comp_name"] = comp_name
         self.setSubmenuData(data)
+        self.data_.setOTs(data)
         data["lane_style"] = self.data_.lane_style
+        data["comp_type"] = self.data_.comp_type
         data["selected_country"] = self.data_.selected_country
         data["status"] = "success"
         data["status_msg"] = "Loaded competition with name " + comp_name
@@ -310,6 +317,22 @@ class CompyFlask:
             return data, 200
         else:
             logging.debug("Invalid lane style")
+            return {}, 400
+
+    def changeCompType(self):
+        content = request.json
+        if "comp_type" not in content:
+            logging.debug("Change request for comp type missing variable")
+            return {}, 400
+        option = content["comp_type"]
+        if self.data_.changeCompType(option) == 0:
+            data = {}
+            data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
+            data["status_msg"] = "Successfully changed comp type"
+            data["status"] = "success"
+            return data, 200
+        else:
+            logging.debug("Invalid comp type")
             return {}, 400
 
     def changeSelectedCountry(self):

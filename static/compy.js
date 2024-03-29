@@ -41,6 +41,7 @@ $(window).on('load', function() {
     let comp_name = document.getElementById('comp_name');
     comp_name.value = "undefined";
     $('#numeric_radio').prop('checked', true);
+    $('#aida_radio').prop('checked', true);
     _days_with_disciplines_lanes = null;
     _disciplines = null;
     _countries = null;
@@ -151,6 +152,7 @@ $(document).ready(function() {
                 element.style.display = "block";
                 element.innerHTML = data.status_msg;
                 populateNewcomer(data);
+                setOTs(data);
                 initSubmenus(data, true);
             },
         })
@@ -238,6 +240,7 @@ $(document).ready(function() {
             {
                 console.log(data.status_msg);
                 populateNewcomer(data);
+                setOTs(data);
                 initSubmenus(data, true);
                 if (data.hasOwnProperty("comp_name")) {
                     let comp_name = document.getElementById('comp_name');
@@ -252,6 +255,11 @@ $(document).ready(function() {
                     $('#alphabetic_radio').prop('checked', true);
                 } else {
                     $('#numeric_radio').prop('checked', true);
+                }
+                if ("comp_type" in data && data.comp_type == "aida") {
+                    $('#aida_radio').prop('checked', true);
+                } else {
+                    $('#cmas_radio').prop('checked', true);
                 }
             }
         })
@@ -452,6 +460,23 @@ $(document).ready(function() {
             }
         });
     });
+    $('input[name="comp_type"]').change(function() {
+        let selectedOption = $("input[name='comp_type']:checked").val();
+        let data = {
+            comp_type: selectedOption
+        };
+        $.ajax({
+            url: '/change_comp_type',
+            data: JSON.stringify(data),
+            contentType: "application/json",
+            dataType: "json",
+            type: 'POST',
+            success: function(data) {
+                initSubmenus(data);
+                console.log(data.status_msg);
+            }
+        });
+    });
     $('#country_select').change(function() {
         selected_country = $(this).find("option:selected").attr('value');
         let data = {
@@ -547,6 +572,13 @@ function populateNewcomer(data) {
             `;
         }
     }
+}
+
+function setOTs(data)
+{
+    if ('ots' in data)
+        _ots = data.ots
+        console.log(_ots)
 }
 
 function initSubmenus(data, reset=false)

@@ -51,6 +51,7 @@ class CompyData:
         self.config_ = CompyConfig()
         self.version_ = None
         self.lane_style_ = "numeric"
+        self.comp_type_ = "aida"
         self.comp_file_ = comp_file
         self.start_date_ = None
         self.end_date_ = None
@@ -98,6 +99,18 @@ class CompyData:
         if lane_style not in allowed_lane_styles:
             return 1
         self.lane_style_ = lane_style
+        self.save()
+        return 0
+
+    @property
+    def comp_type(self):
+        return self.comp_type_
+
+    def changeCompType(self, comp_type):
+        allowed_comp_types = ["aida", "cmas"]
+        if comp_type not in allowed_comp_types:
+            return 1
+        self.comp_type_ = comp_type
         self.save()
         return 0
 
@@ -306,6 +319,7 @@ class CompyData:
         data["save_date"] = datetime.now().isoformat()
         data["version"] = self.version
         data["lane_style"] = self.lane_style
+        data["comp_type"] = self.comp_type
         data["comp_file"] = self.comp_file
         data["start_date"] = self.start_date_
         data["end_date"] = self.end_date_
@@ -334,13 +348,14 @@ class CompyData:
             if data["name"] != self.name:
                 logging.error("Invalid file, 'name' does not match (" + self.name + " != " + data["name"] + ")")
                 return 1
-            read_keys = ["save_date", "version", "lane_style", "comp_file", "start_date", "end_date", "athletes"]
+            read_keys = ["save_date", "version", "lane_style", "comp_type", "comp_file", "start_date", "end_date", "athletes"]
             for key in read_keys:
                 if not key in data:
                     logging.error("Invalid file, no '" + key + "' found")
                     return 1
             self.version_ = data["version"]
             self.lane_style_ = data["lane_style"]
+            self.comp_type_ = data["comp_type"]
             self.comp_file_ = data["comp_file"]
             self.start_date_ = data["start_date"]
             self.end_date_ = data["end_date"]
@@ -741,8 +756,9 @@ class CompyData:
                 text-align: left;
             }}
             th, td {{
-                padding:10px 0px 10px 50px;
+                padding:5px 0px 5px 50px;
                 text-align: center;
+                font-size: 12px;
                 border-bottom: 1px solid #ddd;
             }}
             /*
@@ -770,7 +786,7 @@ class CompyData:
             */
             @page {{
                 margin: 4cm 1cm 6cm 1cm;
-                size: A4 landscape;
+                size: A4;
                 @top-right {{
                     content: counter(page) "/" counter(pages);
                 }}
@@ -861,3 +877,12 @@ class CompyData:
         breaks_list = sorted(breaks_list, key=lambda d: d["Break"])
         print(breaks_list)
         return {"min_break": min_break, "breaks_list": breaks_list}
+
+    def setOTs(self, data):
+        ots = []
+        for day in self.getDays():
+            df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
+            ots_on_day = list({r['OT'] for i,r in df.iterrows()})
+            dayc = ":".join(day.split("-"))
+            ots += [dayc + ":" + ot + ":00" for ot in ots_on_day]
+        data["ots"] = ots
