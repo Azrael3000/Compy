@@ -34,7 +34,7 @@ import country_converter
 import os
 import json
 import glob
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import weasyprint as wp
 import base64
 from PIL import Image
@@ -217,7 +217,7 @@ class CompyData:
 
         # read second sheet (list of athletes)
         df = pd.read_excel(self.comp_file_, sheet_name="Athletes and Judges", skiprows=1)
-        self.athletes_ = [athlete.Athlete.fromArgs(r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country']) for i,r in df.iterrows()]
+        self.athletes_ = [athlete.Athlete.fromArgs(r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country'], r['Club'] if 'club' in r else "") for i,r in df.iterrows()]
         [logging.debug("Athlete: %s %s %s %s %s", r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country']) for i,r in df.iterrows()]
         logging.debug("Number of athletes: %d", len(self.athletes_))
 
@@ -429,8 +429,8 @@ class CompyData:
         # RPs are 'Meters or Min.1'
         start_list = [{'Name': r['Diver Name'],
                        'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
-                       'Warmup': r['WT'],
-                       'OT': r['OT'],
+                       'Warmup': self.parseTime(r['WT']),
+                       'OT': self.parseTime(r['OT']),
                        'Lane': self.laneStyleConverter(r['Zone'])}
                        for i,r in df.iterrows() if r['Discipline'] == discipline]
         return start_list
@@ -530,7 +530,7 @@ class CompyData:
         # RPs are 'Meters or Min.1'
         lane_list = [{'Name': r['Diver Name'],
                        'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
-                       'OT': r['OT'],
+                       'OT': self.parseTime(r['OT']),
                        'NR': r['Diver Country']}
                        for i,r in df.iterrows() if r['Discipline'] == discipline and self.laneStyleConverter(r['Zone']) == lane]
         return lane_list
@@ -872,8 +872,8 @@ class CompyData:
                 this_break = {"Name": a.first_name + " " + a.last_name}
                 this_break["Dis1"] = df_a['Discipline'].iloc[i+0]
                 this_break["Dis2"] = df_a['Discipline'].iloc[i+1]
-                this_break["OT1"] = df_a['OT'].iloc[i+0]
-                this_break["OT2"] = df_a['OT'].iloc[i+1]
+                this_break["OT1"] = self.parseTime(df_a['OT']).iloc[i+0]
+                this_break["OT2"] = self.parseTime(df_a['OT']).iloc[i+1]
                 ot1 = this_break["OT1"].split(":")
                 ot2 = this_break["OT2"].split(":")
                 time = int(ot2[0])*60 + int(ot2[1]) - int(ot1[0])*60 - int(ot1[1])
@@ -889,7 +889,7 @@ class CompyData:
         ots = []
         for day in self.getDays():
             df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
-            ots_on_day = list({r['OT'] for i,r in df.iterrows()})
+            ots_on_day = list({self.parseTime(r['OT']) for i,r in df.iterrows()})
             dayc = ":".join(day.split("-"))
             ots += [dayc + ":" + ot + ":00" for ot in ots_on_day]
         data["ots"] = ots
@@ -900,3 +900,11 @@ class CompyData:
     def changeSpecialRankingName(self, name):
         self.special_ranking_name_ = name
         self.save()
+
+    def parseTime(self, date):
+        if type(date) is time:
+            return date.strftime('%H:%M')
+        elif type(date) is str:
+            return date
+        else:
+            return str(date)

@@ -95,7 +95,7 @@ $(document).ready(function() {
 
     setInterval(function() {
         let now = new Date();
-        $('#time').text(formatTime(now));
+        $('#time').text(formatTime(now), false);
         $('#countdown_ot').text(formatTime(getNextPlayTime(true), true));
         testAutoPlay();
     },  100);
@@ -875,7 +875,7 @@ function formatTime(date, countdown=false, full_date=false) {
         let month = (date.getMonth() + 1).toString().padStart(2, '0');
         time_str = year + ':' + month + ':' + days + ":" + time_str;
     }
-    else if (days != "00")
+    else if (days != "00" && countdown)
         time_str =  days + " days " + time_str;
     return time_str;
 }
