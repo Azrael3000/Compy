@@ -371,7 +371,7 @@ class CompyData:
             self.sponsor_img_ = data["sponsor_img"]
             self.selected_country_ = data["selected_country"]
             self.special_ranking_name_ = data["special_ranking_name"]
-            #self.getResultPDF('Overall', 'M', 'International')
+            self.getResultPDF('STA', 'F', 'International')
 
     def getDays(self):
         if self.start_date is None:
@@ -786,6 +786,8 @@ class CompyData:
         result_df = pd.DataFrame(result)
         if len(result_df.index) == 0:
             return None
+        if self.comp_type == "cmas":
+            result_df.drop("Points", axis=1, inplace=True)
         gender_str = "Female" if gender == "F" else "Male"
         html_string = result_df.to_html(index=False, justify="left", classes="df_table")
         html_string = """
@@ -804,7 +806,7 @@ class CompyData:
                 text-align: left;
             }}
             th, td {{
-                padding:5px 0px 5px 50px;
+                padding:20px 0px 5px 5px;
                 text-align: center;
                 font-size: 12px;
                 border-bottom: 1px solid #ddd;
