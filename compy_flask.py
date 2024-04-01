@@ -348,7 +348,7 @@ class CompyFlask:
         option = content["selected_country"]
         if self.data_.changeSelectedCountry(option) == 0:
             data = {}
-            data["countries"] = self.data_.getCountries()
+            self.setSubmenuData(data)
             data["status_msg"] = "Successfully changed selected country"
             data["status"] = "success"
             return data, 200
@@ -360,6 +360,7 @@ class CompyFlask:
         data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
         data["disciplines"] = self.data_.getDisciplines()
         data["countries"] = self.data_.getCountries()
+        data["result_countries"] = self.data_.getCountries(True)
 
     def result(self, pdf):
         discipline = request.args.get('discipline')
@@ -379,9 +380,10 @@ class CompyFlask:
                 logging.debug("Sending: " + result_pdf)
                 return send_file(result_pdf, as_attachment=True)
         else:
-            result = self.data_.getResult(discipline, gender, country)
+            result, result_keys = self.data_.getResult(discipline, gender, country)
             if not result is None:
                 data["result"] = result
+                data["result_keys"] = result_keys
                 data["status"] = "success"
                 data["status_msg"] = "Transfered result for " + discipline + "/" + gender + " country: " + country
                 return data, 200

@@ -398,12 +398,15 @@ class CompyData:
     def getDisciplines(self):
         if self.disciplines is None:
             return []
-        dwc = ["Overall"]
-        # only add newcomer result if we have at least one newcomer
-        for a in self.athletes_:
-            if a.newcomer:
-                dwc.append(self.special_ranking_name)
-                break
+        dwc = []
+        # only aida has Overall and Newcomer
+        if self.comp_type == "aida":
+            dwc.append("Overall")
+            # only add newcomer result if we have at least one newcomer
+            for a in self.athletes_:
+                if a.newcomer:
+                    dwc.append(self.special_ranking_name)
+                    break
         dwc += self.disciplines
         return dwc
 
@@ -414,7 +417,14 @@ class CompyData:
         if self.selected_country != "none":
             countries.append(self.selected_country)
         countries.append("International")
-        if not for_result:
+        if for_result:
+            if self.comp_type == "cmas":
+                # only add newcomer result if we have at least one newcomer
+                for a in self.athletes_:
+                    if a.newcomer:
+                        countries.append(self.special_ranking_name)
+                        break
+        else:
             for c in self.countries_:
                 countries.append(c)
         return countries
@@ -650,9 +660,15 @@ class CompyData:
 
     def getResult(self, discipline, gender, country):
         if self.comp_file is None:
-            return None
+            return None, None
         result = []
+        result_keys = ['Rank', 'Name', 'Country']
+        if self.comp_type == "cmas":
+            result_keys.append('Club')
         if discipline == "Overall" or discipline == self.special_ranking_name:
+            if self.comp_type == "cmas":
+                logging.error("Attempted to get " + discipline + " ranking for cmas competition")
+                return None, None
             dfs = []
             for day in self.getDays():
                 dfs.append(pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1))
@@ -665,7 +681,7 @@ class CompyData:
                 for a in self.athletes_:
                     if a.newcomer:
                         newcomer_ids.append(a.id)
-                full_df = full_df[full_df['Diver Id'].isin(newcomer_ids)]
+                full_df = full_df[full_df['Diver Id'].astype('string').isin(newcomer_ids)]
             reduction_dict = {'Points': 'sum', 'Diver Name': 'first', 'Diver Country': 'first'}
             for dis in self.disciplines:
                 reduction_dict[dis] = 'first'
@@ -674,6 +690,8 @@ class CompyData:
                 else:
                     full_df[dis] = full_df.apply(lambda row: str(row['Meters or Min.1']) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
             columns = self.disciplines + ["Diver Name", "Diver Id", "Diver Country", "Points"]
+            if self.comp_type == "cmas":
+                columns.append("Club")
             exp_df = full_df[columns]
             result_df = exp_df.groupby('Diver Id').agg(reduction_dict).reset_index()
             # remove everyone with 0 points overall
@@ -686,7 +704,8 @@ class CompyData:
             result_df = result_df[columns]
             result_df['Rank'] = result_df['Rank'].astype(int)
             result_df.rename(columns = {'Diver Name': 'Name', 'Diver Country': 'Country'}, inplace = True)
-            return result_df.to_dict('records')
+            result_keys += self.disciplines + ["Points"]
+            return result_df.to_dict('records'), result_keys
         else:
             ap_lambda = lambda x, y: str(x)
             if discipline == "STA":
@@ -696,39 +715,60 @@ class CompyData:
                 dfs.append(pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1))
             full_df = pd.concat(dfs)
             result_df = full_df[(full_df['Discipline'] == discipline) & (full_df['Gender'] == gender)]
-            if (country != 'International'):
+            if country != 'International' and country != self.special_ranking_name:
                 result_df = result_df[(result_df['Diver Country'] == country)]
+            if self.comp_type == "cmas" and country == self.special_ranking_name:
+                result_df = result_df[(result_df['Diver Country'] == self.selected_country)]
+                newcomer_ids = []
+                for a in self.athletes_:
+                    if a.newcomer:
+                        newcomer_ids.append(a.id)
+                result_df = result_df[result_df['Diver Id'].astype('string').isin(newcomer_ids)]
             result_df = result_df.sort_values(by=['Points', 'Meters or Min', 'Sec(STA only)'], ascending=[False, False, False])
             # RPs are 'Meters or Min.1'
             result_df.fillna(0., inplace=True)
-            result = [{'Rank': i,
-                       'Name': r['Diver Name'],
-                       'Country': r['Diver Country'],
-                       'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
-                       'RP': ap_lambda(r['Meters or Min.1'], r['Sec(STA only).1']),
-                       'Penalty': float(r['Pen(UNDER AP)']) + float(r['Pen(other)']),
-                       'Card': r['Card'],
-                       'Remarks': r['Remarks'],
-                       'Points': r['Points']}
-                       for i,r in result_df.iterrows()]
+            if self.comp_type == "aida":
+                result = [{'Rank': i,
+                           'Name': r['Diver Name'],
+                           'Country': r['Diver Country'],
+                           'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
+                           'RP': ap_lambda(r['Meters or Min.1'], r['Sec(STA only).1']),
+                           'Penalty': float(r['Pen(UNDER AP)']) + float(r['Pen(other)']),
+                           'Card': r['Card'],
+                           'Remarks': r['Remarks'],
+                           'Points': r['Points']}
+                           for i,r in result_df.iterrows()]
+                result_keys += ["AP", "RP", "Penalty", "Card", "Remarks", "Points"]
+            else:
+                result = [{'Rank': i,
+                           'Name': r['Diver Name'],
+                           'Country': r['Diver Country'],
+                           'Club': r['Club'],
+                           'RP': ap_lambda(r['Meters or Min.1'], r['Sec(STA only).1']),
+                           'Card': r['Card'],
+                           'Remarks': r['Remarks'],
+                           'Points': r['Points']}
+                           for i,r in result_df.iterrows()]
+                result_keys += ["RP", "Card", "Remarks"]
             cur_points = 1000000
             cur_ap = ""
             for i in range(len(result)):
                 if result[i]["Points"] == 0:
                     result[i]["Rank"] = ""
-                elif result[i]["Points"] == cur_points and result[i]["AP"] == cur_ap:
+                elif result[i]["Points"] == cur_points and (self.comp_type == "cmas" or result[i]["AP"] == cur_ap):
                     result[i]["Rank"] = ""
                 else:
                     cur_points = result[i]["Points"]
-                    cur_ap = result[i]["AP"]
+                    if self.comp_type == "aida":
+                        cur_ap = result[i]["AP"]
                     result[i]["Rank"] = i+1
-            return result
+            return result, result_keys
 
     def getResultPDF(self, discipline="all", gender="all", country="all", in_memory=False):
         if discipline=="all" and gender=="all":
             dwd = self.getDaysWithDisciplinesLanes()
             files = []
-            for d in self.disciplines + ["Overall", self.special_ranking_name]:
+            for d in self.getDisciplines():
                 for g in ["F", "M"]:
                     for c in self.getCountries(True):
                         pdf = self.getResultPDF(d, g, c, True)
@@ -742,7 +782,8 @@ class CompyData:
             fname = os.path.join(self.config.download_folder, self.name + "_results.pdf")
             merged_pdf.write_pdf(fname)
             return fname
-        result_df = pd.DataFrame(self.getResult(discipline, gender, country))
+        result, result_keys = self.getResult(discipline, gender, country)
+        result_df = pd.DataFrame(result)
         if len(result_df.index) == 0:
             return None
         gender_str = "Female" if gender == "F" else "Male"
@@ -866,7 +907,7 @@ class CompyData:
             return None
         df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
         for a in self.athletes:
-            df_a = df[df['Diver Id'] == a.id]
+            df_a = df[df['Diver Id'].astype('string') == a.id]
             n = len(df_a.index)
             for i in range(n-1):
                 this_break = {"Name": a.first_name + " " + a.last_name}

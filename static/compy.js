@@ -30,12 +30,14 @@ var _global_prev_name = "";
 var _days_with_disciplines_lanes = null;
 var _disciplines = null;
 var _countries = null;
+var _result_countries = null;
 // TODO get from flask
 var _ots = []; // date in YYYY:MM:DD:HH:MM:SS
 // debug for ots
-fillOtsForDebuggin();
+//fillOtsForDebuggin();
 var _autoplay_enabled = false;
-let _audioElement = new Audio('static/countdown.wav'); // Set the path to your audio file
+let _audioElement = new Audio('static/countdown_aida.wav'); // Set the path to your audio file
+let _audioTimeout = null;
 
 $(window).on('load', function() {
     $('#comp_name').val("undefined");
@@ -44,51 +46,73 @@ $(window).on('load', function() {
     _days_with_disciplines_lanes = null;
     _disciplines = null;
     _countries = null;
+    _result_countries = null;
     $('#special_ranking_name').val("Newcomer");
     $('#country_chooser').hide();
 });
 
+function getCountdownDuration() {
+    let selectedOption = $("input[name='comp_type']:checked").val();
+    if (selectedOption == "aida")
+        return 2;
+    else
+        return 3;
+}
+
+// Function to calculate the time until the next play
+function getNextPlayTime(ot = false) {
+    let now = new Date();
+    let nextPlayTime = null;
+
+    _ots.forEach(function(timeStr) {
+        let timeParts = timeStr.split(':');
+        // -1 for month as 0 = Jan
+        let playTime = new Date(parseInt(timeParts[0]), parseInt(timeParts[1]-1), parseInt(timeParts[2]), parseInt(timeParts[3]), parseInt(timeParts[4]), parseInt(timeParts[5]));
+        // subtract getCountdownDuration() mins as play time starts that many mins before ot
+        if (!ot)
+            playTime.setMinutes(playTime.getMinutes() - getCountdownDuration());
+
+        if (!nextPlayTime || (playTime >= now && (playTime < nextPlayTime || nextPlayTime < now))) {
+            nextPlayTime = playTime;
+        }
+    });
+
+    if (nextPlayTime <= now) {
+        return -1;
+    }
+
+    return nextPlayTime - now;
+}
+
+// Schedule the audio to play at the next play time
+function schedulePlay() {
+    let delay = getNextPlayTime();
+
+    if (delay >= 0) {
+        console.log("Next play in:", delay);
+        _audioTimeout = setTimeout(function() {
+            _audioElement.play();
+            setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, getCountdownDuration()*60*1000);
+            setTimeout(function() { $('#stop_countdown_btn').prop("disabled", true); }, (getCountdownDuration()*60 + 30)*1000);
+            // Reschedule the next play after the current one finishes
+            _audioElement.addEventListener('ended', schedulePlay, { once: true });
+        }, delay);
+    }
+}
+
+function testCountdown() {
+    if (_audioTimeout)
+        clearTimeout(_audioTimeout);
+    _audioElement.currentTime = (getCountdownDuration()-1)*60 + 55;
+    _audioElement.play();
+    setTimeout(function() {
+        _audioElement.pause();
+        _audioElement.currentTime = 0;
+        schedulePlay();
+    }, 6000);
+}
+
 $(document).ready(function() {
-
-    // Function to calculate the time until the next play
-    function getNextPlayTime(ot = false) {
-        let now = new Date();
-        let nextPlayTime = null;
-
-        _ots.forEach(function(timeStr) {
-            let timeParts = timeStr.split(':');
-            // -1 for month as 0 = Jan
-            let playTime = new Date(parseInt(timeParts[0]), parseInt(timeParts[1]-1), parseInt(timeParts[2]), parseInt(timeParts[3]), parseInt(timeParts[4]), parseInt(timeParts[5]));
-            // subtract 2 mins as play time starts 2 mins before ot
-            if (!ot)
-                playTime.setMinutes(playTime.getMinutes() - 2);
-
-            if (!nextPlayTime || (playTime >= now && (playTime < nextPlayTime || nextPlayTime < now))) {
-                nextPlayTime = playTime;
-            }
-        });
-
-        if (nextPlayTime <= now) {
-            return -1;
-        }
-
-        return nextPlayTime - now;
-    }
-
-    // Schedule the audio to play at the next play time
-    function schedulePlay() {
-        let delay = getNextPlayTime();
-
-        if (delay >= 0) {
-            setTimeout(function() {
-                _audioElement.play();
-                setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, 2*60*1000);
-                setTimeout(function() { $('#stop_countdown_btn').prop("disabled", true); }, (2*60 + 30)*1000);
-                // Reschedule the next play after the current one finishes
-                _audioElement.addEventListener('ended', schedulePlay, { once: true });
-            }, delay);
-        }
-    }
 
     // Start scheduling the plays
     schedulePlay();
@@ -108,9 +132,13 @@ $(document).ready(function() {
                     _autoplay_enabled = true;
                     // Add a button to stop the audio
                     $('#stop_countdown_div').html('<button id="stop_countdown_btn">Stop Countdown</button>');
+                    $('#test_countdown_div').html('<button id="test_countdown_btn">Test Countdown</button>');
                     $('#stop_countdown_btn').prop("disabled", true);
                     $('#stop_countdown_btn').click(function() {
                         stopAudio();
+                    });
+                    $('#test_countdown_btn').click(function() {
+                        testCountdown();
                     });
                 }).catch(function(error) {
                     _autoplay_enabled = false;
@@ -493,6 +521,11 @@ $(document).ready(function() {
             type: 'POST',
             success: function(data) {
                 initSubmenus(data);
+                _audioElement.remove();
+                if (selectedOption == "aida")
+                    _audioElement = new Audio('static/countdown_aida.wav');
+                else
+                    _audioElement = new Audio('static/countdown_cmas.wav');
                 console.log(data.status_msg);
             }
         });
@@ -598,6 +631,9 @@ function setOTs(data)
 {
     if ('ots' in data)
         _ots = data.ots
+        if (_audioTimeout)
+            clearTimeout(_audioTimeout);
+        schedulePlay();
         console.log(_ots)
 }
 
@@ -607,6 +643,7 @@ function initSubmenus(data, reset=false)
         _days_with_disciplines_lanes = null;
         _disciplines = null;
         _countries = null;
+        _result_countries = null;
     }
 
     if (data.hasOwnProperty("days_with_disciplines_lanes") && data.days_with_disciplines_lanes != null)
@@ -652,7 +689,9 @@ function initSubmenus(data, reset=false)
     else
         $('#country_chooser').hide();
 
-    if (_disciplines != null && _countries != null) {
+    if ("result_countries" in data && data.result_countries != null)
+        _result_countries = data.result_countries;
+    if (_disciplines != null && _result_countries != null) {
         let result_dis_menu = document.getElementById('result_discipline_menu');
         result_dis_menu.innerHTML = "";
         for (let i = 0; i < _disciplines.length; i++) {
@@ -718,7 +757,7 @@ function selectLaneListDayDiscipline(day, discipline)
 
 function selectResultDiscipline(discipline)
 {
-    if (_disciplines != null && _countries != null) {
+    if (_disciplines != null && _result_countries != null) {
         let result_gender_menu = document.getElementById('result_gender_menu');
         result_gender_menu.innerHTML = "";
         result_gender_menu.innerHTML += "<a href='#' onclick='selectResultDisciplineGender(\"" + discipline + "\", \"F\")'>Female</a>&nbsp;";
@@ -731,16 +770,12 @@ function selectResultDiscipline(discipline)
 function selectResultDisciplineGender(discipline, gender)
 {
     let i = -1;
-    if (_disciplines != null && _countries != null) {
+    if (_disciplines != null && _result_countries != null) {
         let result_country_menu = document.getElementById('result_country_menu');
         result_country_menu.innerHTML = "";
         i = 0;
-        for (; i < _countries.length; i++)
-        {
-            result_country_menu.innerHTML += "<a href='#' class='result_button' id='result_" + discipline + "_" + gender + "_" + _countries[i] + "'>" + _countries[i] + "</a>&nbsp;";
-            if (_countries[i] == "International") // the list contains the selected country first (if it exists), followed by all International and then all others, so this lists only up to International
-                break;
-        }
+        for (; i < _result_countries.length; i++)
+            result_country_menu.innerHTML += "<a href='#' class='result_button' id='result_" + discipline + "_" + gender + "_" + _result_countries[i] + "'>" + _result_countries[i] + "</a>&nbsp;";
     }
     if (i == 0)
         getResult(discipline, gender, "International"); // if only international, show right away
@@ -761,74 +796,24 @@ function getResult(discipline, gender, country)
         success: function(data) {
             console.log(data.status_msg);
             let res = "";
-            if (data.result) {
+            if (data.result && data.result_keys) {
                 res += "<a href='#' class='results_pdf_button' id='result_pdf_" + discipline + "_" + gender + "_" + country + "'>Print PDF</a>";
                 res += "<table>";
-                if (discipline == "Overall" || discipline == $('#special_ranking_name').val())
+                res += "<tr>"
+                for (let j = 0; j < data.result_keys.length; j++)
                 {
-                    res += `
-                        <tr>
-                            <td>Rank</td>
-                            <td>Name</td>
-                            <td>Country</td>`;
-                    for (let j = 0; j < _disciplines.length; j++)
+                        res += `<td>${data.result_keys[j]}</td>`;
+                }
+                res += "</tr>";
+                for (let i = 0; i < data.result.length; i++) {
+                    res += "<tr>"
+                    for (let j = 0; j < data.result_keys.length; j++)
                     {
-                        if (_disciplines[j] == "Overall" || _disciplines[j] == $('#special_ranking_name').val())
-                            continue;
-                        res += `
-                            <td>${_disciplines[j]}</td>`;
+                            res += "<td>" + data.result[i][data.result_keys[j]] + "</td>";
                     }
-                    res += `
-                            <td>Points</td>
-                        </tr>`;
-                    for (let i = 0; i < data.result.length; i++) {
-                        res += `
-                            <tr>
-                                <td>${data.result[i].Rank}</td>
-                                <td>${data.result[i].Name}</td>
-                                <td>${data.result[i].Country}</td>`;
-                        for (let j = 0; j < _disciplines.length; j++)
-                        {
-                            if (_disciplines[j] == "Overall" || _disciplines[j] == $('#special_ranking_name').val())
-                                continue;
-                            res += "<td>" + data.result[i][_disciplines[j]] + "</td>";
-                        }
-                        res += `
-                                <td>${data.result[i].Points}</td>
-                            </tr>`;
-                    }
-                    res += "</table>";
+                    res += "</tr>";
                 }
-                else
-                {
-                    res += `
-                        <tr>
-                            <td>Rank</td>
-                            <td>Name</td>
-                            <td>Country</td>
-                            <td>AP</td>
-                            <td>RP</td>
-                            <td>Penalty</td>
-                            <td>Card</td>
-                            <td>Remarks</td>
-                            <td>Points</td>
-                        </tr>`;
-                    for (let i = 0; i < data.result.length; i++) {
-                        res += `
-                            <tr>
-                                <td>${data.result[i].Rank}</td>
-                                <td>${data.result[i].Name}</td>
-                                <td>${data.result[i].Country}</td>
-                                <td>${data.result[i].AP}</td>
-                                <td>${data.result[i].RP}</td>
-                                <td>${data.result[i].Penalty}</td>
-                                <td>${data.result[i].Card}</td>
-                                <td>${data.result[i].Remarks}</td>
-                                <td>${data.result[i].Points}</td>
-                            </tr>`;
-                    }
-                    res += "</table>";
-                }
+                res += "</table>";
             }
             let results_content = document.getElementById('results_content');
             results_content.innerHTML = res;
