@@ -135,7 +135,7 @@ class CompyFlask:
                 self.data_.compFileChange(fpath)
                 data["athletes"] = []
                 for athlete in self.data_.athletes:
-                    data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id})
+                    data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id, "newcomer": athlete.newcomer})
                 self.setSubmenuData(data)
                 self.data_.setOTs(data)
         data["status_msg"] = status_msg

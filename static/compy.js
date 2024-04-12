@@ -59,9 +59,17 @@ function getCountdownDuration() {
         return 3;
 }
 
+function getDateNow() {
+    let now = new Date();
+    //now.setDate(now.getDate() + 6);
+    //now.setHours(now.getHours() + 1);
+    //now.setMinutes(now.getMinutes() + 42);
+    return now;
+}
+
 // Function to calculate the time until the next play
 function getNextPlayTime(ot = false) {
-    let now = new Date();
+    let now = getDateNow();
     let nextPlayTime = null;
 
     _ots.forEach(function(timeStr) {
@@ -118,8 +126,7 @@ $(document).ready(function() {
     schedulePlay();
 
     setInterval(function() {
-        let now = new Date();
-        $('#time').text(formatTime(now), false);
+        $('#time').text(formatTime(getDateNow()), false);
         $('#countdown_ot').text(formatTime(getNextPlayTime(true), true));
         testAutoPlay();
     },  100);
@@ -304,10 +311,15 @@ $(document).ready(function() {
                 } else {
                     $('#numeric_radio').prop('checked', true);
                 }
-                if ("comp_type" in data && data.comp_type == "aida") {
-                    $('#aida_radio').prop('checked', true);
-                } else {
-                    $('#cmas_radio').prop('checked', true);
+                if ("comp_type" in data) {
+                    _audioElement.remove();
+                    if (data.comp_type == "aida") {
+                        $('#aida_radio').prop('checked', true);
+                        _audioElement = new Audio('static/countdown_aida.wav');
+                    } else {
+                        $('#cmas_radio').prop('checked', true);
+                        _audioElement = new Audio('static/countdown_cmas.wav');
+                    }
                 }
             }
         })
@@ -734,9 +746,11 @@ function selectListDay(type, day)
             } else {
                 l_discipline_menu.innerHTML += "<a href='#' onclick='selectLaneListDayDiscipline(\"" + day + "\", \"" + dis + "\")'>" + dis + "</a>&nbsp;";
             }
-            let l_content = document.getElementById(type_char + 'l_content');
-            l_content.innerHTML = "";
         }
+        if (type == "lane")
+            $('#ll_lane_menu').empty();
+        let l_content = document.getElementById(type_char + 'l_content');
+        l_content.innerHTML = "";
     }
 }
 
@@ -867,11 +881,11 @@ function formatTime(date, countdown=false, full_date=false) {
 
 function fillOtsForDebuggin() {
     // countdown 1 = now + 2:10
-    let c1 = new Date();
+    let c1 = getDateNow();
     c1.setMinutes(c1.getMinutes() + 2);
     c1.setSeconds(c1.getSeconds() + 10);
     // countdown 2 = now + 4:50
-    let c2 = new Date();
+    let c2 = getDateNow();
     c2.setMinutes(c2.getMinutes() + 4);
     c2.setSeconds(c2.getSeconds() + 50);
     _ots.push(formatTime(c1, false, true));

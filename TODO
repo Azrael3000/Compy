@@ -25,9 +25,5 @@
  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 TODO:
-- Test OTs (CMAS)
-- Fix bug with Test countdown after load not working
-- CMAS: No points, no penalty, club, newcomer->noe
-- CMAS: selected country only if license number
 - NRs in lane list
 - Marking NRs/WRs in results

@@ -123,7 +123,7 @@ class CompyData:
         if self.lane_style_ == "alphabetic":
             return chr(lane + 64)
         else: # numeric
-            return lane
+            return str(lane)
 
     @property
     def comp_file(self):
@@ -217,9 +217,15 @@ class CompyData:
 
         # read second sheet (list of athletes)
         df = pd.read_excel(self.comp_file_, sheet_name="Athletes and Judges", skiprows=1)
+        athletes_old = self.athletes_.copy()
         self.athletes_ = [athlete.Athlete.fromArgs(r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country'], r['Club'] if 'club' in r else "") for i,r in df.iterrows()]
         [logging.debug("Athlete: %s %s %s %s %s", r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country']) for i,r in df.iterrows()]
         logging.debug("Number of athletes: %d", len(self.athletes_))
+
+        for a in athletes_old:
+            if a.newcomer:
+                print("set newcomer:", a.id, a.first_name)
+                self.setNewcomer(a.id, True)
 
         # count countries
         self.countries_ = Counter([a.country for a in self.athletes_])
@@ -249,7 +255,6 @@ class CompyData:
             if result:
                 country_value_map[cc.convert(result.group(2), to = 'IOC')] = result.group(1)
         nrs = {}
-        print(country_value_map)
         for c in self.countries_:
             data = {
                 'nationality': str(country_value_map[c]),
@@ -542,7 +547,7 @@ class CompyData:
                        'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
                        'OT': self.parseTime(r['OT']),
                        'NR': r['Diver Country']}
-                       for i,r in df.iterrows() if r['Discipline'] == discipline and self.laneStyleConverter(r['Zone']) == lane]
+                       for i,r in df.iterrows() if r['Discipline'] == discipline and self.laneStyleConverter(str(r['Zone'])) == lane]
         return lane_list
 
     def getLaneListPDF(self, day="all", discipline="all", lane="all", in_memory=False):
@@ -610,7 +615,7 @@ class CompyData:
                 width: 39%;
             }}
             @page {{
-                margin: 4cm 1cm 6cm 1cm;
+                margin: 4cm 1cm 1cm 1cm;
                 size: A4 landscape;
                 @top-right {{
                     content: counter(page) "/" counter(pages);
@@ -630,8 +635,8 @@ class CompyData:
             }}
             footer {{
                 /* subtract @page margin */
-                bottom: -6cm;
-                height: 6cm;
+                bottom: -1cm;
+                height: 1cm;
                 text-align: center;
                 vertical-align: center;
             }}
@@ -643,7 +648,7 @@ class CompyData:
                 <h2>Lane list {} - lane {} - {}</h2>
             </header>
             {}
-            <footer><img src="{}" style="width:{}cm; height:{}cm;"></footer>
+            <footer></footer>
             </body>
             </html>
             """.format(self.name, discipline, lane, human_day, html_string, self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
@@ -915,8 +920,8 @@ class CompyData:
                 this_break = {"Name": a.first_name + " " + a.last_name}
                 this_break["Dis1"] = df_a['Discipline'].iloc[i+0]
                 this_break["Dis2"] = df_a['Discipline'].iloc[i+1]
-                this_break["OT1"] = self.parseTime(df_a['OT']).iloc[i+0]
-                this_break["OT2"] = self.parseTime(df_a['OT']).iloc[i+1]
+                this_break["OT1"] = self.parseTime(df_a['OT'].iloc[i+0])
+                this_break["OT2"] = self.parseTime(df_a['OT'].iloc[i+1])
                 ot1 = this_break["OT1"].split(":")
                 ot2 = this_break["OT2"].split(":")
                 time = int(ot2[0])*60 + int(ot2[1]) - int(ot1[0])*60 - int(ot1[1])
@@ -925,7 +930,6 @@ class CompyData:
                 breaks_list.append(this_break)
         min_break = str(int(min_break/60)).zfill(2) + ":" + str(min_break%60).zfill(2)
         breaks_list = sorted(breaks_list, key=lambda d: d["Break"])
-        print(breaks_list)
         return {"min_break": min_break, "breaks_list": breaks_list}
 
     def setOTs(self, data):
