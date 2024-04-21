@@ -25,5 +25,17 @@
  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 TODO:
+- PDF with top 3 only
+- Nationality in start list
+- Starting list on one page in pdf
+- On lane list larger border on left side for boards
+- NR database (CMAS/AIDA, latter automatic update, former with links to record pages)
 - NRs in lane list
 - Marking NRs/WRs in results
+
+WISHLIST:
+- User management
+- Direct result entry from mobile
+- Write results into excel
+- Result view for public, embeddable
+- Overlays for streaming

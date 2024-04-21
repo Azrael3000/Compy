@@ -64,6 +64,11 @@ function getDateNow() {
     //now.setDate(now.getDate() + 6);
     //now.setHours(now.getHours() + 1);
     //now.setMinutes(now.getMinutes() + 42);
+    seconds_adjust = parseInt($("#seconds_adjust").val(), 10);
+    deciseconds_adjust = parseInt($("#deciseconds_adjust").val(), 10);
+    //console.log(seconds_adjust, deciseconds_adjust*100);
+    now.setSeconds(now.getSeconds() + seconds_adjust);
+    now.setMilliseconds(now.getMilliseconds() + deciseconds_adjust*100);
     return now;
 }
 
@@ -97,7 +102,10 @@ function schedulePlay() {
     let delay = getNextPlayTime();
 
     if (delay >= 0) {
-        console.log("Next play in:", delay);
+        hour = Math.floor(delay/3600/1000);
+        min = Math.floor((delay - hour*3600*1000)/60/1000);
+        sec = (delay - (hour*3600 + min*60)*1000)/1000;
+        console.log("Next play in:", hour, "h", min, "min", sec, "s");
         _audioTimeout = setTimeout(function() {
             _audioElement.play();
             setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, getCountdownDuration()*60*1000);
@@ -118,6 +126,12 @@ function testCountdown() {
         _audioElement.currentTime = 0;
         schedulePlay();
     }, 6000);
+}
+
+function changeTime() {
+    if (_audioTimeout)
+        clearTimeout(_audioTimeout);
+    schedulePlay();
 }
 
 $(document).ready(function() {
@@ -170,6 +184,9 @@ $(document).ready(function() {
         _audioElement.currentTime =  0;
         schedulePlay();
     }
+
+    $('input[name=seconds_adjust]').change(function() { changeTime(); });
+    $('input[name=deciseconds_adjust]').change(function() { changeTime(); });
 
     $('#upload_file_button').click(function() {
         let form_data = new FormData($('#upload_file')[0]);
@@ -291,7 +308,6 @@ $(document).ready(function() {
             {
                 console.log(data.status_msg);
                 populateNewcomer(data);
-                setOTs(data);
                 initSubmenus(data, true);
                 if ('comp_name' in data) {
                     $('#comp_name').val(data.comp_name);
@@ -321,6 +337,7 @@ $(document).ready(function() {
                         _audioElement = new Audio('static/countdown_cmas.wav');
                     }
                 }
+                setOTs(data);
             }
         })
     });
@@ -491,6 +508,9 @@ $(document).ready(function() {
     $("#result_all_pdf_button").click(function() {
         getPDF("result");
     });
+    $("#result_all_top3_pdf_button").click(function() {
+        getPDF("result", {"type": "top3"});
+    });
     $("#results_content").on("click", ".results_pdf_button", function() {
         let id_arr = this.id.split('_'); // button id is equal to "result_pdf_" + discipline + "_" + gender + "_" + country
         discipline = id_arr[2];
@@ -575,6 +595,8 @@ function getPDF(type, params = {type: "all"})
             let comp_name = document.getElementById("comp_name").value;
             if ("type" in params && params.type == "all") {
                 link.download = comp_name + "_" + type + "s.pdf";
+            } else if ("type" in params && params.type == "top3") {
+                link.download = comp_name + "_" + type + "s_top3.pdf";
             } else {
                 if (type == "start_list") {
                     link.download = comp_name + "_" + type + "_" + params.day + "_" + params.discipline + ".pdf";

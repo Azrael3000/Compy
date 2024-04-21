@@ -224,7 +224,7 @@ class CompyData:
 
         for a in athletes_old:
             if a.newcomer:
-                print("set newcomer:", a.id, a.first_name)
+                logging.debug("set newcomer:", a.id, a.first_name)
                 self.setNewcomer(a.id, True)
 
         # count countries
@@ -376,7 +376,7 @@ class CompyData:
             self.sponsor_img_ = data["sponsor_img"]
             self.selected_country_ = data["selected_country"]
             self.special_ranking_name_ = data["special_ranking_name"]
-            self.getResultPDF('STA', 'F', 'International')
+            #self.getResultPDF('all', 'all', 'all', False, True)
 
     def getDays(self):
         if self.start_date is None:
@@ -438,12 +438,12 @@ class CompyData:
         if self.comp_file is None:
             return None
         df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
-        ap_lambda = lambda x, y: str(x)
+        ap_lambda = lambda x, y, self: str(x)
         if discipline == "STA":
-            ap_lambda = lambda x, y: str(int(x)) + ":" + str(int(y)).zfill(2)
+            ap_lambda = lambda x, y, self: self.formatSTA(x, y)
         # RPs are 'Meters or Min.1'
         start_list = [{'Name': r['Diver Name'],
-                       'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
+                       'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)'], self),
                        'Warmup': self.parseTime(r['WT']),
                        'OT': self.parseTime(r['OT']),
                        'Lane': self.laneStyleConverter(r['Zone'])}
@@ -539,12 +539,12 @@ class CompyData:
         if self.comp_file is None:
             return None
         df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
-        ap_lambda = lambda x, y: str(x)
+        ap_lambda = lambda x, y, self: str(x)
         if discipline == "STA":
-            ap_lambda = lambda x, y: str(int(x)) + ":" + str(int(y)).zfill(2)
+            ap_lambda = lambda x, y, self: self.formatSTA(x, y)
         # RPs are 'Meters or Min.1'
         lane_list = [{'Name': r['Diver Name'],
-                       'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
+                       'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)'], self),
                        'OT': self.parseTime(r['OT']),
                        'NR': r['Diver Country']}
                        for i,r in df.iterrows() if r['Discipline'] == discipline and self.laneStyleConverter(str(r['Zone'])) == lane]
@@ -691,7 +691,7 @@ class CompyData:
             for dis in self.disciplines:
                 reduction_dict[dis] = 'first'
                 if dis == "STA":
-                    full_df[dis] = full_df.apply(lambda row: str(int(row['Meters or Min.1'])) + ":" + str(int(row['Sec(STA only).1'])).zfill(2) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
+                    full_df[dis] = full_df.apply(lambda row: formatSTA(row['Meters or Min.1'], row['Sec(STA only).1']) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
                 else:
                     full_df[dis] = full_df.apply(lambda row: str(row['Meters or Min.1']) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
             columns = self.disciplines + ["Diver Name", "Diver Id", "Diver Country", "Points"]
@@ -712,9 +712,9 @@ class CompyData:
             result_keys += self.disciplines + ["Points"]
             return result_df.to_dict('records'), result_keys
         else:
-            ap_lambda = lambda x, y: str(x)
+            ap_lambda = lambda x, y, self: str(x)
             if discipline == "STA":
-                ap_lambda = lambda x, y: str(int(x)) + ":" + str(int(y)).zfill(2)
+                ap_lambda = lambda x, y, self: self.formatSTA(x, y)
             dfs = []
             for day in self.getDays():
                 dfs.append(pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1))
@@ -723,7 +723,7 @@ class CompyData:
             if country != 'International' and country != self.special_ranking_name:
                 result_df = result_df[(result_df['Diver Country'] == country)]
             if self.comp_type == "cmas" and country == self.special_ranking_name:
-                result_df = result_df[(result_df['Diver Country'] == self.selected_country)]
+                result_df = result_df[(result_df['Diver Country'] == self.selected_country) | (result_df['Diver Country'] == self.selected_country + "*")]
                 newcomer_ids = []
                 for a in self.athletes_:
                     if a.newcomer:
@@ -736,8 +736,8 @@ class CompyData:
                 result = [{'Rank': i,
                            'Name': r['Diver Name'],
                            'Country': r['Diver Country'],
-                           'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)']),
-                           'RP': ap_lambda(r['Meters or Min.1'], r['Sec(STA only).1']),
+                           'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)'], self),
+                           'RP': ap_lambda(r['Meters or Min.1'], r['Sec(STA only).1'], self),
                            'Penalty': float(r['Pen(UNDER AP)']) + float(r['Pen(other)']),
                            'Card': r['Card'],
                            'Remarks': r['Remarks'],
@@ -749,7 +749,7 @@ class CompyData:
                            'Name': r['Diver Name'],
                            'Country': r['Diver Country'],
                            'Club': r['Club'],
-                           'RP': ap_lambda(r['Meters or Min.1'], r['Sec(STA only).1']),
+                           'RP': ap_lambda(r['Meters or Min.1'], r['Sec(STA only).1'], self),
                            'Card': r['Card'],
                            'Remarks': r['Remarks'],
                            'Points': r['Points']}
@@ -769,14 +769,17 @@ class CompyData:
                     result[i]["Rank"] = i+1
             return result, result_keys
 
-    def getResultPDF(self, discipline="all", gender="all", country="all", in_memory=False):
+    def getResultPDF(self, discipline="all", gender="all", country="all", in_memory=False, top3=False):
         if discipline=="all" and gender=="all":
             dwd = self.getDaysWithDisciplinesLanes()
             files = []
+            gender_list = ["F", "M"]
+            if top3:
+                gender_list = [gender_list] # if gender is a list, one pdf will contain both genders, for top 3
             for d in self.getDisciplines():
-                for g in ["F", "M"]:
+                for g in gender_list:
                     for c in self.getCountries(True):
-                        pdf = self.getResultPDF(d, g, c, True)
+                        pdf = self.getResultPDF(d, g, c, True, top3)
                         if pdf is not None:
                             files.append(pdf)
             pages = []
@@ -784,99 +787,52 @@ class CompyData:
                 for page in doc.pages:
                     pages.append(page)
             merged_pdf = files[0].copy(pages)
-            fname = os.path.join(self.config.download_folder, self.name + "_results.pdf")
+            fname = os.path.join(self.config.download_folder, self.name + "_results")
+            if top3:
+                fname += "_top3"
+            fname += ".pdf"
             merged_pdf.write_pdf(fname)
             return fname
-        result, result_keys = self.getResult(discipline, gender, country)
-        result_df = pd.DataFrame(result)
-        if len(result_df.index) == 0:
-            return None
-        if self.comp_type == "cmas":
-            result_df.drop("Points", axis=1, inplace=True)
-        gender_str = "Female" if gender == "F" else "Male"
-        html_string = result_df.to_html(index=False, justify="left", classes="df_table")
+
         html_string = """
-            <html>
-            <head>
-            <style>
-            table {{
-                width: 100%;
-            }}
-            tr th:first-child {{
-                padding-left:0px;
-                text-align: left;
-            }}
-            tr td:first-child {{
-                padding-left:0px;
-                text-align: left;
-            }}
-            th, td {{
-                padding:20px 0px 5px 5px;
-                text-align: center;
-                font-size: 12px;
-                border-bottom: 1px solid #ddd;
-            }}
-            /*
-            table th:nth-child(1) {{
-                width: 20%;
-            }}
-            table th:nth-child(2) {{
-                width: 7%;
-            }}
-            table th:nth-child(3) {{
-                width: 7%;
-            }}
-            table th:nth-child(4) {{
-                width: 7%;
-            }}
-            table th:nth-child(5) {{
-                width: 10%;
-            }}
-            table th:nth-child(6) {{
-                width: 10%;
-            }}
-            table th:nth-child(7) {{
-                width: 39%;
-            }}
-            */
-            @page {{
-                margin: 4cm 1cm 6cm 1cm;
-                size: A4;
-                @top-right {{
-                    content: counter(page) "/" counter(pages);
-                }}
-            }}
-            header, footer {{
-                position: fixed;
-                left: 0;
-                right: 0;
-            }}
-            header {{
-                /* subtract @page margin */
-                top: -4cm;
-                height: 4cm;
-                text-align: center;
-                vertical-align: center;
-            }}
-            footer {{
-                /* subtract @page margin */
-                bottom: -6cm;
-                height: 6cm;
-                text-align: center;
-                vertical-align: center;
-            }}
-            </style>
-            </head>
-            <body>
+            {}
             <header>
                 <h1>{}</h1>
-                <h2>Result {} - {} - {}</h2>
+                <h2>Result {} - {}""".format(self.getHtmlHeader(), self.name, discipline, country)
+        if top3:
+            gender_list = gender # for top 3, this is ["F", "M"]
+        else:
+            gender_str = "Female" if gender == "F" else "Male"
+            html_string += " - " + gender_str
+            gender_list = [gender] # for all others a string
+        html_string += """</h2>
             </header>
-            {}
-            <footer><img src="{}" style="width:{}cm; height:{}cm;"></footer>
-            </body>
-            </html>
-            """.format(self.name, discipline, country, gender_str, html_string, self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
+            """
+        for g in gender_list:
+            result, result_keys = self.getResult(discipline, g, country)
+            result_df = pd.DataFrame(result)
+            if len(result_df.index) == 0:
+                return None
+            if self.comp_type == "cmas":
+                result_df.drop("Points", axis=1, inplace=True)
+            if top3:
+                gender_str = "Female" if g == "F" else "Male"
+                html_string += "<h3>" + gender_str + "</h3>\n"
+                # drop all entries where rank is > 3
+                # first find one where this is true
+                result_df['Rank'] = pd.to_numeric(result_df['Rank'], errors='coerce')
+                remainder = result_df[(result_df['Rank'] > 3)]
+                if len(remainder.index) != 0:
+                    index_to_drop_after = remainder.idxmin(numeric_only=True)[0]
+                    # keep only ones before
+                    result_df = result_df.loc[:index_to_drop_after-1]
+                # convert back to strings
+                result_df['Rank'] = result_df['Rank'].replace(np.nan, 0).astype(int).astype(str).replace('0', '')
+                # remove all Red cards
+                result_df = result_df[(result_df['Card'] != "RED")]
+            html_string += result_df.to_html(index=False, justify="left", classes="df_table") + "\n"
+        html_string += self.getHtmlFooter();
+
         html = wp.HTML(string=html_string, base_url="/")
         fname = os.path.join(self.config.download_folder, "test.html")
         with open(fname, "w") as f:
@@ -887,6 +843,70 @@ class CompyData:
             fname = os.path.join(self.config.download_folder, self.name + "_result_" + discipline + "_" + gender + "_" + country + ".pdf")
             html.write_pdf(fname)
             return fname
+
+    def getHtmlHeader(self):
+        html_header = """
+            <html>
+            <head>
+            <style>
+            table {
+                width: 100%;
+            }
+            tr th:first-child {
+                padding-left:0px;
+                text-align: left;
+            }
+            tr td:first-child {
+                padding-left:0px;
+                text-align: left;
+            }
+            th, td {
+                padding:20px 0px 5px 5px;
+                text-align: center;
+                font-size: 12px;
+                border-bottom: 1px solid #ddd;
+            }
+            @page {
+                margin: 4cm 1cm 6cm 1cm;
+                size: A4;
+                @top-right {
+                    content: counter(page) "/" counter(pages);
+                }
+            }
+            header, footer {
+                position: fixed;
+                left: 0;
+                right: 0;
+            }
+            header {
+                /* subtract @page margin */
+                top: -4cm;
+                height: 4cm;
+                text-align: center;
+                vertical-align: center;
+            }
+            footer {
+                /* subtract @page margin */
+                bottom: -6cm;
+                height: 6cm;
+                text-align: center;
+                vertical-align: center;
+            }
+            h3 {
+                padding-top: 1cm;
+            }
+            </style>
+            </head>
+            <body>"""
+        return html_header
+
+    def getHtmlFooter(self):
+        html_footer = """
+            <footer><img src="{}" style="width:{}cm; height:{}cm;"></footer>
+            </body>
+            </html>
+            """.format(self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
+        return html_footer
 
     def changeSelectedCountry(self, country):
         if country == "none":
@@ -955,3 +975,11 @@ class CompyData:
             return date
         else:
             return str(date)
+
+    def formatSTA(self, minutes, seconds):
+        out = str(int(minutes)) + ":"
+        if self.comp_type == "aida":
+            out += str(int(seconds)).zfill(2)
+        else:
+            out += "%05.2f" % round(seconds, 2)
+        return out

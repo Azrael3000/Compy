@@ -372,9 +372,11 @@ class CompyFlask:
             return {}, 400
         data = {}
         if pdf:
-            if req_type is not None and req_type == "all":
+            if req_type == "all":
                 result_pdf = self.data_.getResultPDF()
-            else:
+            elif req_type == "top3":
+                result_pdf = self.data_.getResultPDF("all", "all", "all", False, True)
+            elif req_type == "single" or req_type is None:
                 result_pdf = self.data_.getResultPDF(discipline, gender, country)
             if not result_pdf is None:
                 logging.debug("Sending: " + result_pdf)
