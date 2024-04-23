@@ -26,7 +26,11 @@
 #
 #  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-from flask import Flask
+try:
+    from flask import Flask
+except ImportError:
+    print("Could not find flask. Install with 'pip3 install flask'")
+    exit(-1)
 import argparse
 import logging
 

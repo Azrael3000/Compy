@@ -25,17 +25,29 @@
 #
 #  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:
+    print("Could not find pandas. Install with 'pip3 install pandas'")
+    exit(-1)
 import logging
 from collections import Counter, namedtuple
 import requests
 import re
-import country_converter
+try:
+    import country_converter
+except ImportError:
+    print("Could not find country_converter. Install with 'pip3 install country_converter'")
+    exit(-1)
 import os
 import json
 import glob
 from datetime import datetime, timedelta, time
-import weasyprint as wp
+try:
+    import weasyprint as wp
+except ImportError:
+    print("Could not find weasyprint. Install with 'pip3 install weasyprint'")
+    exit(-1)
 import base64
 from PIL import Image
 from io import BytesIO
