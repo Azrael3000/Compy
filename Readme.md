@@ -46,6 +46,15 @@ Future features can be seen in the TODO file.
  - country_converter
  - flask
 
+## Running the software
+
+ - Download the repository
+ - Navigate with a terminal to the folder containing `compy.py`
+ - Execute `compy.py`
+   - Linux: `python3 compy.py`
+   - Windows: `python3.exe compy.py`
+ - Navigate your browser to `localhost:5000`
+
 ## Want to help?
 
-As is clearly visible, this tool is lacking a nice user interface. If you want to help making one, please write me at hydros@TLD. (`TLD=posteo.net`)
+As is clearly visible, this tool is lacking a nice user interface. If you want to help making one, please write me at hydros@TLD. (`TLD=posteo.net`). Other help (writing the backend, documentation, testing) is also welcome.
