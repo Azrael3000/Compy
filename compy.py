@@ -11,8 +11,7 @@
 #  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #
 #  Competition organization tool
-#  for AIDA International
-#  competitions.
+#  for freediving competitions.
 #
 #  Copyright 2023 - Arno Mayrhofer
 #
