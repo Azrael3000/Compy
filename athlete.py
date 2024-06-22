@@ -63,7 +63,7 @@ class Athlete:
             else:
                 db_id = self.db_.execute('''SELECT id FROM athlete
                                             WHERE first_name=? AND last_name=? AND gender=?''',
-                                         (self.fist_name, self.last_name, self.gender))
+                                         (self.first_name, self.last_name, self.gender))
             if db_id is not None:
                 self.id_ = db_id[0][0]
         if self.id_ is None:
