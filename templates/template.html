@@ -40,7 +40,7 @@
     <table>
         <tr>
             <td id="settings_button" style="font-weight:bold"><a href="#" onclick="switchTo('settings')">Settings</a></td>
-            <td id="newcomer_button"><a href="#" onclick="switchTo('newcomer')">Newcomer</a></td>
+            <td id="special_ranking_button"><a href="#" onclick="switchTo('special_ranking')">Newcomer</a></td>
             <td id="breaks_button"><a href="#" onclick="switchTo('breaks')">Breaks</a></td>
             <td id="start_lists_button"><a href="#" onclick="switchTo('start_lists')">Start lists</a></td>
             <td id="lane_lists_button"><a href="#" onclick="switchTo('lane_lists')">Lane lists</a></td>
@@ -86,7 +86,7 @@
             <input type="radio" name="lane_style" value="alphabetic" id="alphabetic_radio">
             <label for="alphabetic_radio">Alphabetic</label>
         </div>
-        <label>Choose competition type:</label>
+        <label>Choose federation:</label>
         <div id="comp_type_chooser">
             <input type="radio" name="comp_type" value="aida" id="aida_radio" checked>
             <label for="aida_radio">AIDA</label>
@@ -101,7 +101,6 @@
         <div id="country_chooser" style="display:none">
             Country specific results for:
             <select id="country_select">
-                <option value="foo">Bar</option>
             </select>
         </div>
         <div>
@@ -122,8 +121,8 @@
             </ul>
         </div>
     </div>
-    <div id="newcomer" style="display:none">
-        <table id="newcomer_table">
+    <div id="special_ranking" style="display:none">
+        <table id="special_ranking_table">
             <tr>
                 <td>Last name</td>
                 <td>First name</td>
@@ -157,6 +156,38 @@
         <a href="#" id="result_all_pdf_button">Print all</a><br>
         <a href="#" id="result_all_top3_pdf_button">Print all (top 3 only)</a>
         <div id="results_content"></div>
+    </div>
+    <div id="records" style="display:none">
+        <div id="records_federation_menu">
+            <a href='#' id='records_federation_aida'>AIDA</a>&nbsp;|&nbsp;
+            <a href='#' id='records_federation_cmas'>CMAS</a>
+        </div>
+        <div id="records_class_menu" style="display:none">
+            <a href='#' id='records_class_senior'>Senior</a>&nbsp;|&nbsp;
+            <a href='#' id='records_class_master'>Master</a>
+        </div>
+        <div id="result_country_menu">
+            Country:
+            <select id="result_country_select">
+                {% for country in all_countries %}
+                    <option value="{{country}}">{{country}}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div id="records_gender_menu">
+            <a href='#' id='records_class_female'>Female</a>&nbsp;|&nbsp;
+            <a href='#' id='records_class_male'>Male</a>
+        </div>
+        <div id="records_list">
+            <label for="record_sta">STA</label><input type="text" id="record_sta" value="{{record_sta}}"/>
+            <label for="record_dnf">DNF</label><input type="text" id="record_dnf" value="{{record_dnf}}"/>
+            <label for="record_dyn">DYN</label><input type="text" id="record_dyn" value="{{record_dyn}}"/>
+            <label for="record_dynb">DYNB</label><input type="text" id="record_dynb" value="{{record_dynb}}"/>
+            <label for="record_fim">FIM</label><input type="text" id="record_fim" value="{{record_fim}}"/>
+            <label for="record_cnf">CNF</label><input type="text" id="record_cnf" value="{{record_cnf}}"/>
+            <label for="record_cwt">CWT</label><input type="text" id="record_cwt" value="{{record_cwt}}"/>
+            <label for="record_cwtb">CWTB</label><input type="text" id="record_cwtb" value="{{record_cwtb}}"/>
+        </div>
     </div>
 </body>
 </html>

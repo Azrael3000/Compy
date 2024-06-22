@@ -30,7 +30,6 @@ var _days_with_disciplines_lanes = null;
 var _disciplines = null;
 var _countries = null;
 var _result_countries = null;
-// TODO get from flask
 var _ots = []; // date in YYYY:MM:DD:HH:MM:SS
 // debug for ots
 //fillOtsForDebuggin();
@@ -101,6 +100,7 @@ function schedulePlay() {
     let delay = getNextPlayTime();
 
     if (delay >= 0) {
+        //TODO: must be more accurate
         hour = Math.floor(delay/3600/1000);
         min = Math.floor((delay - hour*3600*1000)/60/1000);
         sec = (delay - (hour*3600 + min*60)*1000)/1000;
@@ -202,7 +202,7 @@ $(document).ready(function() {
                 // show status msg
                 element.style.display = "block";
                 element.innerHTML = data.status_msg;
-                populateNewcomer(data);
+                populateSpecialRanking(data);
                 setOTs(data);
                 initSubmenus(data, true);
             },
@@ -237,7 +237,7 @@ $(document).ready(function() {
             dataType: "json",
             success: function(data) {
                 console.log(data.status_msg);
-                $('#newcomer_button').children().text(name);
+                $('#special_ranking_button').children().text(name);
                 initSubmenus(data, true);
             }
         })
@@ -279,12 +279,12 @@ $(document).ready(function() {
         let overwrite_div = document.getElementById("overwrite");
         overwrite_div.style.display = "none";
     });
-    $("#newcomer").delegate(".newcomer_checkbox", "change", function() {
+    $("#special_ranking").delegate(".special_ranking_checkbox", "change", function() {
         let athlete_id = this.id.substring(6); // checkbox id is equal to "nc_cb_" + athlete_id
         let data = {id: athlete_id, checked: this.checked};
         $.ajax({
             type: "POST",
-            url: "/change_newcomer",
+            url: "/change_special_ranking",
             data: JSON.stringify(data),
             contentType: "application/json",
             dataType: "json",
@@ -306,7 +306,7 @@ $(document).ready(function() {
             success: function(data)
             {
                 console.log(data.status_msg);
-                populateNewcomer(data);
+                populateSpecialRanking(data);
                 initSubmenus(data, true);
                 if ('comp_name' in data) {
                     $('#comp_name').val(data.comp_name);
@@ -319,7 +319,7 @@ $(document).ready(function() {
                 if ('special_ranking_name' in data)
                 {
                     $('#special_ranking_name').val(data.special_ranking_name);
-                    $('#newcomer_button').children().text(data.special_ranking_name);
+                    $('#special_ranking_button').children().text(data.special_ranking_name);
                 }
                 if ("lane_style" in data && data.lane_style == "alphabetic") {
                     $('#alphabetic_radio').prop('checked', true);
@@ -361,6 +361,7 @@ $(document).ready(function() {
                         <tr>
                             <td>Name</td>
                             <td>AP</td>
+                            <td>Nationality</td>
                             <td>Warmup</td>
                             <td>OT</td>
                             <td>Lane</td>
@@ -370,6 +371,7 @@ $(document).ready(function() {
                             <tr>
                                 <td>${data.start_list[i].Name}</td>
                                 <td>${data.start_list[i].AP}</td>
+                                <td>${data.start_list[i].Nationality}</td>
                                 <td>${data.start_list[i].Warmup}</td>
                                 <td>${data.start_list[i].OT}</td>
                                 <td>${data.start_list[i].Lane}</td>
@@ -615,7 +617,7 @@ function getPDF(type, params = {type: "all"})
 }
 
 function switchTo(id) {
-    let tab_ids = ['settings', 'newcomer', 'breaks', 'start_lists', 'lane_lists', 'results']
+    let tab_ids = ['settings', 'special_ranking', 'breaks', 'start_lists', 'lane_lists', 'results']
     for (let i = 0; i < tab_ids.length; i++) {
         let element = document.getElementById(tab_ids[i]);
         let button = document.getElementById(tab_ids[i] + "_button");
@@ -629,10 +631,10 @@ function switchTo(id) {
     }
 }
 
-function populateNewcomer(data) {
-    // show newcomer header always
-    let newcomer_table = document.getElementById('newcomer_table');
-    newcomer_table.innerHTML = `
+function populateSpecialRanking(data) {
+    // show special_ranking header always
+    let special_ranking_table = document.getElementById('special_ranking_table');
+    special_ranking_table.innerHTML = `
         <tr>
             <td>Last name</td>
             <td>First name</td>
@@ -645,15 +647,15 @@ function populateNewcomer(data) {
         athletes = data.athletes;
         for (let i = 0; i < athletes.length; i++) {
             let chkd_str = "";
-            if (athletes[i].hasOwnProperty("newcomer") && athletes[i].newcomer)
+            if (athletes[i].hasOwnProperty("special_ranking") && athletes[i].special_ranking)
                 chkd_str = "checked";
-            newcomer_table.innerHTML += `
+            special_ranking_table.innerHTML += `
                 <tr>
                     <td>${athletes[i].last_name}</td>
                     <td>${athletes[i].first_name}</td>
                     <td>${athletes[i].gender}</td>
                     <td>${athletes[i].country}</td>
-                    <td><input type="checkbox" id="nc_cb_${athletes[i].id}" name="${athletes[i].id}" value="true" class="newcomer_checkbox" ${chkd_str}/></td>
+                    <td><input type="checkbox" id="nc_cb_${athletes[i].id}" name="${athletes[i].id}" value="true" class="special_ranking_checkbox" ${chkd_str}/></td>
                 </tr>
             `;
         }

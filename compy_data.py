@@ -42,6 +42,7 @@ import os
 import json
 import glob
 from datetime import datetime, timedelta, time
+import flask
 try:
     import weasyprint as wp
 except ImportError:
@@ -57,14 +58,17 @@ from compy_config import CompyConfig
 
 class CompyData:
 
-    def __init__(self, comp_file=''):
+    def __init__(self, db, app):
+        self.id_ = None
+        self.db_ = db
+        self.app_ = app
         self.name_ = "undefined"
         self.special_ranking_name_ = "Newcomer"
         self.config_ = CompyConfig()
         self.version_ = None
         self.lane_style_ = "numeric"
         self.comp_type_ = "aida"
-        self.comp_file_ = comp_file
+        self.comp_file_ = ''
         self.start_date_ = None
         self.end_date_ = None
         self.athletes_ = []
@@ -81,7 +85,8 @@ class CompyData:
                 break
             self.name_ = "undefined" + str(i)
 
-        self.save()
+        with self.app_.app_context():
+            self.save()
 
     @property
     def version(self):
@@ -229,14 +234,14 @@ class CompyData:
         # read second sheet (list of athletes)
         df = pd.read_excel(self.comp_file_, sheet_name="Athletes and Judges", skiprows=1)
         athletes_old = self.athletes_.copy()
-        self.athletes_ = [athlete.Athlete.fromArgs(r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country'], r['Club'] if 'club' in r else "") for i,r in df.iterrows()]
+        self.athletes_ = [athlete.Athlete.fromArgs(r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country'], r['Club'] if 'club' in r else "", self.db_) for i,r in df.iterrows()]
         [logging.debug("Athlete: %s %s %s %s %s", r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country']) for i,r in df.iterrows()]
         logging.debug("Number of athletes: %d", len(self.athletes_))
 
         for a in athletes_old:
-            if a.newcomer:
-                logging.debug("set newcomer:", a.id, a.first_name)
-                self.setNewcomer(a.id, True)
+            if a.special_ranking:
+                logging.debug("set special_ranking:", a.aida_id, a.first_name)
+                self.setSpecialRanking(a.aida_id, True)
 
         # count countries
         self.countries_ = Counter([a.country for a in self.athletes_])
@@ -293,19 +298,19 @@ class CompyData:
         logging.debug("-----------------")
         return nrs
 
-    def setNewcomer(self, athlete_id, newcomer):
+    def setSpecialRanking(self, athlete_id, special_ranking):
         found = False
         if len(self.athletes_) == 0:
-            logging.warning("Data not initialized yet in setNewcomer")
+            logging.warning("Data not initialized yet in setSpecialRanking")
             return 1
         for a in self.athletes_:
-            if a.id == athlete_id:
-                a.setNewcomer(newcomer)
+            if a.aida_id == athlete_id:
+                a.setSpecialRanking(special_ranking)
                 self.save()
                 found = True
                 return 0
         if not found:
-            logging.warning("Tried setting newcomer (" + str(newcomer) + ") to athlete with id '" + athlete_id + "' but this id could not be found")
+            logging.warning("Tried setting special_ranking (" + str(special_ranking) + ") to athlete with id '" + athlete_id + "' but this id could not be found")
         return 1
 
     def getSavedCompetitions(self):
@@ -335,6 +340,21 @@ class CompyData:
             return [0, self.name_]
 
     def save(self):
+        if self.id_ is None:
+            self.db_.execute('''INSERT INTO competition
+                                (name, save_date, version, lane_style, comp_type, comp_file, start_date, end_date)
+                                VALUES(?, ?, ?, ?, ?, ?, ?, ?)''',
+                             (self.name_, datetime.now().isoformat(), self.version,
+                              self.lane_style, self.comp_type, self.comp_file,
+                              self.start_date_, self.end_date_))
+            self.id_ = self.db_.last_index
+        self.db_.execute('''UPDATE competition
+                            SET name=?, save_date=?, version=?, lane_style=?, comp_type=?, comp_file=?,
+                            start_date=?, end_date=?, sponsor_img=?, selected_country=?,
+                            special_ranking_name=? WHERE id=?''',
+                         (self.name_, datetime.now().isoformat(), self.version, self.lane_style, self.comp_type,
+                          self.comp_file, self.start_date_, self.end_date_, str(self.sponsor_img_),
+                          self.selected_country_, self.special_ranking_name, self.id_))
         data = {}
         data["name"] = self.name_
         data["save_date"] = datetime.now().isoformat()
@@ -355,8 +375,13 @@ class CompyData:
         logging.debug("Saved to file: " + self.file_path)
 
     def load(self, name):
+        #TODO on load find self.id_ if not, reset to None
         prev_name = self.name
         self.name_ = name
+        load_data = self.db_.execute('''SELECT id FROM competition WHERE name=?''',
+                                     name)
+        if not load_data is None:
+            print("ld", load_data[0][0])
         if not os.path.exists(self.file_path):
             logging.error("Could not find save file with name '" + name + "'")
             self.name_ = prev_name
@@ -383,7 +408,7 @@ class CompyData:
             self.end_date_ = data["end_date"]
             self.disciplines_ = data["disciplines"]
             self.countries_ = data["countries"]
-            self.athletes_ = [athlete.Athlete.fromDict(a) for a in data["athletes"]]
+            self.athletes_ = [athlete.Athlete.fromDict(a, self.db_) for a in data["athletes"]]
             self.sponsor_img_ = data["sponsor_img"]
             self.selected_country_ = data["selected_country"]
             self.special_ranking_name_ = data["special_ranking_name"]
@@ -415,12 +440,12 @@ class CompyData:
         if self.disciplines is None:
             return []
         dwc = []
-        # only aida has Overall and Newcomer
+        # only aida has Overall and SpecialRanking
         if self.comp_type == "aida":
             dwc.append("Overall")
-            # only add newcomer result if we have at least one newcomer
+            # only add special_ranking result if we have at least one special_ranking
             for a in self.athletes_:
-                if a.newcomer:
+                if a.special_ranking:
                     dwc.append(self.special_ranking_name)
                     break
         dwc += self.disciplines
@@ -435,9 +460,9 @@ class CompyData:
         countries.append("International")
         if for_result:
             if self.comp_type == "cmas":
-                # only add newcomer result if we have at least one newcomer
+                # only add special_ranking result if we have at least one special_ranking
                 for a in self.athletes_:
-                    if a.newcomer:
+                    if a.special_ranking:
                         countries.append(self.special_ranking_name)
                         break
         else:
@@ -454,6 +479,7 @@ class CompyData:
             ap_lambda = lambda x, y, self: self.formatSTA(x, y)
         # RPs are 'Meters or Min.1'
         start_list = [{'Name': r['Diver Name'],
+                       'Nationality': r['Diver Country'],
                        'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)'], self),
                        'Warmup': self.parseTime(r['WT']),
                        'OT': self.parseTime(r['OT']),
@@ -493,9 +519,10 @@ class CompyData:
                 text-align: left;
             }}
             th, td {{
-                padding:10px 0px 10px 50px;
+                padding:5px 0px 2px 20px;
                 text-align: center;
                 border-bottom: 1px solid #ddd;
+                font-size: 12px;
             }}
             @page {{
                 margin: 4cm 1cm 6cm 1cm;
@@ -693,16 +720,16 @@ class CompyData:
             if (country != 'International'):
                 full_df = full_df[(full_df['Diver Country'] == country)]
             if discipline == self.special_ranking_name:
-                newcomer_ids = []
+                special_ranking_ids = []
                 for a in self.athletes_:
-                    if a.newcomer:
-                        newcomer_ids.append(a.id)
-                full_df = full_df[full_df['Diver Id'].astype('string').isin(newcomer_ids)]
+                    if a.special_ranking:
+                        special_ranking_ids.append(a.aida_id)
+                full_df = full_df[full_df['Diver Id'].astype('string').isin(special_ranking_ids)]
             reduction_dict = {'Points': 'sum', 'Diver Name': 'first', 'Diver Country': 'first'}
             for dis in self.disciplines:
                 reduction_dict[dis] = 'first'
                 if dis == "STA":
-                    full_df[dis] = full_df.apply(lambda row: formatSTA(row['Meters or Min.1'], row['Sec(STA only).1']) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
+                    full_df[dis] = full_df.apply(lambda row: self.formatSTA(row['Meters or Min.1'], row['Sec(STA only).1']) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
                 else:
                     full_df[dis] = full_df.apply(lambda row: str(row['Meters or Min.1']) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
             columns = self.disciplines + ["Diver Name", "Diver Id", "Diver Country", "Points"]
@@ -714,7 +741,7 @@ class CompyData:
             mask = result_df['Points'] != 0.
             result_df = result_df[mask]
             result_df = result_df.sort_values(by=['Points'], ascending=[False])
-            result_df.fillna("", inplace=True)
+            result_df.fillna("", inplace=True).infer_objects(copy=False)
             result_df['Rank'] = result_df['Points'].rank(ascending=False)
             columns = ['Rank', 'Diver Name', 'Diver Country'] + self.disciplines + ['Points'] # order is important for pdf output
             result_df = result_df[columns]
@@ -735,14 +762,14 @@ class CompyData:
                 result_df = result_df[(result_df['Diver Country'] == country)]
             if self.comp_type == "cmas" and country == self.special_ranking_name:
                 result_df = result_df[(result_df['Diver Country'] == self.selected_country) | (result_df['Diver Country'] == self.selected_country + "*")]
-                newcomer_ids = []
+                special_ranking_ids = []
                 for a in self.athletes_:
-                    if a.newcomer:
-                        newcomer_ids.append(a.id)
-                result_df = result_df[result_df['Diver Id'].astype('string').isin(newcomer_ids)]
+                    if a.special_ranking:
+                        special_ranking_ids.append(a.aida_id)
+                result_df = result_df[result_df['Diver Id'].astype('string').isin(special_ranking_ids)]
             result_df = result_df.sort_values(by=['Points', 'Meters or Min', 'Sec(STA only)'], ascending=[False, False, False])
             # RPs are 'Meters or Min.1'
-            result_df.fillna(0., inplace=True)
+            result_df.fillna(0., inplace=True).infer_objects(copy=False)
             if self.comp_type == "aida":
                 result = [{'Rank': i,
                            'Name': r['Diver Name'],
@@ -945,7 +972,7 @@ class CompyData:
             return None
         df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
         for a in self.athletes:
-            df_a = df[df['Diver Id'].astype('string') == a.id]
+            df_a = df[df['Diver Id'].astype('string') == a.aida_id]
             n = len(df_a.index)
             for i in range(n-1):
                 this_break = {"Name": a.first_name + " " + a.last_name}

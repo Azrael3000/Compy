@@ -24,13 +24,13 @@
  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 TODO:
-- PDF with top 3 only
-- Nationality in start list
-- Starting list on one page in pdf
+- Fix bug with OT accuracy only down to seconds
+- Starting list on one page in pdf (might not be possible)
 - On lane list larger border on left side for boards
 - NR database (CMAS/AIDA, latter automatic update, former with links to record pages)
 - NRs in lane list
 - Marking NRs/WRs in results
+- Support for mixed comp days
 
 WISHLIST:
 - User management
@@ -38,3 +38,17 @@ WISHLIST:
 - Write results into excel
 - Result view for public, embeddable
 - Overlays for streaming
+- Judge assignment to lanes
+- Mixed AIDA/CMAS comp
+- Automated start list generation with breaks based on PB
+- LED screen (show starters)
+- Testing
+
+Wishlist CD:
+- Non-AIDA members (requires start list and athletes modification)
+
+Wishlist DE:
+- AIDA Youth (Overall) 2nd special ranking
+- Non-AIDA members (only in Overall)
+- Pictures of athletes - from registration - auto social media images (low prio)
+- Certificates

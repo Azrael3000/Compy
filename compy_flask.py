@@ -28,6 +28,11 @@ import logging
 from flask import Flask, render_template, request, send_file, Response
 from os import path, mkdir
 from werkzeug.utils import secure_filename
+try:
+    import country_converter
+except ImportError:
+    print("Could not find country_converter. Install with 'pip3 install country_converter'")
+    exit(-1)
 
 class CompyFlask:
 
@@ -40,9 +45,13 @@ class CompyFlask:
 
         @app.route('/', methods=['GET'])
         def main():
+            all_countries = country_converter.CountryConverter().data["IOC"].dropna().to_list()
+            first_records = None #foo.get_records(Federation.AIDA, all_countries[0], Gender.FEMALE)
             content = {"version": self.data_.version,
                        "competitions": self.data_.getSavedCompetitions(),
-                       "comp_name": self.data_.name}
+                       "comp_name": self.data_.name,
+                       "all_countries": all_countries,
+                       "record_sta": None}
             return render_template('template.html', **content)
 
         @app.route('/upload_file', methods=['POST'])
@@ -61,9 +70,9 @@ class CompyFlask:
         def changeSpecialRankingName():
             return self.changeSpecialRankingName()
 
-        @app.route('/change_newcomer', methods=['POST'])
-        def changeNewcomer():
-            return self.changeNewcomer()
+        @app.route('/change_special_ranking', methods=['POST'])
+        def changeSpecialRanking():
+            return self.changeSpecialRanking()
 
         @app.route('/load_comp', methods=['POST'])
         def loadComp():
@@ -134,7 +143,7 @@ class CompyFlask:
                 self.data_.compFileChange(fpath)
                 data["athletes"] = []
                 for athlete in self.data_.athletes:
-                    data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id, "newcomer": athlete.newcomer})
+                    data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.aida_id, "special_ranking": athlete.special_ranking})
                 self.setSubmenuData(data)
                 self.data_.setOTs(data)
         data["status_msg"] = status_msg
@@ -164,17 +173,17 @@ class CompyFlask:
         data["status_msg"] = status_msg
         return data, 200
 
-    def changeNewcomer(self):
+    def changeSpecialRanking(self):
         content = request.json
         if "id" not in content and "checked" not in content:
-            logging.debug("Post request to change_newcomer without id and checked")
+            logging.debug("Post request to change_special_ranking without id and checked")
             return {}, 400
         athlete_id = content["id"]
-        is_newcomer = content["checked"]
-        if self.data_.setNewcomer(athlete_id, is_newcomer) == 0:
-            data = {"status": "success", "status_msg": "Successfully updated athlete with id '" + athlete_id + "' to value '" + str(is_newcomer) + "'"}
+        is_special_ranking = content["checked"]
+        if self.data_.setSpecialRanking(athlete_id, is_special_ranking) == 0:
+            data = {"status": "success", "status_msg": "Successfully updated athlete with id '" + athlete_id + "' to value '" + str(is_special_ranking) + "'"}
         else:
-            data = {"status": "success", "status_msg": "Failed to update athlete with id '" + athlete_id + "' to value '" + str(is_newcomer) + "'"}
+            data = {"status": "success", "status_msg": "Failed to update athlete with id '" + athlete_id + "' to value '" + str(is_special_ranking) + "'"}
         data["disciplines"] = self.data_.getDisciplines()
         return data, 200
 
@@ -203,7 +212,7 @@ class CompyFlask:
         data = {}
         data["athletes"] = []
         for athlete in self.data_.athletes:
-            data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.id, "newcomer": athlete.newcomer})
+            data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.aida_id, "special_ranking": athlete.special_ranking})
         data["comp_name"] = comp_name
         self.setSubmenuData(data)
         self.data_.setSpecialRankingName(data)

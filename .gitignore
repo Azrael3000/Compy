@@ -5,3 +5,5 @@ tmp/*
 uploads/*
 countdown/*
 download/*
+compy.sqlite
+\.env

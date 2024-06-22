@@ -41,10 +41,22 @@ Future features can be seen in the TODO file.
 
 ## Prerequisites
 
- - openpyxl
- - pandas
- - country_converter
- - flask
+ - git
+ - python3
+   - openpyxl
+   - pandas
+   - country_converter
+   - flask
+
+## Installing the software
+
+ - Navigate with a terminal (powershell on Windows) to the folder where you want to create the compy folder in
+ - Execute `git clone https://github.com/Azrael3000/Compy.git`
+ - Switch to the new folder: `cd Compy`
+ - Set up the environmen: `cp .env_sample .env`
+ - For deployments you MUST edit the .env file and provide a new secret. A new one can be generated e.g. by running
+   `python3 -c "import secrets; print(secrets.token_hex())"`
+ - Set up the database and run the server: `python3 compy.py --init_db`
 
 ## Running the software
 
