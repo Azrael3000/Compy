@@ -28,8 +28,9 @@ import logging
 
 class Athlete:
 
-    def __init__(self, aida_id, first_name, last_name, gender, country, special_ranking, club, db):
-        self.id_ = None
+    def __init__(self, aida_id, first_name, last_name, gender, country, special_ranking, club, db, a_id = None):
+        self.id_ = a_id
+        self.comp_athlete_id_ = None
         self.aida_id_ = str(aida_id)
         self.first_name_ = first_name
         self.last_name_ = last_name
@@ -41,13 +42,12 @@ class Athlete:
         self.createOrUpdate()
 
     @classmethod
-    def fromDict(cls, athlete_dict, db):
-        read_keys = ["id", "first_name", "last_name", "gender", "country", "special_ranking", "club"]
-        for key in read_keys:
-            if not key in athlete_dict:
-                logging.error("Invalid file, no '" + key + "' found");
-                return None
-        return cls(athlete_dict["id"], athlete_dict["first_name"], athlete_dict["last_name"], athlete_dict["gender"], athlete_dict["country"], athlete_dict["special_ranking"], athlete_dict["club"], db)
+    def fromDb(cls, a_id, db):
+        load_data = db.execute('''SELECT aida_id, first_name, last_name, gender, country, special_ranking, club
+                                  FROM athlete WHERE id=?''',
+                               a_id)
+        a_data = load_data[0]
+        return cls(a_data[0], a_data[1], a_data[2], a_data[3], a_data[4], a_data[5], a_data[6], db, a_id)
 
     @classmethod
     def fromArgs(cls, id, first_name, last_name, gender, country, club, db):
@@ -66,6 +66,7 @@ class Athlete:
                                          (self.first_name, self.last_name, self.gender))
             if db_id is not None:
                 self.id_ = db_id[0][0]
+
         if self.id_ is None:
             self.db_.execute('''INSERT INTO athlete
                                 (first_name, last_name, aida_id, gender, country, special_ranking, club)
@@ -79,6 +80,23 @@ class Athlete:
                                 special_ranking=?, club=? WHERE id=?''',
                              (self.first_name, self.last_name, self.aida_id, self.gender, self.country,
                               self.special_ranking, self.club, self.id_))
+
+    def associateWithComp(self, comp_id):
+        if self.comp_athlete_id_ is None:
+            if self.id_ is None:
+                logging.error("Cannot assign athlete to competition that has not db id")
+                return
+            db_id = self.db_.execute('''SELECT id FROM competition_athlete
+                                        WHERE competition_id=? AND athlete_id=?''',
+                                     (comp_id, self.id))
+            if db_id is not None:
+                self.comp_athlete_id_ = db_id[0][0]
+
+        # if the comp_athlete_id is set, we don't need to do anything
+        if self.comp_athlete_id_ is None:
+            self.db_.execute('''INSERT INTO competition_athlete (competition_id, athlete_id) VALUES(?, ?)''',
+                             (comp_id, self.id_))
+            self.comp_athlete_id_ = self.db_.last_index
 
     @property
     def id(self):
@@ -114,6 +132,7 @@ class Athlete:
 
     def setSpecialRanking(self, special_ranking):
         self.special_ranking_ = special_ranking
+        self.createOrUpdate()
 
     def saveData(self):
         self.createOrUpdate()

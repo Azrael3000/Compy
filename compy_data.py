@@ -56,6 +56,8 @@ import numpy as np
 import athlete
 from compy_config import CompyConfig
 
+disciplines=["FIM", "CNF", "CWT", "CWTB", "STA", "DNF", "DYN", "DYNB"]
+
 class CompyData:
 
     def __init__(self, db, app):
@@ -72,18 +74,14 @@ class CompyData:
         self.start_date_ = None
         self.end_date_ = None
         self.athletes_ = []
-        self.countries_ = None
         self.nrs_ = None
         self.sponsor_img_ = None
-        self.disciplines_ = None
+        self.disciplines_ = 0
         self.selected_country_ = None
 
         self.NR = namedtuple("NR", ["country", "gender", "discipline"])
 
-        for i in range(512):
-            if not os.path.exists(self.file_path):
-                break
-            self.name_ = "undefined" + str(i)
+        self.name_ = "undefined"
 
         with self.app_.app_context():
             self.save()
@@ -102,10 +100,6 @@ class CompyData:
     @property
     def special_ranking_name(self):
         return self.special_ranking_name_
-
-    @property
-    def file_path(self):
-        return os.path.join(self.config.storage_folder, self.name_ + ".cpy")
 
     @property
     def config(self):
@@ -163,7 +157,11 @@ class CompyData:
 
     @property
     def disciplines(self):
-        return self.disciplines_
+        dis = []
+        for bit, d in enumerate(disciplines):
+            if self.disciplines_ | 1<<bit:
+                dis.append(d)
+        return dis
 
     @property
     def sponsor_img_data(self):
@@ -171,6 +169,17 @@ class CompyData:
             return ""
         else:
             return self.sponsor_img_["data"]
+
+    @property
+    def countries(self):
+        if self.id_ is None:
+            return None
+        c_data = self.db_.execute('''SELECT athlete.country FROM athlete
+                                     INNER JOIN competition_athlete
+                                     ON athlete.id==competition_athlete.athlete_id
+                                     WHERE competition_athlete.competition_id==?''',
+                         self.id_)
+        return [c[0] for c in c_data]
 
     @property
     def sponsor_img_width(self):
@@ -227,7 +236,7 @@ class CompyData:
             if l == "Ends:":
                 self.end_date_ = df[df.keys()[1]][i]
             if l == "Disciplines:":
-                self.disciplines_ = df[df.keys()[1]][i].split(",")
+                self.disciplines_ = sum([1<<disciplines.index(d) for d in df[df.keys()[1]][i].split(",")])
             i += 1
         logging.debug("Start date: %s. End date: %s", self.start_date_, self.end_date_)
 
@@ -237,18 +246,13 @@ class CompyData:
         self.athletes_ = [athlete.Athlete.fromArgs(r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country'], r['Club'] if 'club' in r else "", self.db_) for i,r in df.iterrows()]
         [logging.debug("Athlete: %s %s %s %s %s", r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country']) for i,r in df.iterrows()]
         logging.debug("Number of athletes: %d", len(self.athletes_))
+        for a in self.athletes:
+            a.associateWithComp(self.id_)
 
         for a in athletes_old:
             if a.special_ranking:
                 logging.debug("set special_ranking:", a.aida_id, a.first_name)
                 self.setSpecialRanking(a.aida_id, True)
-
-        # count countries
-        self.countries_ = Counter([a.country for a in self.athletes_])
-        logging.debug("Country | Number of athletes:")
-        for c in self.countries_:
-            logging.debug("%s     | %s", c, self.countries_[c])
-        logging.debug("-----------------------------")
 
         # Do check if country converter is >= 1.2
         # only update if new nationalities are available (or forced)
@@ -271,7 +275,7 @@ class CompyData:
             if result:
                 country_value_map[cc.convert(result.group(2), to = 'IOC')] = result.group(1)
         nrs = {}
-        for c in self.countries_:
+        for c in self.countries:
             data = {
                 'nationality': str(country_value_map[c]),
                 'discipline': '',
@@ -292,9 +296,9 @@ class CompyData:
                 points = float(p.search(entries[i*10 + 6]).group(1))
                 nrs[self.NR(country=c, gender=gender, discipline=dis)] = [result, points]
         logging.debug("National records:")
-        logging.debug("Country | Gender | Diszipline | Result | Points")
+        logging.debug("Country | Gender | Discipline | Result | Points")
         for key, val in nrs.items():
-            logging.debug("%s | %s | %s | %s | %d", key.country, key.gender, key.diszipline, val[0], val[1])
+            logging.debug("%s | %s | %s | %s | %d", key.country, key.gender, key.discipline, val[0], val[1])
         logging.debug("-----------------")
         return nrs
 
@@ -315,104 +319,82 @@ class CompyData:
 
     def getSavedCompetitions(self):
         os.chdir(self.config.storage_folder)
-        saved_comp_files = glob.glob("*.cpy")
-        logging.debug(saved_comp_files)
-        if len(saved_comp_files) == 0:
-            return None
         saved_comp_info = []
-        for f in saved_comp_files:
-            with open(f, "r") as comp_file_data:
-                comp_data = json.load(comp_file_data)
-                saved_comp_info.append({"name": comp_data["name"], "save_date": comp_data["save_date"]})
+        comps = self.db_.execute("SELECT id, name, save_date FROM competition")
+        if comps is None:
+            return None
+        for comp in comps:
+            saved_comp_info.append({"comp_id": comp[0], "name": comp[1], "save_date": comp[2]})
         return sorted(saved_comp_info, key=lambda ci: ci["save_date"], reverse=True)
 
     def changeName(self, new_name, overwrite):
-        prev_name = self.name_
-        prev_path = self.file_path
-        self.name_ = new_name
-        if os.path.exists(self.file_path) and not overwrite:
-            self.name_ = prev_name
+        comp_id = self.db_.execute("SELECT id FROM competition WHERE name=?", new_name)
+        if not comp_id is None and not overwrite:
             return [1, self.name_]
         else:
-            if os.path.exists(self.file_path):
-                os.remove(prev_path)
+            self.name_ = new_name
+            if comp_id is None:
+                self.id_ = None
+            else:
+                self.id_ = comp_id[0][0]
             self.save()
             return [0, self.name_]
 
     def save(self):
         if self.id_ is None:
             self.db_.execute('''INSERT INTO competition
-                                (name, save_date, version, lane_style, comp_type, comp_file, start_date, end_date)
-                                VALUES(?, ?, ?, ?, ?, ?, ?, ?)''',
+                                (name, save_date, version, lane_style, comp_type, comp_file, start_date,
+                                 end_date, disciplines)
+                                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                              (self.name_, datetime.now().isoformat(), self.version,
                               self.lane_style, self.comp_type, self.comp_file,
-                              self.start_date_, self.end_date_))
+                              self.start_date_, self.end_date_, self.disciplines_))
             self.id_ = self.db_.last_index
+        sponsor_img_data = ""
+        if self.sponsor_img_ is not None:
+            sponsor_img_data = self.sponsor_img_["data"]
         self.db_.execute('''UPDATE competition
                             SET name=?, save_date=?, version=?, lane_style=?, comp_type=?, comp_file=?,
                             start_date=?, end_date=?, sponsor_img=?, selected_country=?,
                             special_ranking_name=? WHERE id=?''',
                          (self.name_, datetime.now().isoformat(), self.version, self.lane_style, self.comp_type,
-                          self.comp_file, self.start_date_, self.end_date_, str(self.sponsor_img_),
+                          self.comp_file, self.start_date_, self.end_date_, sponsor_img_data,
                           self.selected_country_, self.special_ranking_name, self.id_))
-        data = {}
-        data["name"] = self.name_
-        data["save_date"] = datetime.now().isoformat()
-        data["version"] = self.version
-        data["lane_style"] = self.lane_style
-        data["comp_type"] = self.comp_type
-        data["comp_file"] = self.comp_file
-        data["start_date"] = self.start_date_
-        data["end_date"] = self.end_date_
-        data["disciplines"] = self.disciplines_
-        data["countries"] = self.countries_
-        data["athletes"] = [a.saveData() for a in self.athletes]
-        data["sponsor_img"] = self.sponsor_img_
-        data["selected_country"] = self.selected_country_
-        data["special_ranking_name"] = self.special_ranking_name
-        with open(self.file_path, "w") as write_file:
-            json.dump(data, write_file)
-        logging.debug("Saved to file: " + self.file_path)
+        logging.debug("Saved competition: " + self.name)
 
-    def load(self, name):
+    def load(self, comp_id):
         #TODO on load find self.id_ if not, reset to None
-        prev_name = self.name
-        self.name_ = name
-        load_data = self.db_.execute('''SELECT id FROM competition WHERE name=?''',
-                                     name)
-        if not load_data is None:
-            print("ld", load_data[0][0])
-        if not os.path.exists(self.file_path):
-            logging.error("Could not find save file with name '" + name + "'")
-            self.name_ = prev_name
-            return 1
+        load_data = self.db_.execute('''SELECT name, version, lane_style, comp_type, comp_file,
+                                        start_date, end_date, sponsor_img, selected_country,
+                                        special_ranking_name, disciplines
+                                        FROM competition WHERE id=?''',
+                                     comp_id)
+        if load_data is None:
+            logging.error("Could not find save file with id '" + id + "'")
+            return ""
         else:
-            with open(self.file_path, "r") as read_file:
-                data = json.load(read_file)
-            if not "name" in data:
-                logging.error("Invalid file, no 'name' found")
-                return 1
-            if data["name"] != self.name:
-                logging.error("Invalid file, 'name' does not match (" + self.name + " != " + data["name"] + ")")
-                return 1
-            read_keys = ["save_date", "version", "lane_style", "comp_type", "comp_file", "start_date", "end_date", "athletes", "special_ranking_name"]
-            for key in read_keys:
-                if not key in data:
-                    logging.error("Invalid file, no '" + key + "' found")
-                    return 1
-            self.version_ = data["version"]
-            self.lane_style_ = data["lane_style"]
-            self.comp_type_ = data["comp_type"]
-            self.comp_file_ = data["comp_file"]
-            self.start_date_ = data["start_date"]
-            self.end_date_ = data["end_date"]
-            self.disciplines_ = data["disciplines"]
-            self.countries_ = data["countries"]
-            self.athletes_ = [athlete.Athlete.fromDict(a, self.db_) for a in data["athletes"]]
-            self.sponsor_img_ = data["sponsor_img"]
-            self.selected_country_ = data["selected_country"]
-            self.special_ranking_name_ = data["special_ranking_name"]
+            comp_data = load_data[0]
+            self.name_ = comp_data[0]
+            self.version_ = comp_data[1]
+            self.lane_style_ = comp_data[2]
+            self.comp_type_ = comp_data[3]
+            self.comp_file_ = comp_data[4]
+            self.start_date_ = comp_data[5]
+            self.end_date_ = comp_data[6]
+            self.sponsor_img_ = {"data": comp_data[7], "aspect_ratio": 1} # TODO
+            self.selected_country_ = comp_data[8]
+            self.special_ranking_name_ = comp_data[9]
+            self.disciplines_ = comp_data[10]
+            load_data = self.db_.execute("SELECT athlete_id FROM competition_athlete WHERE competition_id=?",
+                                         comp_id)
+            if load_data is None:
+                self.athletes_ = []
+            else:
+                self.athletes_ = [athlete.Athlete.fromDb(a_id[0], self.db_) for a_id in load_data]
+                for a in self.athletes:
+                    a.associateWithComp(self.id_)
             #self.getResultPDF('all', 'all', 'all', False, True)
+            return self.name_
 
     def getDays(self):
         if self.start_date is None:
@@ -453,7 +435,7 @@ class CompyData:
 
     def getCountries(self, for_result=False):
         countries = []
-        if self.countries_ is None:
+        if self.countries is None:
             return []
         if self.selected_country != "none":
             countries.append(self.selected_country)
@@ -466,8 +448,7 @@ class CompyData:
                         countries.append(self.special_ranking_name)
                         break
         else:
-            for c in self.countries_:
-                countries.append(c)
+            countries += self.countries
         return countries
 
     def getStartList(self, day, discipline):
@@ -950,12 +931,9 @@ class CompyData:
         if country == "none":
             self.selected_country_ = None
         else:
-            found = False
-            for c in self.countries_:
-                if country == c:
-                    self.selected_country_ = country
-                    found = True
-            if not found:
+            if country in self.countries:
+                self.selected_country_ = country
+            else:
                 return 1
         self.save()
         return 0

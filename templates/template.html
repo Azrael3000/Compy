@@ -115,7 +115,7 @@
                     <li>No previous competition available</li>
                 {% else %}
                     {% for comp in competitions %}
-                        <li>{{ comp.name }} (last save: {{ comp.save_date }}) <button id="load_{{ comp.name}}" class="load_comp_button" type="button">Load</button></li>
+                        <li>{{ comp.name }} (last save: {{ comp.save_date }}) <button id="load_{{ comp.comp_id}}" class="load_comp_button" type="button">Load</button></li>
                     {% endfor %}
                 {% endif %}
             </ul>

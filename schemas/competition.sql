@@ -12,5 +12,6 @@ CREATE TABLE competition (
   end_date TEXT,
   sponsor_img TEXT,
   selected_country TEXT,
+  disciplines INTEGER NOT NULL,
   special_ranking_name TEXT
 );

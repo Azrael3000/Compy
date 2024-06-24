@@ -295,8 +295,8 @@ $(document).ready(function() {
         })
     });
     $("#competition_list").delegate(".load_comp_button", "click", function() {
-        let comp_name = this.id.substring(5); // button id is equal to "load_" + comp name
-        let data = {comp_name: comp_name};
+        let comp_id = this.id.substring(5); // button id is equal to "load_" + comp id
+        let data = {comp_id: comp_id};
         $.ajax({
             type: "POST",
             url: "/load_comp",

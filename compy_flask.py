@@ -204,11 +204,11 @@ class CompyFlask:
 
     def loadComp(self):
         content = request.json
-        if "comp_name" not in content:
-            logging.debug("Post request to load_comp without comp_name")
+        if "comp_id" not in content:
+            logging.debug("Post request to load_comp without comp_id")
             return {}, 400
-        comp_name = content["comp_name"]
-        self.data_.load(comp_name)
+        comp_id = content["comp_id"]
+        comp_name = self.data_.load(comp_id)
         data = {}
         data["athletes"] = []
         for athlete in self.data_.athletes:
