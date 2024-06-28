@@ -135,11 +135,17 @@ class CompyData:
         self.save()
         return 0
 
-    def laneStyleConverter(self, lane):
-        if self.lane_style_ == "alphabetic":
-            return chr(lane + 64)
-        else: # numeric
-            return str(lane)
+    def laneStyleConverter(self, lane, invert=False):
+        if invert:
+            if self.lane_style_ == "alphabetic":
+                return ord(lane) - 64
+            else: # numeric
+                return int(lane)
+        else:
+            if self.lane_style_ == "alphabetic":
+                return chr(lane + 64)
+            else: # numeric
+                return str(lane)
 
     @property
     def comp_file(self):
@@ -185,6 +191,8 @@ class CompyData:
                                      ON athlete.id==competition_athlete.athlete_id
                                      WHERE competition_athlete.competition_id==?''',
                          self.id_)
+        if c_data is None:
+            return []
         return [c[0] for c in c_data]
 
     @property
@@ -606,18 +614,21 @@ class CompyData:
             return fname
 
     def getLaneList(self, day, discipline, lane):
-        if self.comp_file is None:
+        lane_db = self.laneStyleConverter(lane, True)
+        db_out = self.db_.execute('''SELECT a.first_name, a.last_name, s.AP, s.OT, a.country
+                                     FROM athlete a
+                                     INNER JOIN competition_athlete ca ON a.id == ca.athlete_id
+                                     INNER JOIN start s ON s.competition_athlete_id == ca.id
+                                     WHERE s.discipline == ? AND s.lane == ? AND s.day == ?
+                                  ''',
+                                  (discipline, lane, day))
+        if db_out is None:
             return None
-        df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
-        ap_lambda = lambda x, y, self: str(x)
-        if discipline == "STA":
-            ap_lambda = lambda x, y, self: self.formatSTA(x, y)
-        # RPs are 'Meters or Min.1'
-        lane_list = [{'Name': r['Diver Name'],
-                       'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)'], self),
-                       'OT': self.parseTime(r['OT']),
-                       'NR': r['Diver Country']}
-                       for i,r in df.iterrows() if r['Discipline'] == discipline and self.laneStyleConverter(str(r['Zone'])) == lane]
+        lane_list = [{'Name': r[0] + " " + r[1],
+                       'AP': r[2],
+                       'OT': r[3],
+                       'NR': r[4]}
+                       for r in db_out]
         return lane_list
 
     def getLaneListPDF(self, day="all", discipline="all", lane="all", in_memory=False):
@@ -1022,10 +1033,13 @@ class CompyData:
     def setOTs(self, data):
         ots = []
         for day in self.getDays():
-            df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
-            ots_on_day = list({self.parseTime(r['OT']) for i,r in df.iterrows()})
+            ots_on_day = self.db_.execute(
+                '''SELECT DISTINCT s.OT from start s
+                   INNER JOIN competition_athlete ca ON ca.id == s.competition_athlete_id
+                   WHERE ca.competition_id == ? AND s.day == ?''',
+                (self.id_, day))
             dayc = ":".join(day.split("-"))
-            ots += [dayc + ":" + ot + ":00" for ot in ots_on_day]
+            ots += [dayc + ":" + ot[0] + ":00" for ot in ots_on_day]
         data["ots"] = ots
 
     def setSpecialRankingName(self, data):
