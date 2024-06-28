@@ -33,6 +33,7 @@ import logging
 from collections import Counter, namedtuple
 import requests
 import re
+import math
 try:
     import country_converter
 except ImportError:
@@ -84,7 +85,12 @@ class CompyData:
         self.name_ = "undefined"
 
         with self.app_.app_context():
-            self.save()
+            # try and find it first
+            c_id = self.db_.execute("SELECT id FROM competition WHERE name=?", self.name_)
+            if c_id is not None:
+                self.load(c_id[0][0])
+            else:
+                self.save()
 
     @property
     def version(self):
@@ -224,6 +230,8 @@ class CompyData:
         self.refresh()
 
     def refresh(self):
+        if self.id_ is not None:
+            self.db_.execute("DELETE FROM competition_athlete WHERE competition_id=?", self.id_)
         # read first sheet (start & end date)
         if not os.path.exists(self.comp_file_):
             logging.error("File '%s' does not exist", self.comp_file_)
@@ -259,6 +267,33 @@ class CompyData:
         #self.nrs_ = self.getNationalRecords()
 
         self.save()
+
+        self.db_.execute('''DELETE FROM start
+                            WHERE competition_athlete_id IN (
+                                SELECT competition_athlete_id FROM start
+                                INNER JOIN competition_athlete
+                                ON start.competition_athlete_id == competition_athlete.id
+                                WHERE competition_athlete.competition_id == ?)''',
+                         self.id_)
+
+        ap_lambda = lambda x, y, d, self: self.formatSTA(x, y) if d=="STA" else str(x)
+        for day in self.getDays():
+            df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
+            for i,r in df.iterrows():
+                aida_id = r['Diver Id']
+                ca_id = self.db_.execute('''SELECT competition_athlete.id FROM competition_athlete
+                                            INNER JOIN athlete
+                                            ON competition_athlete.athlete_id == athlete.id
+                                            WHERE athlete.aida_id=?''',
+                                         aida_id)
+                dis = r['Discipline']
+                ap = ap_lambda(r['Meters or Min'], r['Sec(STA only)'], dis, self)
+                ot = self.parseTime(r['OT'])
+                lane = int(r['Zone'])
+                self.db_.execute('''INSERT INTO start
+                                    (competition_athlete_id, discipline, lane, OT, AP, day)
+                                    VALUES (?, ?, ?, ?, ?, ?)''',
+                                 (ca_id[0][0], dis, lane, ot, ap, day))
 
     def getNationalRecords(self):
         empty_req = requests.post('https://www.aidainternational.org/public_pages/all_national_records.php', data={})
@@ -373,6 +408,7 @@ class CompyData:
             logging.error("Could not find save file with id '" + id + "'")
             return ""
         else:
+            self.id_ = comp_id
             comp_data = load_data[0]
             self.name_ = comp_data[0]
             self.version_ = comp_data[1]
@@ -409,11 +445,16 @@ class CompyData:
     def getDaysWithDisciplinesLanes(self):
         dwd = {}
         for day in self.getDays():
-            df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
-            disciplines_on_day = list({r['Discipline'] for i,r in df.iterrows()})
+            db_out = self.db_.execute('''SELECT DISTINCT discipline, lane FROM start s
+                                         INNER JOIN competition_athlete ca
+                                         ON s.competition_athlete_id == ca.id
+                                         WHERE (ca.competition_id==? AND s.day==?)''',
+                                      (self.id_, day))
+            print(">>>", day)
+            disciplines_on_day = list({d[0] for d in db_out})
             disciplines_w_lanes = {}
             for dis in disciplines_on_day:
-                disciplines_w_lanes[dis] = list({self.laneStyleConverter(r['Zone']) for i,r in df.iterrows() if r['Discipline'] == dis})
+                disciplines_w_lanes[dis] = [d[1] for d in db_out if d[0]==dis]
             dwd[day] = disciplines_w_lanes
         logging.debug(dwd)
         return dwd
@@ -454,19 +495,29 @@ class CompyData:
     def getStartList(self, day, discipline):
         if self.comp_file is None:
             return None
-        df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
-        ap_lambda = lambda x, y, self: str(x)
-        if discipline == "STA":
-            ap_lambda = lambda x, y, self: self.formatSTA(x, y)
+        db_out = self.db_.execute('''
+            SELECT a.first_name, a.last_name, a.country, s.AP, s.OT, s.lane
+            FROM start s
+            INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
+            INNER JOIN athlete a ON ca.athlete_id == a.id
+            WHERE ca.competition_id==? AND s.discipline==? AND s.day==?''',
+            (self.id_, discipline, day))
         # RPs are 'Meters or Min.1'
-        start_list = [{'Name': r['Diver Name'],
-                       'Nationality': r['Diver Country'],
-                       'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)'], self),
-                       'Warmup': self.parseTime(r['WT']),
-                       'OT': self.parseTime(r['OT']),
-                       'Lane': self.laneStyleConverter(r['Zone'])}
-                       for i,r in df.iterrows() if r['Discipline'] == discipline]
+        start_list = [{'Name': r[0] + " " + r[1],
+                       'Nationality': r[2],
+                       'AP': r[3],
+                       'Warmup': self.getWTfromOT(r[4]),
+                       'OT': r[4],
+                       'Lane': self.laneStyleConverter(r[5])}
+                       for r in db_out]
         return start_list
+
+    def getWTfromOT(self, ot):
+        ota = ot.split(':')
+        otf = int(ot[0])*60 + int(ot[1])
+        wtf = otf-45 # does not work if ot is close to midnight, but seriously?
+        wt = str(math.floor(wtf/60)) + ":" + str(wtf%60)
+        return wt
 
     def getStartListPDF(self, day="all", discipline="all", in_memory=False):
         if day=="all" and discipline=="all":
