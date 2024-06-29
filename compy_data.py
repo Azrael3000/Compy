@@ -239,6 +239,13 @@ class CompyData:
 
     def refresh(self):
         if self.id_ is not None:
+            self.db_.execute('''DELETE FROM start
+                                WHERE competition_athlete_id IN (
+                                    SELECT competition_athlete_id FROM start
+                                    INNER JOIN competition_athlete
+                                    ON start.competition_athlete_id == competition_athlete.id
+                                    WHERE competition_athlete.competition_id == ?)''',
+                             self.id_)
             self.db_.execute("DELETE FROM competition_athlete WHERE competition_id=?", self.id_)
         # read first sheet (start & end date)
         if not os.path.exists(self.comp_file_):
@@ -276,15 +283,7 @@ class CompyData:
 
         self.save()
 
-        self.db_.execute('''DELETE FROM start
-                            WHERE competition_athlete_id IN (
-                                SELECT competition_athlete_id FROM start
-                                INNER JOIN competition_athlete
-                                ON start.competition_athlete_id == competition_athlete.id
-                                WHERE competition_athlete.competition_id == ?)''',
-                         self.id_)
-
-        ap_lambda = lambda x, y, d, self: self.formatSTA(x, y) if d=="STA" else str(x)
+        ap_lambda = lambda x, y, d, self: None if math.isnan(x) else (int(x)*60+float(y) if d=="STA" else float(x))
         for day in self.getDays():
             df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
             for i,r in df.iterrows():
@@ -298,10 +297,26 @@ class CompyData:
                 ap = ap_lambda(r['Meters or Min'], r['Sec(STA only)'], dis, self)
                 ot = self.parseTime(r['OT'])
                 lane = int(r['Zone'])
-                self.db_.execute('''INSERT INTO start
-                                    (competition_athlete_id, discipline, lane, OT, AP, day)
-                                    VALUES (?, ?, ?, ?, ?, ?)''',
-                                 (ca_id[0][0], dis, lane, ot, ap, day))
+                rp = ap_lambda(r['Meters or Min.1'], r['Sec(STA only).1'], dis, self)
+                card = r['Card']
+                pen_other = float(r['Pen(other)']) if not math.isnan(r['Pen(other)']) else 0.
+                penalty = float(r['Pen(UNDER AP)']) + pen_other
+                remarks = r['Remarks']
+                if remarks == "DNS":
+                    rp = float('nan')
+                    card = "nan"
+                    penalty = "nan"
+                if rp is not None:
+                    self.db_.execute('''INSERT INTO start
+                                        (competition_athlete_id, discipline, lane, OT, AP, day,
+                                         rp, card, penalty, remarks)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                     (ca_id[0][0], dis, lane, ot, ap, day, rp, card, penalty, remarks))
+                else:
+                    self.db_.execute('''INSERT INTO start
+                                        (competition_athlete_id, discipline, lane, OT, AP, day)
+                                        VALUES (?, ?, ?, ?, ?, ?)''',
+                                     (ca_id[0][0], dis, lane, ot, ap, day))
 
     def getNationalRecords(self):
         empty_req = requests.post('https://www.aidainternational.org/public_pages/all_national_records.php', data={})
@@ -458,13 +473,14 @@ class CompyData:
                                          ON s.competition_athlete_id == ca.id
                                          WHERE (ca.competition_id==? AND s.day==?)''',
                                       (self.id_, day))
-            print(">>>", day)
+            if db_out is None:
+                continue
             disciplines_on_day = list({d[0] for d in db_out})
             disciplines_w_lanes = {}
             for dis in disciplines_on_day:
                 disciplines_w_lanes[dis] = [d[1] for d in db_out if d[0]==dis]
             dwd[day] = disciplines_w_lanes
-        logging.debug(dwd)
+        logging.debug("dwd:" + str(dwd))
         return dwd
 
     def getDisciplines(self):
@@ -510,15 +526,27 @@ class CompyData:
             INNER JOIN athlete a ON ca.athlete_id == a.id
             WHERE ca.competition_id==? AND s.discipline==? AND s.day==?''',
             (self.id_, discipline, day))
-        # RPs are 'Meters or Min.1'
         start_list = [{'Name': r[0] + " " + r[1],
                        'Nationality': r[2],
-                       'AP': r[3],
+                       'AP': self.convertPerformance(r[3], discipline),
                        'Warmup': self.getWTfromOT(r[4]),
                        'OT': r[4],
                        'Lane': self.laneStyleConverter(r[5])}
                        for r in db_out]
         return start_list
+
+    def convertPerformance(self, val, dis):
+        if dis == "STA":
+            m = floor(val/60)
+            s = val - m*60
+            out = str(int(m)) + ":"
+            if self.comp_type == "aida":
+                out += str(int(s)).zfill(2)
+            else:
+                out += "%05.2f" % round(s, 2)
+            return out
+        else:
+            return str(val)
 
     def getWTfromOT(self, ot):
         ota = ot.split(':')
@@ -625,7 +653,7 @@ class CompyData:
         if db_out is None:
             return None
         lane_list = [{'Name': r[0] + " " + r[1],
-                       'AP': r[2],
+                       'AP': self.convertPerformance(r[2], discipline),
                        'OT': r[3],
                        'NR': r[4]}
                        for r in db_out]
@@ -1010,16 +1038,21 @@ class CompyData:
                 break
         if not found:
             return None
-        df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
         for a in self.athletes:
-            df_a = df[df['Diver Id'].astype('string') == a.aida_id]
-            n = len(df_a.index)
+            db_out = self.db_.execute(
+                '''SELECT s.OT, s.discipline FROM start s
+                   INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
+                   WHERE s.day = ? AND ca.competition_id = ? AND ca.athlete_id == ?''',
+                (day, self.id_, a.id))
+            if db_out is None:
+                continue
+            n = len(db_out)
             for i in range(n-1):
                 this_break = {"Name": a.first_name + " " + a.last_name}
-                this_break["Dis1"] = df_a['Discipline'].iloc[i+0]
-                this_break["Dis2"] = df_a['Discipline'].iloc[i+1]
-                this_break["OT1"] = self.parseTime(df_a['OT'].iloc[i+0])
-                this_break["OT2"] = self.parseTime(df_a['OT'].iloc[i+1])
+                this_break["Dis1"] = db_out[i][1]
+                this_break["Dis2"] = db_out[i+1][1]
+                this_break["OT1"] = db_out[i][0]
+                this_break["OT2"] = db_out[i+1][0]
                 ot1 = this_break["OT1"].split(":")
                 ot2 = this_break["OT2"].split(":")
                 time = int(ot2[0])*60 + int(ot2[1]) - int(ot1[0])*60 - int(ot1[1])
@@ -1038,6 +1071,8 @@ class CompyData:
                    INNER JOIN competition_athlete ca ON ca.id == s.competition_athlete_id
                    WHERE ca.competition_id == ? AND s.day == ?''',
                 (self.id_, day))
+            if ots_on_day is None:
+                continue
             dayc = ":".join(day.split("-"))
             ots += [dayc + ":" + ot[0] + ":00" for ot in ots_on_day]
         data["ots"] = ots
@@ -1058,6 +1093,8 @@ class CompyData:
             return str(date)
 
     def formatSTA(self, minutes, seconds):
+        if seconds == "" or math.isnan(seconds):
+            return ""
         out = str(int(minutes)) + ":"
         if self.comp_type == "aida":
             out += str(int(seconds)).zfill(2)

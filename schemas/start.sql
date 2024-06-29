@@ -7,10 +7,10 @@ CREATE TABLE start (
   lane INTEGER NOT NULL,
   day TEXT NOT NULL,
   OT TEXT NOT NULL,
-  PB TEXT,
-  AP TEXT,
-  RP TEXT,
+  PB FLOAT,
+  AP FLOAT,
+  RP FLOAT,
   card TEXT,
-  penalty TEXT,
+  penalty FLOAT,
   remarks TEXT
 );
