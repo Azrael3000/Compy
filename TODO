@@ -25,6 +25,7 @@
 
 TODO:
 - Fix bug with OT accuracy only down to seconds
+- When saving a new competition, update the competition_list <ul>
 - Starting list on one page in pdf (might not be possible)
 - On lane list larger border on left side for boards
 - NR database (CMAS/AIDA, latter automatic update, former with links to record pages)

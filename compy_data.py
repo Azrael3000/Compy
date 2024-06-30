@@ -171,7 +171,7 @@ class CompyData:
     def disciplines(self):
         dis = []
         for bit, d in enumerate(disciplines):
-            if self.disciplines_ | 1<<bit:
+            if self.disciplines_ & 1<<bit:
                 dis.append(d)
         return dis
 
@@ -259,6 +259,7 @@ class CompyData:
             if l == "Ends:":
                 self.end_date_ = df[df.keys()[1]][i]
             if l == "Disciplines:":
+                print([1<<disciplines.index(d) for d in df[df.keys()[1]][i].split(",")], df[df.keys()[1]][i].split(","))
                 self.disciplines_ = sum([1<<disciplines.index(d) for d in df[df.keys()[1]][i].split(",")])
             i += 1
         logging.debug("Start date: %s. End date: %s", self.start_date_, self.end_date_)
@@ -274,7 +275,7 @@ class CompyData:
 
         for a in athletes_old:
             if a.special_ranking:
-                logging.debug("set special_ranking:", a.aida_id, a.first_name)
+                logging.debug("set special_ranking: %s %s", a.aida_id, a.first_name)
                 self.setSpecialRanking(a.aida_id, True)
 
         # Do check if country converter is >= 1.2
@@ -414,10 +415,11 @@ class CompyData:
         self.db_.execute('''UPDATE competition
                             SET name=?, save_date=?, version=?, lane_style=?, comp_type=?, comp_file=?,
                             start_date=?, end_date=?, sponsor_img=?, selected_country=?,
-                            special_ranking_name=? WHERE id=?''',
+                            special_ranking_name=?, disciplines=? WHERE id=?''',
                          (self.name_, datetime.now().isoformat(), self.version, self.lane_style, self.comp_type,
                           self.comp_file, self.start_date_, self.end_date_, sponsor_img_data,
-                          self.selected_country_, self.special_ranking_name, self.id_))
+                          self.selected_country_, self.special_ranking_name, self.disciplines_,
+                          self.id_))
         logging.debug("Saved competition: " + self.name)
 
     def load(self, comp_id):
@@ -821,49 +823,55 @@ class CompyData:
             result_keys += self.disciplines + ["Points"]
             return result_df.to_dict('records'), result_keys
         else:
-            ap_lambda = lambda x, y, self: str(x)
-            if discipline == "STA":
-                ap_lambda = lambda x, y, self: self.formatSTA(x, y)
-            dfs = []
-            for day in self.getDays():
-                dfs.append(pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1))
-            full_df = pd.concat(dfs)
-            result_df = full_df[(full_df['Discipline'] == discipline) & (full_df['Gender'] == gender)]
+            cmd = '''SELECT a.first_name, a.last_name, a.country, a.club,
+                            s.AP, s.RP, s.penalty, s.card, s.remarks
+                     FROM start s
+                     INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
+                     INNER JOIN athlete a ON ca.athlete_id == a.id
+                     WHERE s.discipline == ? AND a.gender == ? AND s.remarks IS NOT NULL'''
+            args = (discipline, gender)
             if country != 'International' and country != self.special_ranking_name:
-                result_df = result_df[(result_df['Diver Country'] == country)]
+                cmd += " AND a.country = ?"
+                args += (country, )
             if self.comp_type == "cmas" and country == self.special_ranking_name:
-                result_df = result_df[(result_df['Diver Country'] == self.selected_country) | (result_df['Diver Country'] == self.selected_country + "*")]
-                special_ranking_ids = []
-                for a in self.athletes_:
-                    if a.special_ranking:
-                        special_ranking_ids.append(a.aida_id)
-                result_df = result_df[result_df['Diver Id'].astype('string').isin(special_ranking_ids)]
-            result_df = result_df.sort_values(by=['Points', 'Meters or Min', 'Sec(STA only)'], ascending=[False, False, False])
-            # RPs are 'Meters or Min.1'
-            result_df.fillna(0., inplace=True).infer_objects(copy=False)
+                cmd += " AND a.country = ? AND a.special_ranking"
+                args += (self.selected_country, )
+            db_out = self.db_.execute(cmd, args)
+
+            if db_out is None:
+                return [], []
+
             if self.comp_type == "aida":
                 result = [{'Rank': i,
-                           'Name': r['Diver Name'],
-                           'Country': r['Diver Country'],
-                           'AP': ap_lambda(r['Meters or Min'], r['Sec(STA only)'], self),
-                           'RP': ap_lambda(r['Meters or Min.1'], r['Sec(STA only).1'], self),
-                           'Penalty': float(r['Pen(UNDER AP)']) + float(r['Pen(other)']),
-                           'Card': r['Card'],
-                           'Remarks': r['Remarks'],
-                           'Points': r['Points']}
-                           for i,r in result_df.iterrows()]
+                           'Name': r[0] + " " + r[1],
+                           'Country': r[2],
+                           'AP_float': r[4],
+                           'AP': self.convertPerformance(r[4], discipline),
+                           'RP': self.convertPerformance(r[5], discipline) if r[8] != "DNS" else 0.,
+                           'Penalty': r[6] if r[8] != "DNS" else "",
+                           'Card': r[7] if r[8] != "DNS" else "",
+                           'Remarks': r[8],
+                           'Points': self.computePoints(r[5], r[6], r[7], r[8], discipline)}
+                           for i,r in enumerate(db_out)]
                 result_keys += ["AP", "RP", "Penalty", "Card", "Remarks", "Points"]
+
+                # sorting according to rp (descending), card (white before others), ap (descending)
+                result.sort(key=lambda r: (-r['Points'], 0 if r['Card'] == "WHITE" or r['Remarks'] != "DNS" else 1, -r['AP_float']))
             else:
                 result = [{'Rank': i,
-                           'Name': r['Diver Name'],
-                           'Country': r['Diver Country'],
-                           'Club': r['Club'],
-                           'RP': ap_lambda(r['Meters or Min.1'], r['Sec(STA only).1'], self),
-                           'Card': r['Card'],
-                           'Remarks': r['Remarks'],
-                           'Points': r['Points']}
-                           for i,r in result_df.iterrows()]
+                           'Name': r[0] + " " + r[1],
+                           'Country': r[2],
+                           'Club': r[3],
+                           'RP': self.convertPerformance(r[5], discipline) if r[8] != "DNS" else 0.,
+                           'Card': r[7] if r[8] != "DNS" else "",
+                           'Remarks': r[8],
+                           'Points': self.computePoints(r[5], r[6], r[7], r[8], discipline)}
+                           for i,r in enumerate(db_out)]
                 result_keys += ["RP", "Card", "Remarks"]
+
+                # sorting according to rp (descending)
+                result.sort(key=lambda r: (-r['Points'], 0 if r['Remarks'] != "DNS" else 1))
+
             cur_points = 1000000
             cur_ap = ""
             for i in range(len(result)):
@@ -877,6 +885,19 @@ class CompyData:
                         cur_ap = result[i]["AP"]
                     result[i]["Rank"] = i+1
             return result, result_keys
+
+    def computePoints(self, rp, penalty, card, remarks, discipline):
+        if card == "RED" or remarks == "DNS":
+            return 0.
+        if self.comp_type == "CMAS":
+            return rp - penalty
+        else:
+            if discipline == "STA":
+                return int(rp)*0.2 - penalty
+            elif discipline in ["DNF", "DYNB", "DYN"]:
+                return int(rp)*0.5 - penalty
+            else:
+                return int(rp) - penalty
 
     def getResultPDF(self, discipline="all", gender="all", country="all", in_memory=False, top3=False):
         if discipline=="all" and gender=="all":
