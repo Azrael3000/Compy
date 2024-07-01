@@ -186,7 +186,7 @@ class CompyData:
     def countries(self):
         if self.id_ is None:
             return None
-        c_data = self.db_.execute('''SELECT athlete.country FROM athlete
+        c_data = self.db_.execute('''SELECT DISTINCT athlete.country FROM athlete
                                      INNER JOIN competition_athlete
                                      ON athlete.id==competition_athlete.athlete_id
                                      WHERE competition_athlete.competition_id==?''',
@@ -538,8 +538,10 @@ class CompyData:
         return start_list
 
     def convertPerformance(self, val, dis):
+        if val is None:
+            return ""
         if dis == "STA":
-            m = floor(val/60)
+            m = math.floor(val/60)
             s = val - m*60
             out = str(int(m)) + ":"
             if self.comp_type == "aida":
@@ -785,43 +787,55 @@ class CompyData:
             if self.comp_type == "cmas":
                 logging.error("Attempted to get " + discipline + " ranking for cmas competition")
                 return None, None
-            dfs = []
-            for day in self.getDays():
-                dfs.append(pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1))
-            full_df = pd.concat(dfs)
-            full_df = full_df[(full_df['Gender'] == gender)]
-            if (country != 'International'):
-                full_df = full_df[(full_df['Diver Country'] == country)]
+            cmd = '''SELECT ca.id, a.first_name, a.last_name, a.country, a.club,
+                            s.rp, s.penalty, s.card, s.remarks, s.discipline
+                     FROM start s
+                     INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
+                     INNER JOIN athlete a ON ca.athlete_id == a.id
+                     WHERE a.gender == ? AND s.remarks IS NOT NULL'''
+            args = (gender, )
+
+            if country != 'International':
+                cmd += " AND a.country = ?"
+                args += (country, )
             if discipline == self.special_ranking_name:
-                special_ranking_ids = []
-                for a in self.athletes_:
-                    if a.special_ranking:
-                        special_ranking_ids.append(a.aida_id)
-                full_df = full_df[full_df['Diver Id'].astype('string').isin(special_ranking_ids)]
-            reduction_dict = {'Points': 'sum', 'Diver Name': 'first', 'Diver Country': 'first'}
-            for dis in self.disciplines:
-                reduction_dict[dis] = 'first'
-                if dis == "STA":
-                    full_df[dis] = full_df.apply(lambda row: self.formatSTA(row['Meters or Min.1'], row['Sec(STA only).1']) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
+                cmd += " AND a.special_ranking"
+
+            db_out = self.db_.execute(cmd, args)
+            if db_out is None:
+                return None, None
+
+            res = {}
+            for r in db_out:
+                if not r[0] in res:
+                    res[r[0]] = {'Rank': 0, 'Name': r[1] + " " + r[2], 'Country': r[3], 'Points': 0.}
+                    for d in self.disciplines:
+                        res[r[0]][d] = ''
+                    if self.comp_type == "cmas":
+                        res[r[0]]['Club'] = r[4]
+                res[r[0]][r[9]] = self.convertPerformance(r[5], r[9])
+                res[r[0]]['Points'] += self.computePoints(r[5], r[6], r[7], r[8], r[9])
+            # remove all 0 points and format points to two decimals after comma
+            to_remove = []
+            for r in res:
+                if res[r]['Points'] == 0.:
+                    to_remove.append(r)
                 else:
-                    full_df[dis] = full_df.apply(lambda row: str(row['Meters or Min.1']) + " (" + str(row['Points']) + ")" if row['Discipline'] == dis and not np.isnan(row['Meters or Min.1']) else np.nan, axis=1)
-            columns = self.disciplines + ["Diver Name", "Diver Id", "Diver Country", "Points"]
-            if self.comp_type == "cmas":
-                columns.append("Club")
-            exp_df = full_df[columns]
-            result_df = exp_df.groupby('Diver Id').agg(reduction_dict).reset_index()
-            # remove everyone with 0 points overall
-            mask = result_df['Points'] != 0.
-            result_df = result_df[mask]
-            result_df = result_df.sort_values(by=['Points'], ascending=[False])
-            result_df.fillna("", inplace=True).infer_objects(copy=False)
-            result_df['Rank'] = result_df['Points'].rank(ascending=False)
-            columns = ['Rank', 'Diver Name', 'Diver Country'] + self.disciplines + ['Points'] # order is important for pdf output
-            result_df = result_df[columns]
-            result_df['Rank'] = result_df['Rank'].astype(int)
-            result_df.rename(columns = {'Diver Name': 'Name', 'Diver Country': 'Country'}, inplace = True)
+                    res[r]['Points'] = "%.2f" % res[r]['Points']
+            for tr in to_remove:
+                res.pop(tr)
+
+            res_list = sorted(list(res.values()), key=lambda r: -float(r['Points']))
+            # set ranks
+            res_list[0]['Rank'] = 1
+            for i in range(len(res_list)-1):
+                if res_list[i]['Points'] != res_list[i+1]['Points']:
+                    res_list[i+1]['Rank'] = i+2
+                else:
+                    res_list[i+1]['Rank'] = ""
+
             result_keys += self.disciplines + ["Points"]
-            return result_df.to_dict('records'), result_keys
+            return res_list, result_keys
         else:
             cmd = '''SELECT a.first_name, a.last_name, a.country, a.club,
                             s.AP, s.RP, s.penalty, s.card, s.remarks
@@ -851,12 +865,12 @@ class CompyData:
                            'Penalty': r[6] if r[8] != "DNS" else "",
                            'Card': r[7] if r[8] != "DNS" else "",
                            'Remarks': r[8],
-                           'Points': self.computePoints(r[5], r[6], r[7], r[8], discipline)}
+                           'Points': "%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline)}
                            for i,r in enumerate(db_out)]
                 result_keys += ["AP", "RP", "Penalty", "Card", "Remarks", "Points"]
 
                 # sorting according to rp (descending), card (white before others), ap (descending)
-                result.sort(key=lambda r: (-r['Points'], 0 if r['Card'] == "WHITE" or r['Remarks'] != "DNS" else 1, -r['AP_float']))
+                result.sort(key=lambda r: (-float(r['Points']), 0 if r['Card'] == "WHITE" or r['Remarks'] != "DNS" else 1, -r['AP_float']))
             else:
                 result = [{'Rank': i,
                            'Name': r[0] + " " + r[1],
@@ -865,12 +879,12 @@ class CompyData:
                            'RP': self.convertPerformance(r[5], discipline) if r[8] != "DNS" else 0.,
                            'Card': r[7] if r[8] != "DNS" else "",
                            'Remarks': r[8],
-                           'Points': self.computePoints(r[5], r[6], r[7], r[8], discipline)}
+                           'Points': "%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline)}
                            for i,r in enumerate(db_out)]
                 result_keys += ["RP", "Card", "Remarks"]
 
                 # sorting according to rp (descending)
-                result.sort(key=lambda r: (-r['Points'], 0 if r['Remarks'] != "DNS" else 1))
+                result.sort(key=lambda r: (-float(r['Points']), 0 if r['Remarks'] != "DNS" else 1))
 
             cur_points = 1000000
             cur_ap = ""
