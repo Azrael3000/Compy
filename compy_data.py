@@ -554,9 +554,9 @@ class CompyData:
 
     def getWTfromOT(self, ot):
         ota = ot.split(':')
-        otf = int(ot[0])*60 + int(ot[1])
+        otf = int(ota[0])*60 + int(ota[1])
         wtf = otf-45 # does not work if ot is close to midnight, but seriously?
-        wt = str(math.floor(wtf/60)) + ":" + str(wtf%60)
+        wt = str(math.floor(wtf/60)) + ":" + str(wtf%60).zfill(2)
         return wt
 
     def getStartListPDF(self, day="all", discipline="all", in_memory=False):
