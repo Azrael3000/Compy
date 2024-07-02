@@ -7,6 +7,5 @@ CREATE TABLE athlete (
   aida_id TEXT,
   gender TEXT NOT NULL,
   country TEXT NOT NULL,
-  special_ranking BOOL,
   club TEXT
 );

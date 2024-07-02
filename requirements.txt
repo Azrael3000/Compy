@@ -6,6 +6,7 @@ charset-normalizer==3.3.2
 click==8.1.7
 country-converter==1.2
 cssselect2==0.7.0
+et-xmlfile==1.1.0
 Flask==3.0.3
 fonttools==4.53.0
 html5lib==1.1
@@ -14,6 +15,7 @@ itsdangerous==2.2.0
 Jinja2==3.1.4
 MarkupSafe==2.1.5
 numpy==2.0.0
+openpyxl==3.1.5
 pandas==2.2.2
 pillow==10.4.0
 pycparser==2.22

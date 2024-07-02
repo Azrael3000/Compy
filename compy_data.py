@@ -252,8 +252,8 @@ class CompyData:
             sr_ids = self.db_.execute(
                 '''SELECT a.id FROM athlete a
                    INNER JOIN competition_athlete ca ON a.id == ca.athlete_id
-                   WHERE a.special_ranking AND ca.competition_id==?''',
-                self.id)
+                   WHERE ca.special_ranking AND ca.competition_id==?''',
+                self.id_)
             self.db_.execute('''DELETE FROM start
                                 WHERE competition_athlete_id IN (
                                     SELECT competition_athlete_id FROM start
@@ -288,10 +288,9 @@ class CompyData:
         for a in self.athletes:
             a.associateWithComp(self.id_)
 
-        for a in athletes_old:
-            if a.special_ranking:
-                logging.debug("set special_ranking: %s %s", a.id, a.first_name)
-                self.setSpecialRanking(a.id, True)
+        if sr_ids is not None:
+            for sr in sr_ids:
+                self.setSpecialRanking(sr[0], True, False)
 
         # Do check if country converter is >= 1.2
         # only update if new nationalities are available (or forced)
@@ -376,20 +375,21 @@ class CompyData:
         logging.debug("-----------------")
         return nrs
 
-    def setSpecialRanking(self, athlete_id, special_ranking):
+    def setSpecialRanking(self, athlete_id, special_ranking, warn=True):
         found = False
         if self.number_of_athletes == 0:
             logging.warning("Data not initialized yet in setSpecialRanking")
             return 1
-        for a in self.athletes_:
-            if a.id == athlete_id:
-                a.setSpecialRanking(special_ranking)
-                self.save()
-                found = True
-                return 0
-        if not found:
-            logging.warning("Tried setting special_ranking (" + str(special_ranking) + ") to athlete with id '" + athlete_id + "' but this id could not be found")
-        return 1
+        try:
+            self.db_.execute(
+                '''UPDATE competition_athlete SET special_ranking=?
+                   WHERE competition_id==? AND athlete_id==?''',
+                (special_ranking, self.id_, athlete_id))
+            return 0
+        except sqlite3.Error as e:
+            if warn:
+                logging.warning("Tried setting special_ranking (" + str(special_ranking) + ") to athlete with id '" + athlete_id + "' but this id could not be found")
+            return 1
 
     def getSavedCompetitions(self):
         os.chdir(self.config.storage_folder)
@@ -508,10 +508,12 @@ class CompyData:
         if self.comp_type == "aida":
             dwc.append("Overall")
             # only add special_ranking result if we have at least one special_ranking
-            for a in self.athletes_:
-                if a.special_ranking:
-                    dwc.append(self.special_ranking_name)
-                    break
+            has_special_ranking = self.db_.execute(
+                '''SELECT id FROM competition_athlete
+                WHERE competition_id==? AND special_ranking''',
+                self.id_)
+            if has_special_ranking is not None:
+                dwc.append(self.special_ranking_name)
         dwc += self.disciplines
         return dwc
 
@@ -525,10 +527,12 @@ class CompyData:
         if for_result:
             if self.comp_type == "cmas":
                 # only add special_ranking result if we have at least one special_ranking
-                for a in self.athletes_:
-                    if a.special_ranking:
-                        countries.append(self.special_ranking_name)
-                        break
+                has_special_ranking = self.db_.execute(
+                    '''SELECT id FROM competition_athlete
+                    WHERE competition_id==? AND special_ranking''',
+                    self.id_)
+                if has_special_ranking is not None:
+                    countries.append(self.special_ranking_name)
         else:
             countries += self.countries
         return countries
@@ -814,7 +818,7 @@ class CompyData:
                 cmd += " AND a.country = ?"
                 args += (country, )
             if discipline == self.special_ranking_name:
-                cmd += " AND a.special_ranking"
+                cmd += " AND ca.special_ranking"
 
             db_out = self.db_.execute(cmd, args)
             if db_out is None:
@@ -863,7 +867,7 @@ class CompyData:
                 cmd += " AND a.country = ?"
                 args += (country, )
             if self.comp_type == "cmas" and country == self.special_ranking_name:
-                cmd += " AND a.country = ? AND a.special_ranking"
+                cmd += " AND a.country = ? AND ca.special_ranking"
                 args += (self.selected_country, )
             db_out = self.db_.execute(cmd, args)
 
