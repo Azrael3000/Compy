@@ -141,13 +141,19 @@ class CompyFlask:
                 fpath = path.join(self.app_.config['UPLOAD_FOLDER'], filename)
                 data_file.save(fpath)
                 self.data_.compFileChange(fpath)
-                data["athletes"] = []
-                for athlete in self.data_.athletes:
-                    data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.aida_id, "special_ranking": athlete.special_ranking})
+                self.loadAthleteData(data)
                 self.setSubmenuData(data)
                 self.data_.setOTs(data)
         data["status_msg"] = status_msg
         return data, 200
+
+    def loadAthleteData(self, data):
+        data["athletes"] = []
+        for athlete in self.data_.athletes:
+            data["athletes"].append(
+                {"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender,
+                 "country": athlete.country, "id": athlete.id, "aida_id": athlete.aida_id,
+                 "club": athlete.club, "special_ranking": athlete.special_ranking})
 
     def uploadSponsorImg(self):
         if 'sponsor_img' not in request.files:
@@ -210,9 +216,7 @@ class CompyFlask:
         comp_id = content["comp_id"]
         comp_name = self.data_.load(comp_id)
         data = {}
-        data["athletes"] = []
-        for athlete in self.data_.athletes:
-            data["athletes"].append({"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender, "country": athlete.country, "id": athlete.aida_id, "special_ranking": athlete.special_ranking})
+        self.loadAthleteData(data)
         data["comp_name"] = comp_name
         self.setSubmenuData(data)
         self.data_.setSpecialRankingName(data)

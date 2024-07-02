@@ -40,6 +40,7 @@
     <table>
         <tr>
             <td id="settings_button" style="font-weight:bold"><a href="#" onclick="switchTo('settings')">Settings</a></td>
+            <td id="athletes_button"><a href="#" onclick="switchTo('athletes')">Athletes</a></td>
             <td id="special_ranking_button"><a href="#" onclick="switchTo('special_ranking')">Newcomer</a></td>
             <td id="breaks_button"><a href="#" onclick="switchTo('breaks')">Breaks</a></td>
             <td id="start_lists_button"><a href="#" onclick="switchTo('start_lists')">Start lists</a></td>
@@ -120,6 +121,18 @@
                 {% endif %}
             </ul>
         </div>
+    </div>
+    <div id="athletes" style="display:none">
+        <table id="athletes_table">
+            <tr>
+                <td>First name</td>
+                <td>Last name</td>
+                <td>Gender</td>
+                <td>Country</td>
+                <td>Club</td>
+                <td>AIDA Id</td>
+            </tr>
+        </table>
     </div>
     <div id="special_ranking" style="display:none">
         <table id="special_ranking_table">

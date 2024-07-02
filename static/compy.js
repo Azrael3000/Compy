@@ -203,6 +203,7 @@ $(document).ready(function() {
                 element.style.display = "block";
                 element.innerHTML = data.status_msg;
                 populateSpecialRanking(data);
+                populateAthletes(data);
                 setOTs(data);
                 initSubmenus(data, true);
             },
@@ -307,6 +308,7 @@ $(document).ready(function() {
             {
                 console.log(data.status_msg);
                 populateSpecialRanking(data);
+                populateAthletes(data);
                 initSubmenus(data, true);
                 if ('comp_name' in data) {
                     $('#comp_name').val(data.comp_name);
@@ -617,7 +619,7 @@ function getPDF(type, params = {type: "all"})
 }
 
 function switchTo(id) {
-    let tab_ids = ['settings', 'special_ranking', 'breaks', 'start_lists', 'lane_lists', 'results']
+    let tab_ids = ['settings', 'athletes', 'special_ranking', 'breaks', 'start_lists', 'lane_lists', 'results']
     for (let i = 0; i < tab_ids.length; i++) {
         let element = document.getElementById(tab_ids[i]);
         let button = document.getElementById(tab_ids[i] + "_button");
@@ -627,6 +629,34 @@ function switchTo(id) {
         } else {
             element.style.display = "none";
             button.style.fontWeight = "normal";
+        }
+    }
+}
+
+function populateAthletes(data) {
+    $('#athletes_table').html(`
+        <tr>
+            <td>First name</td>
+            <td>Last name</td>
+            <td>Gender</td>
+            <td>Country</td>
+            <td>Club</td>
+            <td>AIDA Id</td>
+        </tr>
+    `);
+    if (data.hasOwnProperty("athletes")) {
+        let athletes = data.athletes;
+        for (let i = 0; i < athletes.length; i++) {
+            $('#athletes_table').append(`
+                <tr>
+                    <td>${athletes[i].last_name}</td>
+                    <td>${athletes[i].first_name}</td>
+                    <td>${athletes[i].gender}</td>
+                    <td>${athletes[i].country}</td>
+                    <td>${athletes[i].club}</td>
+                    <td>${athletes[i].aida_id}</td>
+                </tr>
+            `);
         }
     }
 }
@@ -644,7 +674,7 @@ function populateSpecialRanking(data) {
         </tr>
     `;
     if (data.hasOwnProperty("athletes")) {
-        athletes = data.athletes;
+        let athletes = data.athletes;
         for (let i = 0; i < athletes.length; i++) {
             let chkd_str = "";
             if (athletes[i].hasOwnProperty("special_ranking") && athletes[i].special_ranking)

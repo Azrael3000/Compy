@@ -31,7 +31,11 @@ except ImportError:
     exit(-1)
 import logging
 from collections import Counter, namedtuple
-import requests
+try:
+    import requests
+except ImportError:
+    print("Could not find requests. Install with 'pip3 install requests'")
+    exit(-1)
 import re
 import math
 try:
@@ -275,8 +279,8 @@ class CompyData:
 
         for a in athletes_old:
             if a.special_ranking:
-                logging.debug("set special_ranking: %s %s", a.aida_id, a.first_name)
-                self.setSpecialRanking(a.aida_id, True)
+                logging.debug("set special_ranking: %s %s", a.id, a.first_name)
+                self.setSpecialRanking(a.id, True)
 
         # Do check if country converter is >= 1.2
         # only update if new nationalities are available (or forced)
@@ -367,7 +371,7 @@ class CompyData:
             logging.warning("Data not initialized yet in setSpecialRanking")
             return 1
         for a in self.athletes_:
-            if a.aida_id == athlete_id:
+            if a.id == athlete_id:
                 a.setSpecialRanking(special_ranking)
                 self.save()
                 found = True
