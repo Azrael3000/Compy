@@ -118,6 +118,11 @@ class CompyFlask:
         def changeSelectedCountry():
             return self.changeSelectedCountry()
 
+        @app.route('/athlete', methods=['DELETE'])
+        def athlete():
+            if request.method == 'DELETE':
+                return self.deleteAthlete()
+
         app.run()
 
     def uploadFile(self):
@@ -226,7 +231,7 @@ class CompyFlask:
         data["selected_country"] = self.data_.selected_country
         data["status"] = "success"
         data["status_msg"] = "Loaded competition with name " + comp_name
-        logging.debug("Loaded comp " + comp_name + " with " + str(len(self.data_.athletes)) + " athletes")
+        logging.debug("Loaded comp " + comp_name + " with " + str(self.data_.number_of_athletes) + " athletes")
         return data, 200
 
     def startList(self):
@@ -414,3 +419,26 @@ class CompyFlask:
         data = {"status": "success", "status_msg": "Successfully changed special ranking name to '" + special_ranking_name + "'"}
         self.setSubmenuData(data)
         return data, 200
+
+    def deleteAthlete(self):
+        athlete_id = request.args.get('athlete_id')
+        if athlete_id is None:
+            logging.info("Could not delete athlete without getting an id")
+            return {}, 400
+        try:
+            athlete_id = int(athlete_id)
+        except (ValueError, TypeError):
+            logging.info("athlete id has wrong type")
+            return {}, 400
+
+        data = {}
+        ca_id, in_other_comp = self.data_.isAthleteInCompetition(athlete_id)
+        if ca_id is not None:
+            self.data_.deleteAthlete(ca_id, athlete_id, in_other_comp)
+            self.loadAthleteData(data)
+            self.setSubmenuData(data)
+            self.data_.setOTs(data)
+            return data, 200
+        else:
+            logging.info('Invalid athlete id provided')
+            return {}, 400

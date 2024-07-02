@@ -161,7 +161,11 @@ class CompyData:
 
     @property
     def number_of_athletes(self):
-        return len(self.athletes_)
+        db_out = self.db_.execute("SELECT COUNT(*) FROM competition_athlete WHERE competition_id=?", self.id_)
+        if db_out is None:
+            return 0
+        else:
+            return db_out[0][0]
 
     @property
     def start_date(self):
@@ -242,7 +246,14 @@ class CompyData:
         self.refresh()
 
     def refresh(self):
+        # special ranking ids of athletes
+        srd_ids = None
         if self.id_ is not None:
+            sr_ids = self.db_.execute(
+                '''SELECT a.id FROM athlete a
+                   INNER JOIN competition_athlete ca ON a.id == ca.athlete_id
+                   WHERE a.special_ranking AND ca.competition_id==?''',
+                self.id)
             self.db_.execute('''DELETE FROM start
                                 WHERE competition_athlete_id IN (
                                     SELECT competition_athlete_id FROM start
@@ -367,7 +378,7 @@ class CompyData:
 
     def setSpecialRanking(self, athlete_id, special_ranking):
         found = False
-        if len(self.athletes_) == 0:
+        if self.number_of_athletes == 0:
             logging.warning("Data not initialized yet in setSpecialRanking")
             return 1
         for a in self.athletes_:
@@ -1140,3 +1151,23 @@ class CompyData:
         else:
             out += "%05.2f" % round(seconds, 2)
         return out
+
+    # returns tuple with ca_id and if it athlete belongs to any other comp
+    def isAthleteInCompetition(self, athlete_id):
+        db_out = self.db_.execute(
+            "SELECT id FROM competition_athlete WHERE competition_id==? AND athlete_id==?",
+            (self.id, athlete_id))
+        if db_out is None:
+            return None, None
+        else:
+            db_comps = self.db_.execute(
+                "SELECT id FROM competition_athlete WHERE athlete_id==?",
+                athlete_id)
+            in_other_comp = len(db_comps) > 1
+            return db_out[0][0], in_other_comp
+
+    def deleteAthlete(self, ca_id, a_id, in_other_comp):
+        self.db_.execute("DELETE FROM start WHERE competition_athlete_id=?", ca_id)
+        self.db_.execute("DELETE FROM competition_athlete_id WHERE id=?", ca_id)
+        if not in_other_comp:
+            self.db_.execute("DELETE FROM athlete WHERE id=?", a_id)

@@ -295,6 +295,25 @@ $(document).ready(function() {
             }
         })
     });
+    $('#athletes_table').on("click", "button", function() {
+        let athlete_id = this.id.split('_')[2]; // button id is equal to "del_athlete_" + id
+        let data = {athlete_id: athlete_id};
+        $.ajax({
+            type: "DELETE",
+            url: "/athlete",
+            data: JSON.stringify(data),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data)
+            {
+                console.log(data.status_msg);
+                populateSpecialRanking(data);
+                populateAthletes(data);
+                initSubmenus(data);
+                setOTs(data);
+            }
+        });
+    });
     $("#competition_list").delegate(".load_comp_button", "click", function() {
         let comp_id = this.id.substring(5); // button id is equal to "load_" + comp id
         let data = {comp_id: comp_id};
@@ -642,6 +661,7 @@ function populateAthletes(data) {
             <td>Country</td>
             <td>Club</td>
             <td>AIDA Id</td>
+            <td></td>
         </tr>
     `);
     if (data.hasOwnProperty("athletes")) {
@@ -655,6 +675,7 @@ function populateAthletes(data) {
                     <td>${athletes[i].country}</td>
                     <td>${athletes[i].club}</td>
                     <td>${athletes[i].aida_id}</td>
+                    <td><button id="del_athlete_${athletes[i].id}" type="button">Delete</button></td>
                 </tr>
             `);
         }

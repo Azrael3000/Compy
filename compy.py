@@ -45,6 +45,8 @@ import compy_db
 
 logging.basicConfig(level=logging.DEBUG)
 
+app = Flask(__name__)
+
 def compy(init_db=False):
     parser = argparse.ArgumentParser(prog='Compy', description='User interface for freediving competitions')
     parser.add_argument('--init_db', action='store_true', help="Initialize database. WARNING: Deletes all data")
@@ -57,7 +59,6 @@ def compy(init_db=False):
         logging.error("Could not load .env file, make sure it exists (e.g. by copying from .env_sample")
         exit(-1)
 
-    app = Flask(__name__)
     app.config.from_prefixed_env()
     db = compy_db.CompyDB(app)
 
