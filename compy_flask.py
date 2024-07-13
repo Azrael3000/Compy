@@ -118,10 +118,13 @@ class CompyFlask:
         def changeSelectedCountry():
             return self.changeSelectedCountry()
 
-        @app.route('/athlete', methods=['DELETE'])
+        @app.route('/athlete', methods=['DELETE', 'POST'])
         def athlete():
+            print(">>>>", request.method)
             if request.method == 'DELETE':
                 return self.deleteAthlete()
+            elif request.method == 'POST':
+                return self.addAthlete()
 
         app.run()
 
@@ -146,19 +149,11 @@ class CompyFlask:
                 fpath = path.join(self.app_.config['UPLOAD_FOLDER'], filename)
                 data_file.save(fpath)
                 self.data_.compFileChange(fpath)
-                self.loadAthleteData(data)
+                self.data_.getAthleteData(data)
                 self.setSubmenuData(data)
                 self.data_.setOTs(data)
         data["status_msg"] = status_msg
         return data, 200
-
-    def loadAthleteData(self, data):
-        data["athletes"] = []
-        for athlete in self.data_.athletes:
-            data["athletes"].append(
-                {"last_name": athlete.last_name, "first_name": athlete.first_name, "gender": athlete.gender,
-                 "country": athlete.country, "id": athlete.id, "aida_id": athlete.aida_id,
-                 "club": athlete.club, "special_ranking": athlete.special_ranking})
 
     def uploadSponsorImg(self):
         if 'sponsor_img' not in request.files:
@@ -221,7 +216,7 @@ class CompyFlask:
         comp_id = content["comp_id"]
         comp_name = self.data_.load(comp_id)
         data = {}
-        self.loadAthleteData(data)
+        self.data_.getAthleteData(data)
         data["comp_name"] = comp_name
         self.setSubmenuData(data)
         self.data_.setSpecialRankingName(data)
@@ -435,10 +430,36 @@ class CompyFlask:
         ca_id, in_other_comp = self.data_.isAthleteInCompetition(athlete_id)
         if ca_id is not None:
             self.data_.deleteAthlete(ca_id, athlete_id, in_other_comp)
-            self.loadAthleteData(data)
+            data = {"status": "success", "status_msg": "Successfully deleted athlete with id " + athlete_id + (" completely" if not in_other_comp else "")}
+            self.data_.getAthleteData(data)
             self.setSubmenuData(data)
             self.data_.setOTs(data)
             return data, 200
         else:
             logging.info('Invalid athlete id provided')
             return {}, 400
+
+    def addAthlete(self):
+        content = request.json
+        if False in [key in content for key in ['first_name', 'last_name', 'gender', 'country', 'club', 'aida_id']]:
+            logging.info("Could not add athlete due to missing data")
+            return {}, 400
+        first_name = content['first_name']
+        last_name = content['last_name']
+        gender = content['gender']
+        country = content['country']
+        club = content['club']
+        aida_id = content['aida_id']
+        if first_name is None or last_name is None or gender not in ["M", "F"] or \
+           country is None or club is None or aida_id is None:
+            logging.info("Could not add athlete with incomplete information")
+            return {}, 400
+        status = self.data_.addAthlete(first_name, last_name, gender, country, club, aida_id)
+        data = {}
+        if status == 0:
+            data = {"status": "success", "status_msg": "Successfully added athlete"}
+            self.data_.getAthleteData(data)
+            return data, 200
+        elif status == 1:
+            data = {"status": "error", "status_msg": "Athlete already exists"}
+            return data, 200

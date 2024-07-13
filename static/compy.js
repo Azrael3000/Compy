@@ -30,6 +30,8 @@ var _days_with_disciplines_lanes = null;
 var _disciplines = null;
 var _countries = null;
 var _result_countries = null;
+var _sl = null;
+var _sl_edited = false;
 var _ots = []; // date in YYYY:MM:DD:HH:MM:SS
 // debug for ots
 //fillOtsForDebuggin();
@@ -45,9 +47,149 @@ $(window).on('load', function() {
     _disciplines = null;
     _countries = null;
     _result_countries = null;
+    _sl = null;
+    _sl_edited = false;
     $('#special_ranking_name').val("Newcomer");
     $('#country_chooser').hide();
+    $('#overlay_blur').hide();
 });
+
+function generateStartList(startlist) {
+    let max_lane = 1;
+    let interval = 0;
+    let sl = "";
+    if (startlist) {
+        sl += "<a href='#' class='sl_pdf_button' id='sl_pdf_" + day + "_" + discipline + "'>Print PDF</a>";
+        sl += `
+            <table>
+                <tr>
+                    <td>Start time</td>
+                    <td><input type="time" id="sl_start_time"/></td>
+                </tr>
+                <tr>
+                    <td>Interval</td>
+                    <td><input type="time" id="sl_interval"/></td>
+                </tr>
+                <tr>
+                    <td>Number of lanes</td>
+                    <td><input type="number" step="1" id="sl_no_lanes"/></td>
+                </tr>
+                    <td><button id="sl_recalc">Recalculate</button></td>
+                    <td><button>Sort by AP</button></td>
+                <tr>
+                </tr>
+            </table>
+            <button>Save start list</button>`;
+        sl += '<table id="startlist">';
+        sl += `
+            <tr>
+                <td>Name</td>
+                <td>AP</td>
+                <td>Nationality</td>
+                <td>Warmup</td>
+                <td>OT</td>
+                <td>Lane</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>`;
+        let empty = "<td></td>";
+        let down_btn = (i) => `<td><button id="sl_down_${i}" class="down" type="button">Down</button></td>`;
+        let up_btn = (i) => `<td><button id="sl_up_${i}" class="up" type="button">Up</button></td>`;
+        let break_btn = (i) => `<td><button id="sl_break_${i}" class="break" type="button">` +
+                               (startlist[i].Name=="Break" ? "Remove" : "Add") + ` break</button></td>`;
+        let interval_ot1 = 0;
+        for (let i = 0; i < startlist.length; i++) {
+            sl += `
+                <tr>
+                    <td>${startlist[i].Name}</td>
+                    <td>${startlist[i].AP}</td>
+                    <td>${startlist[i].Nationality}</td>
+                    <td>${startlist[i].Warmup}</td>
+                    <td>${startlist[i].OT}</td>
+                    <td>${startlist[i].Lane}</td>
+                    <td><button id="sl_edit_${i}" class="edit" type="button">Edit</button></td>`;
+            if (i == 0)
+                sl += empty + down_btn(i) + break_btn(i);
+            else if (i == startlist.length-1)
+                sl += up_btn(i) + empty + empty;
+            else {
+                if (i == 1 && startlist[i].Name == "Break")
+                    sl += empty + down_btn(i) + break_btn(i);
+                else if (i == startlist.length-2 && startlist[i].Name == "Break")
+                    sl += up_btn(i) + empty + break_btn(i);
+                else
+                    sl += up_btn(i) + down_btn(i) + break_btn(i);
+            }
+            sl += `
+                </tr>`;
+            max_lane = Math.max(max_lane, startlist[i].Lane);
+            if (interval_ot1 == 0 && startlist[i].Lane == 1 && interval == 0)
+                interval_ot1 = timeToMinutes(startlist[i].OT);
+            if (startlist[i].Name == "Break") {
+                interval_ot1 = 0;
+                interval = 0;
+            }
+            if (interval == 0 && startlist[i].Lane == 1 && interval_ot1 != 0)
+                interval = Math.max(timeToMinutes(startlist[i].OT) - interval_ot1, 0);
+        }
+        sl += "</table>";
+    }
+
+    let sl_content = document.getElementById('sl_content');
+    sl_content.innerHTML = sl;
+
+    if (startlist) {
+        $('#sl_no_lanes').val(max_lane);
+        if (startlist.length > 1)
+            $('#sl_start_time').val(startlist[0].OT.padStart(5, '0'));
+        if (interval > 0)
+            $('#sl_interval').val(minutesToStr(interval, true));
+    }
+}
+
+function timeToMinutes(time) {
+    let h = Number(time.split(':')[0]);
+    let m = Number(time.split(':')[1]);
+    return h*60 + m;
+}
+
+function dateToStr(date, hZeroPad) {
+    let h_str = date.getUTCHours().toString();
+    if (hZeroPad)
+        h_str = h_str.padStart(2, "0");
+    return h_str + ":" + date.getMinutes().toString().padStart(2, "0");
+}
+
+function strToDate(str) {
+    let date = new Date();
+    let h = Number(str.split(':')[0]);
+    let m = Number(str.split(':')[1]);
+    date.setUTCHours(h);
+    date.setMinutes(m);
+    return date;
+}
+
+function minutesToStr(mins, padH = false) {
+    let m = mins % 60;
+    let h = Math.round((mins - m)/60);
+    let h_str = h.toString();
+    if (padH)
+        h_str = h_str.padStart(2, "0");
+    return h_str + ":"  + m.toString().padStart(2, "0");
+}
+
+function showOverlayBox(width, height, content) {
+    $('#overlay_blur').show();
+    $('#overlay_box').width(width);
+    $('#overlay_box').height(height);
+    $('#overlay_box').html(content);
+}
+
+function hideOverlayBox() {
+    $('#overlay_blur').hide();
+}
 
 function getCountdownDuration() {
     let selectedOption = $("input[name='comp_type']:checked").val();
@@ -295,7 +437,39 @@ $(document).ready(function() {
             }
         })
     });
-    $('#athletes_table').on("click", "button", function() {
+    $('#athletes_table').on("click", "#add_athlete", function() {
+        let data = {
+            first_name: $('#athlete_first_name')[0].value,
+            last_name: $('#athlete_last_name')[0].value,
+            gender: $('#athlete_gender').find("option:selected").attr('value'),
+            country: $('#athlete_country')[0].value,
+            club: $('#athlete_club')[0].value,
+            aida_id: $('#athlete_aida_id')[0].value
+        };
+        $.ajax({
+            url: '/athlete',
+            data: JSON.stringify(data),
+            contentType: 'application/json',
+            dataType: 'json',
+            type: 'POST',
+            success: function(data) {
+                console.log(data.status_msg);
+                populateSpecialRanking(data);
+                populateAthletes(data);
+                $('#athlete_first_name').val("");
+                $('#athlete_last_name').val("");
+                $('#athlete_gender').val("F");
+                $('#athlete_country').val("");
+                $('#athlete_club').val("");
+                $('#athlete_aida_id').val("");
+            },
+            error: function(data) {
+                console.log(data.status_msg);
+                // TODO show to user
+            }
+        });
+    });
+    $('#athletes_table').on("click", ".delete", function() {
         let athlete_id = this.id.split('_')[2]; // button id is equal to "del_athlete_" + id
         let data = {athlete_id: athlete_id};
         $.ajax({
@@ -374,34 +548,9 @@ $(document).ready(function() {
             url: "/start_list?" + $.param(data),
             success: function(data) {
                 console.log(data.status_msg);
-                let sl = "";
-                if (data.start_list) {
-                    sl += "<a href='#' class='sl_pdf_button' id='sl_pdf_" + day + "_" + discipline + "'>Print PDF</a>";
-                    sl += "<table>";
-                    sl += `
-                        <tr>
-                            <td>Name</td>
-                            <td>AP</td>
-                            <td>Nationality</td>
-                            <td>Warmup</td>
-                            <td>OT</td>
-                            <td>Lane</td>
-                        </tr>`;
-                    for (let i = 0; i < data.start_list.length; i++) {
-                        sl += `
-                            <tr>
-                                <td>${data.start_list[i].Name}</td>
-                                <td>${data.start_list[i].AP}</td>
-                                <td>${data.start_list[i].Nationality}</td>
-                                <td>${data.start_list[i].Warmup}</td>
-                                <td>${data.start_list[i].OT}</td>
-                                <td>${data.start_list[i].Lane}</td>
-                            </tr>`;
-                    }
-                    sl += "</table>";
-                }
-                let sl_content = document.getElementById('sl_content');
-                sl_content.innerHTML = sl;
+                if (data.start_list)
+                    generateStartList(data.start_list);
+                    _sl = data.start_list;
             }
         })
     });
@@ -601,7 +750,224 @@ $(document).ready(function() {
             }
         });
     });
+    $('#sl_content').on('click', '.down', function() {
+        let i = Number(this.id.split('_')[2]); // id is sl_down_${i}
+        if (_sl[i].Name == "Break") {
+            removeBreak(i);
+            addBreak(i);
+        }
+        else if (i >= 0 && i < _sl.length-1) {
+            [_sl[i].Name,        _sl[i+1].Name       ] = [_sl[i+1].Name,        _sl[i].Name       ];
+            [_sl[i].AP,          _sl[i+1].AP         ] = [_sl[i+1].AP,          _sl[i].AP         ];
+            [_sl[i].Nationality, _sl[i+1].Nationality] = [_sl[i+1].Nationality, _sl[i].Nationality];
+        }
+        generateStartList(_sl);
+        _sl_edited = true;
+    });
+    $('#sl_content').on('click', '.up', function() {
+        let i = Number(this.id.split('_')[2]); // id is sl_up_${i}
+        if (_sl[i].Name == "Break") {
+            removeBreak(i);
+            addBreak(i-2);
+        }
+        else if (i >= 1 && i < _sl.length) {
+            [_sl[i].Name,        _sl[i-1].Name       ] = [_sl[i-1].Name,        _sl[i].Name       ];
+            [_sl[i].AP,          _sl[i-1].AP         ] = [_sl[i-1].AP,          _sl[i].AP         ];
+            [_sl[i].Nationality, _sl[i-1].Nationality] = [_sl[i-1].Nationality, _sl[i].Nationality];
+        }
+        generateStartList(_sl);
+        _sl_edited = true;
+    });
+    $('#sl_content').on('click', '.edit', function() {
+        let i = Number(this.id.split('_')[2]); // id is sl_edit_${i}
+        if (i < 0 || i >= _sl.length)
+            return;
+        let content = "";
+        if (_sl[i].Name == "Break") {
+            content = `
+                Edit break<br>
+                <input type="hidden" id="sl_edit_i" value="${i}"/>
+                <input type="hidden" id="sl_edit_prev_br" value="${_sl[i].AP}"/>
+                <table>
+                    <tr>
+                        <td>Break</td>
+                        <td>
+                            <input type="time" id="sl_edit_new_br" value="${_sl[i].AP.padStart(5, '0')}"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><button id="sl_overlay_cancel" type="button">Cancel</button></td>
+                        <td><button id="sl_edit_save" type="button">Save</button></td>
+                    </tr>
+                </table>
+                `;
+        }
+        else {
+            let ap_btn = `<input type="number" step="1" id="sl_edit_ap" value="${_sl[i].AP}"/>`;
+            let cmas = $("input[name='comp_type']:checked").val() == "cmas";
+            if (cmas && _sl[i].Discipline in ["DNF", "DYN", "DYNB"])
+                ap_btn = `<input type="number" step="0.5" id="sl_edit_ap" value="${_sl[i].AP}"/>`;
+            else if (_sl[i].Discipline == "STA") {
+                let ap = _sl[i].AP.padStart(5, "0");
+                ap_btn = `<input type="time" id="sl_edit_ap" value="${ap}"/>`;
+            }
+            content = `
+                Edit start of ${_sl[i].Name}<br>
+                <input type="hidden" id="sl_edit_i" value="${i}"/>
+                <table>
+                    <tr>
+                        <td>AP</td>
+                        <td>${ap_btn}</td>
+                    </tr>
+                    <tr>
+                        <td>OT</td>
+                        <td>
+                            <input type="time" id="sl_edit_ot" value="${_sl[i].OT.padStart(5, '0')}"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><button id="sl_overlay_cancel" type="button">Cancel</button></td>
+                        <td><button id="sl_edit_save" type="button">Save</button></td>
+                    </tr>
+                </table>
+                `;
+        }
+        showOverlayBox(400, 300, content);
+    });
+    $('#overlay_box').on('click', '#sl_overlay_cancel', function() {
+        hideOverlayBox();
+    });
+    $('#overlay_box').on('click', '#sl_edit_save', function() {
+        let i = Number($('#sl_edit_i').val());
+        if (i >= 0 && i < _sl.length) {
+            if (_sl[i].Name == "Break") {
+                let br_prev = $('#sl_edit_prev_br').val();
+                let br_new = $('#sl_edit_new_br').val();
+                let diff = timeToMinutes(br_new) - timeToMinutes(br_prev);
+                for (let j = i+1; j < _sl.length; j++)
+                    adjustOTbyDiff(j, diff);
+            }
+            else {
+                if (_sl[i].Discipline == "STA") {
+                    let ap = $('#sl_edit_ap')[0].valueAsDate;
+                    _sl[i].AP = dateToStr(ap);
+                }
+                else
+                    _sl[i].AP = $('#sl_edit_ap').val();
+                let ot = $('#sl_edit_ot')[0].valueAsDate;
+                setOT(i, ot);
+            }
+        }
+        hideOverlayBox();
+        generateStartList(_sl);
+        _sl_edited = true;
+    });
+    $('#sl_content').on('click', '.break', function() {
+        let i = Number(this.id.split('_')[2]); // id is sl_break_${i}
+        if (i >= 0 && i < _sl.length-1) {
+            let content = "";
+            if (_sl[i].Name == "Break") { // this is for removing breaks
+                removeBreak(i);
+                generateStartList(_sl);
+                _sl_edited = true;
+            }
+            else {
+                content = `
+                    Add break<br>
+                    <input type="hidden" id="sl_break_i" value="${i}"/>
+                    <table>
+                        <tr>
+                            <td>Duration</td>
+                            <td><input type="time" id="sl_break_duration" value="00:00"/></td>
+                        </tr>
+                        <tr>
+                            <td><button id="sl_overlay_cancel" type="button">Cancel</button></td>
+                            <td><button id="sl_break_save" type="button">Save</button></td>
+                        </tr>
+                    </table>
+                    `;
+                showOverlayBox(400, 200, content);
+            }
+        }
+    });
+    $('#overlay_box').on('click', '#sl_break_save', function() {
+        let i = Number($('#sl_break_i')[0].value);
+        addBreak(i);
+        hideOverlayBox();
+        generateStartList(_sl);
+        _sl_edited = true;
+    });
+    $('#sl_content').on('click', '#sl_recalc', function() {
+        let lane = 1;
+        let no_lane = $('#sl_no_lanes').val();
+        let interval = timeToMinutes($('#sl_interval').val());
+        let ot = $('#sl_start_time')[0].valueAsDate;
+        if (!no_lane || !interval || !ot || no_lane < 1)
+            return;
+        for (let i = 0; i < _sl.length; i++) {
+            if (_sl[i].Name == "Break") {
+                lane = 1;
+                let br = timeToMinutes(_sl[i].AP) - interval;
+                ot.setMinutes(ot.getMinutes() + br);
+                continue;
+            }
+            else if (lane == 1 && i != 0)
+                ot.setMinutes(ot.getMinutes() + interval);
+            _sl[i].Lane = lane;
+            setOT(i, ot);
+            lane = lane % no_lane + 1;
+        }
+        generateStartList(_sl);
+        _sl_edited = true;
+    });
 });
+
+function addBreak(i) {
+    if (i >= 0 && i < _sl.length-1) {
+        let break_date = $('#sl_break_duration')[0].valueAsDate;
+        break_str = dateToStr(break_date);
+        let break_entry = {Name: "Break", AP: break_str, Nationality: "", Warmup: "", OT: "", Lane: ""};
+        _sl.splice(i+1, 0, break_entry);
+        let ot_old = timeToMinutes(_sl[i+2].OT);
+        let ot_prev = timeToMinutes(_sl[i].OT);
+        let ot_new = ot_prev + break_date.getUTCHours()*60 + break_date.getMinutes();
+        let diff = ot_new - ot_old;
+        for (let j=i+2; j < _sl.length; j++)
+            adjustOTbyDiff(j, diff);
+    }
+}
+
+function removeBreak(i) {
+    if (i == 0 || i == _sl.length-1)
+        return; // should not happen
+    _sl.splice(i, 1);
+    let interval = $('#sl_interval').val();
+    // if interval is not set, remove the break but don't change anything
+    if (interval) {
+        let interval_date = strToDate(interval);
+        let ot_old = timeToMinutes(_sl[i].OT);
+        let ot_prev = timeToMinutes(_sl[i-1].OT);
+        let ot_new = ot_prev + interval_date.getUTCHours()*60 + interval_date.getMinutes();
+        let diff = ot_new - ot_old;
+        for (let j = i; j < _sl.length; j++)
+            adjustOTbyDiff(j, diff);
+    }
+}
+
+function adjustOTbyDiff(j, diff) {
+    if (_sl[j].Name != "Break") {
+        let ot_this = strToDate(_sl[j].OT);
+        ot_this.setMinutes(ot_this.getMinutes() + diff);
+        setOT(j, ot_this);
+    }
+}
+
+function setOT(i, ot) {
+    _sl[i].OT = dateToStr(ot);
+    let wt = new Date(ot);
+    wt.setMinutes(wt.getMinutes() - 45);
+    _sl[i].Warmup = dateToStr(wt);
+}
 
 function getPDF(type, params = {type: "all"})
 {
@@ -663,6 +1029,20 @@ function populateAthletes(data) {
             <td>AIDA Id</td>
             <td></td>
         </tr>
+        <tr>
+            <td><input type="text" id="athlete_first_name"/></td>
+            <td><input type="text" id="athlete_last_name"/></td>
+            <td>
+                <select name="athlete_gender" id="athlete_gender">
+                    <option value="F">F</option>
+                    <option value="M">M</option>
+                </select>
+            </td>
+            <td><input type="text" id="athlete_country"/></td>
+            <td><input type="text" id="athlete_club"/></td>
+            <td><input type="text" id="athlete_aida_id"/></td>
+            <td><button id="add_athlete" type="button">Add</button></td>
+        </tr>
     `);
     if (data.hasOwnProperty("athletes")) {
         let athletes = data.athletes;
@@ -675,7 +1055,7 @@ function populateAthletes(data) {
                     <td>${athletes[i].country}</td>
                     <td>${athletes[i].club}</td>
                     <td>${athletes[i].aida_id}</td>
-                    <td><button id="del_athlete_${athletes[i].id}" type="button">Delete</button></td>
+                    <td><button id="del_athlete_${athletes[i].id}" type="button" class="delete">Delete</button></td>
                 </tr>
             `);
         }

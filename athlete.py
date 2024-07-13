@@ -79,7 +79,7 @@ class Athlete:
                              (self.first_name, self.last_name, self.aida_id, self.gender, self.country,
                               self.club, self.id_))
 
-    def associateWithComp(self, comp_id):
+    def associateWithComp(self, comp_id, special_ranking = False):
         if self.comp_athlete_id_ is None:
             if self.id_ is None:
                 logging.error("Cannot assign athlete to competition that has not db id")
@@ -92,8 +92,10 @@ class Athlete:
 
         # if the comp_athlete_id is set, we don't need to do anything
         if self.comp_athlete_id_ is None:
-            self.db_.execute('''INSERT INTO competition_athlete (competition_id, athlete_id) VALUES(?, ?)''',
-                             (comp_id, self.id_))
+            self.db_.execute(
+                '''INSERT INTO competition_athlete
+                   (competition_id, athlete_id, special_ranking) VALUES(?, ?, ?)''',
+                (comp_id, self.id_, special_ranking))
             self.comp_athlete_id_ = self.db_.last_index
 
     @property

@@ -78,7 +78,6 @@ class CompyData:
         self.comp_file_ = ''
         self.start_date_ = None
         self.end_date_ = None
-        self.athletes_ = []
         self.nrs_ = None
         self.sponsor_img_ = None
         self.disciplines_ = 0
@@ -154,10 +153,6 @@ class CompyData:
     @property
     def comp_file(self):
         return self.comp_file_
-
-    @property
-    def athletes(self):
-        return self.athletes_
 
     @property
     def number_of_athletes(self):
@@ -281,12 +276,11 @@ class CompyData:
 
         # read second sheet (list of athletes)
         df = pd.read_excel(self.comp_file_, sheet_name="Athletes and Judges", skiprows=1)
-        athletes_old = self.athletes_.copy()
-        self.athletes_ = [athlete.Athlete.fromArgs(r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country'], r['Club'] if 'club' in r else "", self.db_) for i,r in df.iterrows()]
-        [logging.debug("Athlete: %s %s %s %s %s", r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country']) for i,r in df.iterrows()]
-        logging.debug("Number of athletes: %d", len(self.athletes_))
-        for a in self.athletes:
+        for i,r in df.iterrows():
+            a = athlete.Athlete.fromArgs(r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country'], r['Club'] if 'club' in r else "", self.db_)
+            logging.debug("Athlete: %s %s %s %s %s", r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country'])
             a.associateWithComp(self.id_)
+        logging.debug("Number of athletes: %d", self.number_of_athletes)
 
         if sr_ids is not None:
             for sr in sr_ids:
@@ -461,14 +455,6 @@ class CompyData:
             self.selected_country_ = comp_data[8]
             self.special_ranking_name_ = comp_data[9]
             self.disciplines_ = comp_data[10]
-            load_data = self.db_.execute("SELECT athlete_id FROM competition_athlete WHERE competition_id=?",
-                                         comp_id)
-            if load_data is None:
-                self.athletes_ = []
-            else:
-                self.athletes_ = [athlete.Athlete.fromDb(a_id[0], self.db_) for a_id in load_data]
-                for a in self.athletes:
-                    a.associateWithComp(self.id_)
             #self.getResultPDF('all', 'all', 'all', False, True)
             return self.name_
 
@@ -552,7 +538,8 @@ class CompyData:
                        'AP': self.convertPerformance(r[3], discipline),
                        'Warmup': self.getWTfromOT(r[4]),
                        'OT': r[4],
-                       'Lane': self.laneStyleConverter(r[5])}
+                       'Lane': self.laneStyleConverter(r[5]),
+                       'Discipline': discipline}
                        for r in db_out]
         return start_list
 
@@ -1092,17 +1079,24 @@ class CompyData:
                 break
         if not found:
             return None
-        for a in self.athletes:
+        athletes = self.db_.execute(
+            '''SELECT a.id, a.first_name, a.last_name FROM athlete a
+               INNER JOIN competition_athlete ca ON ca.athlete_id == a.id
+               WHERE ca.competition_id == ?''',
+            self.id_)
+        if athletes is None:
+            return None
+        for a in athletes:
             db_out = self.db_.execute(
                 '''SELECT s.OT, s.discipline FROM start s
                    INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
                    WHERE s.day = ? AND ca.competition_id = ? AND ca.athlete_id == ?''',
-                (day, self.id_, a.id))
+                (day, self.id_, a[0]))
             if db_out is None:
                 continue
             n = len(db_out)
             for i in range(n-1):
-                this_break = {"Name": a.first_name + " " + a.last_name}
+                this_break = {"Name": a[1] + " " + a[2]}
                 this_break["Dis1"] = db_out[i][1]
                 this_break["Dis2"] = db_out[i+1][1]
                 this_break["OT1"] = db_out[i][0]
@@ -1175,3 +1169,45 @@ class CompyData:
         self.db_.execute("DELETE FROM competition_athlete_id WHERE id=?", ca_id)
         if not in_other_comp:
             self.db_.execute("DELETE FROM athlete WHERE id=?", a_id)
+
+    def getAthleteData(self, data):
+        data["athletes"] = []
+        athletes = self.db_.execute(
+            '''SELECT a.id, a.first_name, a.last_name, a.gender, a.country, a.aida_id, a.club,
+                      ca.special_ranking
+               FROM athlete a
+               INNER JOIN competition_athlete ca ON ca.athlete_id == a.id
+               WHERE ca.competition_id == ?''',
+            self.id_)
+        if athletes is None:
+            return
+        for a in athletes:
+            data["athletes"].append(
+                {"last_name": a[2], "first_name": a[1], "gender": a[3],
+                 "country": a[4], "id": a[0], "aida_id": a[5],
+                 "club": a[6], "special_ranking": a[7]})
+
+    def addAthlete(self, first_name, last_name, gender, country, club, aida_id):
+        a_id = self.db_.execute(
+            "SELECT id FROM athlete WHERE first_name == ? AND last_name == ? AND country == ?",
+            (first_name, last_name, country))
+        a = None
+        # user added in other comp
+        if a_id is not None:
+            ca_id = self.db_.execute(
+                "SELECT id FROM competition_athlete WHERE athlete_id == ? AND competition_id == ?",
+                (a_id[0][0], self.id_))
+            if ca_id is not None:
+                return 1 # athlete already exists in current competition
+            else:
+                # not in current competition, so add it
+                self.db_.execute(
+                    '''INSERT INTO competition_athlete
+                       (competition_id, athlete_id, special_ranking) VALUES(?, ?, ?)''',
+                    (comp_id, self.id_, False))
+                # TODO check if rest of arguments are identical
+                return 0
+        else:
+            a = athlete.Athlete.fromArgs(aida_id, first_name, last_name, gender, country, club, self.db_)
+            a.associateWithComp(self.id_)
+            return 0
