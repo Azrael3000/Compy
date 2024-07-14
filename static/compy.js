@@ -127,10 +127,8 @@ function generateStartList(startlist) {
             max_lane = Math.max(max_lane, startlist[i].Lane);
             if (interval_ot1 == 0 && startlist[i].Lane == 1 && interval == 0)
                 interval_ot1 = timeToMinutes(startlist[i].OT);
-            if (startlist[i].Name == "Break") {
+            if (startlist[i].Name == "Break")
                 interval_ot1 = 0;
-                interval = 0;
-            }
             if (interval == 0 && startlist[i].Lane == 1 && interval_ot1 != 0)
                 interval = Math.max(timeToMinutes(startlist[i].OT) - interval_ot1, 0);
         }
