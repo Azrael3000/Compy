@@ -527,7 +527,7 @@ class CompyData:
         if self.comp_file is None:
             return None
         db_out = self.db_.execute('''
-            SELECT a.first_name, a.last_name, a.country, s.AP, s.OT, s.lane
+            SELECT a.first_name, a.last_name, a.country, s.AP, s.OT, s.lane, s.id
             FROM start s
             INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
             INNER JOIN athlete a ON ca.athlete_id == a.id
@@ -539,7 +539,8 @@ class CompyData:
                        'Warmup': self.getWTfromOT(r[4]),
                        'OT': r[4],
                        'Lane': self.laneStyleConverter(r[5]),
-                       'Discipline': discipline}
+                       'Discipline': discipline,
+                       'Id': r[6]}
                        for r in db_out]
         return start_list
 

@@ -120,11 +120,14 @@ class CompyFlask:
 
         @app.route('/athlete', methods=['DELETE', 'POST'])
         def athlete():
-            print(">>>>", request.method)
             if request.method == 'DELETE':
                 return self.deleteAthlete()
             elif request.method == 'POST':
                 return self.addAthlete()
+
+        @app.route('/athletes', methods=['GET'])
+        def athletes():
+            return self.getAthletes()
 
         app.run()
 
@@ -463,3 +466,8 @@ class CompyFlask:
         elif status == 1:
             data = {"status": "error", "status_msg": "Athlete already exists"}
             return data, 200
+
+    def getAthletes(self):
+        data = {"status": "success", "status_msg": "Successfully received athlete data"}
+        self.data_.getAthleteData(data)
+        return data, 200
