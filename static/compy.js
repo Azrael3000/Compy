@@ -75,7 +75,7 @@ function generateStartList(startlist) {
                     <td><input type="number" step="1" id="sl_no_lanes"/></td>
                 </tr>
                     <td><button id="sl_recalc">Recalculate</button></td>
-                    <td><button>Sort by AP</button></td>
+                    <td><button id="sl_sort">Sort by AP</button></td>
                 <tr>
                 </tr>
             </table>
@@ -752,11 +752,19 @@ $(document).ready(function() {
     });
     $('#sl_content').on('click', '.down', function() {
         let i = Number(this.id.split('_')[2]); // id is sl_down_${i}
+        if (i < 0 || i >= _sl.length-1)
+            return;
         if (_sl[i].Name == "Break") {
             removeBreak(i);
             addBreak(i);
         }
-        else if (i >= 0 && i < _sl.length-1) {
+        else if (_sl[i+1].Name == "Break") {
+            if (i == 0) // don't allow break at 0
+                return;
+            removeBreak(i+1);
+            addBreak(i-1);
+        }
+        else {
             [_sl[i].Name,        _sl[i+1].Name       ] = [_sl[i+1].Name,        _sl[i].Name       ];
             [_sl[i].AP,          _sl[i+1].AP         ] = [_sl[i+1].AP,          _sl[i].AP         ];
             [_sl[i].Nationality, _sl[i+1].Nationality] = [_sl[i+1].Nationality, _sl[i].Nationality];
@@ -766,11 +774,19 @@ $(document).ready(function() {
     });
     $('#sl_content').on('click', '.up', function() {
         let i = Number(this.id.split('_')[2]); // id is sl_up_${i}
+        if (i < 1 || i >= _sl.length)
+            return;
         if (_sl[i].Name == "Break") {
             removeBreak(i);
             addBreak(i-2);
         }
-        else if (i >= 1 && i < _sl.length) {
+        else if (_sl[i-1].Name == "Break") {
+            if (i == _sl.length-1)
+                return; // don't allow break at end
+            removeBreak(i-1);
+            addBreak(i-1);
+        }
+        else {
             [_sl[i].Name,        _sl[i-1].Name       ] = [_sl[i-1].Name,        _sl[i].Name       ];
             [_sl[i].AP,          _sl[i-1].AP         ] = [_sl[i-1].AP,          _sl[i].AP         ];
             [_sl[i].Nationality, _sl[i-1].Nationality] = [_sl[i-1].Nationality, _sl[i].Nationality];
@@ -898,29 +914,53 @@ $(document).ready(function() {
         _sl_edited = true;
     });
     $('#sl_content').on('click', '#sl_recalc', function() {
-        let lane = 1;
-        let no_lane = $('#sl_no_lanes').val();
-        let interval = timeToMinutes($('#sl_interval').val());
-        let ot = $('#sl_start_time')[0].valueAsDate;
-        if (!no_lane || !interval || !ot || no_lane < 1)
+        calculateStartList();
+    });
+    $('#sl_content').on('click', '#sl_sort', function() {
+        if (_sl.length == 0)
             return;
+        let brs = [];
         for (let i = 0; i < _sl.length; i++) {
-            if (_sl[i].Name == "Break") {
-                lane = 1;
-                let br = timeToMinutes(_sl[i].AP) - interval;
-                ot.setMinutes(ot.getMinutes() + br);
-                continue;
-            }
-            else if (lane == 1 && i != 0)
-                ot.setMinutes(ot.getMinutes() + interval);
-            _sl[i].Lane = lane;
-            setOT(i, ot);
-            lane = lane % no_lane + 1;
+            if (_sl[i].Name == "Break")
+                brs.push({i: i, time: _sl[i].AP});
         }
-        generateStartList(_sl);
-        _sl_edited = true;
+        for (let i = brs.length-1; i >= 0; i--)
+            _sl.splice(brs[i].i, 1);
+        if (_sl[0].Discipline == "STA") // assumes all starts are STA
+            _sl.sort((a,b) => Math.sign(timeToMinutes(a.AP)-timeToMinutes(b.AP)));
+        else
+            _sl.sort((a,b) => Math.sign(Number(a.AP)-Number(b.AP)));
+        for (let i = 0; i < brs.length; i++) {
+            let break_entry = {Name: "Break", AP: brs[i].time, Nationality: "", Warmup: "", OT: "", Lane: ""};
+            _sl.splice(brs[i].i, 0, break_entry);
+        }
+        calculateStartList();
     });
 });
+
+function calculateStartList() {
+    let no_lane = $('#sl_no_lanes').val();
+    let interval = timeToMinutes($('#sl_interval').val());
+    let ot = $('#sl_start_time')[0].valueAsDate;
+    if (!no_lane || !interval || !ot || no_lane < 1)
+        return;
+    let lane = 1;
+    for (let i = 0; i < _sl.length; i++) {
+        if (_sl[i].Name == "Break") {
+            lane = 1;
+            let br = timeToMinutes(_sl[i].AP) - interval;
+            ot.setMinutes(ot.getMinutes() + br);
+            continue;
+        }
+        else if (lane == 1 && i != 0)
+            ot.setMinutes(ot.getMinutes() + interval);
+        _sl[i].Lane = lane;
+        setOT(i, ot);
+        lane = lane % no_lane + 1;
+    }
+    generateStartList(_sl);
+    _sl_edited = true;
+}
 
 function addBreak(i) {
     if (i >= 0 && i < _sl.length-1) {
