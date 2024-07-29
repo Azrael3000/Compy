@@ -57,11 +57,15 @@ import base64
 from PIL import Image
 from io import BytesIO
 import numpy as np
+import regex
+import sys
 
 import athlete
 from compy_config import CompyConfig
 
-disciplines=["FIM", "CNF", "CWT", "CWTB", "STA", "DNF", "DYN", "DYNB"]
+INVALID_DATE="0000-00-00"
+INVALID_TIME="99:99"
+DISCIPLINES=["FIM", "CNF", "CWT", "CWTB", "STA", "DNF", "DYN", "DYNB"]
 
 class CompyData:
 
@@ -173,7 +177,7 @@ class CompyData:
     @property
     def disciplines(self):
         dis = []
-        for bit, d in enumerate(disciplines):
+        for bit, d in enumerate(DISCIPLINES):
             if self.disciplines_ & 1<<bit:
                 dis.append(d)
         return dis
@@ -269,8 +273,8 @@ class CompyData:
             if l == "Ends:":
                 self.end_date_ = df[df.keys()[1]][i]
             if l == "Disciplines:":
-                print([1<<disciplines.index(d) for d in df[df.keys()[1]][i].split(",")], df[df.keys()[1]][i].split(","))
-                self.disciplines_ = sum([1<<disciplines.index(d) for d in df[df.keys()[1]][i].split(",")])
+                print([1<<DISCIPLINES.index(d) for d in df[df.keys()[1]][i].split(",")], df[df.keys()[1]][i].split(","))
+                self.disciplines_ = sum([1<<DISCIPLINES.index(d) for d in df[df.keys()[1]][i].split(",")])
             i += 1
         logging.debug("Start date: %s. End date: %s", self.start_date_, self.end_date_)
 
@@ -533,16 +537,92 @@ class CompyData:
             INNER JOIN athlete a ON ca.athlete_id == a.id
             WHERE ca.competition_id==? AND s.discipline==? AND s.day==?''',
             (self.id_, discipline, day))
-        start_list = [{'Name': r[0] + " " + r[1],
-                       'Nationality': r[2],
-                       'AP': self.convertPerformance(r[3], discipline),
-                       'Warmup': self.getWTfromOT(r[4]),
-                       'OT': r[4],
-                       'Lane': self.laneStyleConverter(r[5]),
-                       'Discipline': discipline,
-                       'Id': r[6]}
-                       for r in db_out]
-        return start_list
+        if db_out is None:
+            return []
+        startlist = [{'Name': r[0] + " " + r[1],
+                      'Nationality': r[2],
+                      'AP': self.convertPerformance(r[3], discipline),
+                      'Warmup': self.getWTfromOT(r[4]),
+                      'OT': r[4],
+                      'Lane': self.laneStyleConverter(r[5]),
+                      'Discipline': discipline,
+                      'Id': r[6]}
+                      for r in db_out]
+        startlist.sort(key=lambda r: (self.getMinFromTime(r['OT']), int(r['Lane'])))
+
+        br_out = self.db_.execute('''
+            SELECT duration, idx
+            FROM break
+            WHERE competition_id == ? AND discipline == ? AND day == ?''',
+            (self.id_, discipline, day))
+        if br_out is not None:
+            for br in br_out:
+                idx = int(br[1])
+                if idx >= len(startlist):
+                    continue
+                br_time = str(int(br[0]/60)) + ":" + str(br[0]%60).zfill(2)
+                startlist.insert(idx, {'Name': "Break", 'Nationality': "", 'AP': br_time, 'Warmup': "",
+                                       'OT': "", 'Lane': "", 'Discipline': discipline, 'Id': -1})
+
+        return startlist
+
+    def updateStartList(self, day, discipline, to_remove, startlist):
+        day = self.cleanDay(day)
+        if discipline not in DISCIPLINES or day == INVALID_DATE:
+            return -1
+        to_remove = [int(tr) for tr in to_remove]
+        # remove all starts from the start list that were removed and make sure they belong to this comp
+        if len(to_remove) > 0:
+            self.db_.execute(
+                '''DELETE FROM start WHERE id IN
+                   (SELECT s.id FROM start s
+                    INNER JOIN competition_athlete ca ON ca.id == s.competition_athlete_id
+                    WHERE s.id IN ? AND ca.competition_id == ?''',
+                (str(tuple(to_remove)), self.id_))
+
+        # remove all breaks
+        self.db_.execute("DELETE FROM break WHERE competition_id == ? AND discipline == ? AND day == ?",
+                         (self.id_, discipline, day))
+
+        for i in range(len(startlist)):
+            if startlist[i]["Name"] == "Break":
+                duration = self.getMinFromTime(self.cleanTime(startlist[i]["AP"]))
+                self.db_.execute(
+                    '''INSERT INTO break
+                       (competition_id, discipline, day, duration, idx) VALUES (?, ?, ?, ?, ?)''',
+                    (self.id_, discipline, day, duration, i))
+            else: # start
+                ca_id = int(startlist[i]["Id"])
+                if ca_id < 0: # new start, in this case ca_id = - athlete_id
+                    ca_id = self.db_.execute(
+                        '''SELECT id FROM competition_athlete
+                           WHERE athlete_id == ? AND competition_id == ?''',
+                        (-ca_id, self.id_))
+                else: # old start in this case ca_id = start_id
+                    ca_id = self.db_.execute(
+                        '''SELECT s.id FROM competition_athlete ca
+                           INNER JOIN start s ON ca.id == s.competition_athlete_id
+                           WHERE s.id == ? AND ca.competition_id == ?''',
+                        (ca_id, self.id_))
+                if ca_id is None:
+                    log.warning("Invalid athlete not added to competition")
+                    continue
+                ot = self.cleanTime(startlist[i]["OT"])
+                ap = self.cleanPerf(startlist[i]["AP"], discipline)
+                lane = self.cleanNumber(startlist[i]["Lane"]) # TODO min/max
+                if int(startlist[i]["Id"]) < 0: # new s["art
+                    self.db_.execute(
+                        '''INSERT INTO start
+                           (competition_athlete_id, discipline, lane, day, OT, AP)
+                           VALUES (?, ?, ?, ?, ?, ?)''',
+                        (ca_id[0][0], discipline, lane, day, ot, ap));
+                else: #update start
+                    self.db_.execute(
+                        '''UPDATE start SET
+                           discipline=?, lane=?, day=?, OT=?, AP=?
+                           WHERE id == ?''',
+                        (discipline, lane, day, ot, ap, ca_id[0][0]));
+        return 0
 
     def convertPerformance(self, val, dis):
         if val is None:
@@ -560,8 +640,7 @@ class CompyData:
             return str(val)
 
     def getWTfromOT(self, ot):
-        ota = ot.split(':')
-        otf = int(ota[0])*60 + int(ota[1])
+        otf = self.getMinFromTime(ot)
         wtf = otf-45 # does not work if ot is close to midnight, but seriously?
         wt = str(math.floor(wtf/60)) + ":" + str(wtf%60).zfill(2)
         return wt
@@ -668,6 +747,7 @@ class CompyData:
                        'OT': r[3],
                        'NR': r[4]}
                        for r in db_out]
+        lane_list.sort(key=lambda r: self.getMinFromTime(r['OT']))
         return lane_list
 
     def getLaneListPDF(self, day="all", discipline="all", lane="all", in_memory=False):
@@ -1102,9 +1182,7 @@ class CompyData:
                 this_break["Dis2"] = db_out[i+1][1]
                 this_break["OT1"] = db_out[i][0]
                 this_break["OT2"] = db_out[i+1][0]
-                ot1 = this_break["OT1"].split(":")
-                ot2 = this_break["OT2"].split(":")
-                time = int(ot2[0])*60 + int(ot2[1]) - int(ot1[0])*60 - int(ot1[1])
+                time = self.getMinFromTime(this_break["OT1"]) - self.getMinFromTime(this_break["OT2"])
                 min_break = min(min_break, time)
                 this_break["Break"] = str(int(time/60)).zfill(2) + ":" + str(time%60).zfill(2)
                 breaks_list.append(this_break)
@@ -1212,3 +1290,42 @@ class CompyData:
             a = athlete.Athlete.fromArgs(aida_id, first_name, last_name, gender, country, club, self.db_)
             a.associateWithComp(self.id_)
             return 0
+
+    def cleanTime(self, time):
+        ctime = regex.compile('[0-5]?\d:[0-5]\d$').match(str(time))
+        if ctime is None:
+            return INVALID_TIME
+        else:
+            return ctime[0]
+
+    def cleanNumber(self, n, digits = 0, minval = -sys.float_info.max, maxval = sys.float_info.max):
+        pstr = '^\d+'
+        if digits > 0:
+            pstr += '.?'
+        pstr += ''.join(['\d?' for i in range(digits)])
+        pattern = regex.compile(pstr)
+        cn = pattern.match(str(n))
+        if cn is None:
+            return "0" if minval == -sys.float_info.max else str(minval)
+        elif minval <= float(cn[0]) and float(cn[0]) <= maxval:
+            return cn[0]
+        else:
+            return str(minval)
+
+    def cleanPerf(self, perf, discipline):
+        if discipline == "STA":
+            return cleanTime(perf)
+        elif self.comp_type == "aida" or discipline in ['CWT', 'CWTB', 'FIM', 'CNF']:
+            return self.cleanNumber(perf, 0, 1)
+        else: # cmas dynamic disciplines
+            return self.cleanNumber(perf, 1, 1)
+
+    def cleanDay(self, day):
+        if day in [d for d in self.getDays()]:
+            return str(day)
+        else:
+            return INVALID_DATE
+
+    def getMinFromTime(self, time_str):
+        h_m = time_str.split(':')
+        return int(h_m[0])*60 + int(h_m[1])

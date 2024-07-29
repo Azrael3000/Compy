@@ -33,6 +33,7 @@ var _result_countries = null;
 var _sl = null;
 var _sl_remove = [];
 var _sl_discipline = "";
+var _sl_day = "";
 var _sl_edited = false;
 var _sl_athletes = null;
 var _ots = []; // date in YYYY:MM:DD:HH:MM:SS
@@ -53,6 +54,7 @@ $(window).on('load', function() {
     _sl = null;
     _sl_remove = [];
     _sl_discipline = "";
+    _sl_day = "";
     _sl_edited = false;
     _sl_athletes = null;
     $('#special_ranking_name').val("Newcomer");
@@ -89,7 +91,7 @@ function generateStartList(startlist) {
                 <tr>
                 </tr>
             </table>
-            <button>Save start list</button>`;
+            <button id="sl_save">Save start list</button>`;
         sl += '<table id="startlist">';
         sl += `
             <tr>
@@ -563,6 +565,9 @@ $(document).ready(function() {
                     _sl = data.start_list;
                     _sl_remove = [];
                     _sl_discipline = discipline;
+                    _sl_day = day;
+                    _sl_edited = false;
+                    _sl_athletes = null;
             }
         })
     });
@@ -1029,6 +1034,27 @@ $(document).ready(function() {
         generateStartList(_sl);
         _sl_edited = true;
         _sl_athletes = null;
+    });
+    $('#sl_content').on('click', '#sl_save', function() {
+        var _sl_edited = false;
+        var _sl_athletes = null;
+        let data = {startlist: _sl, to_remove: _sl_remove, day: _sl_day, discipline: _sl_discipline};
+        $.ajax({
+            type: "PUT",
+            url: "/start_list",
+            data: JSON.stringify(data),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data) {
+                console.log(data.status_msg);
+                generateStartList(data.start_list);
+                _sl = data.start_list;
+                _sl_remove = [];
+                _sl_discipline = discipline;
+                _sl_edited = false;
+                _sl_athletes = null;
+            }
+        });
     });
 });
 

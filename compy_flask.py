@@ -78,9 +78,12 @@ class CompyFlask:
         def loadComp():
             return self.loadComp()
 
-        @app.route('/start_list', methods=['GET'])
+        @app.route('/start_list', methods=['GET', 'PUT'])
         def startList():
-            return self.startList()
+            if request.method == 'GET':
+                return self.startList()
+            elif request.method == 'PUT':
+                return self.updateStartList()
 
         @app.route('/start_list_pdf', methods=['GET'])
         def startListPDF():
@@ -247,6 +250,27 @@ class CompyFlask:
             return data, 200
         else:
             logging.debug("Could not get start list for " + day + ": " + discipline)
+            return {}, 400
+
+    def updateStartList(self):
+        content = request.json
+        if not content.keys() >= {'day', 'discipline', 'to_remove', 'startlist'}:
+            logging.debug("Put request to start_list missing content: " + str(content.keys()))
+            return {}, 400
+        day = content["day"]
+        discipline = content["discipline"]
+        to_remove = content["to_remove"]
+        startlist = content["startlist"]
+        ret = self.data_.updateStartList(day, discipline, to_remove, startlist)
+        start_list = self.data_.getStartList(day, discipline)
+        if ret == 0 and not start_list is None:
+            data = {"status": "success", "status_msg": "Successfully updated start list", "start_list": start_list}
+            return data, 200
+        elif ret != 0 and not start_list is None:
+            data = {"status": "success", "status_msg": "Failed database update", "start_list": start_list}
+            return data, 400
+        else:
+            logging.debug("Could not update start list for " + day + " & " + discipline)
             return {}, 400
 
     def startListPDF(self):
