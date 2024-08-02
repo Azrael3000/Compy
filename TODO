@@ -23,6 +23,10 @@
 
  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+KNOWN BUGS:
+- Moving breaks up/down does not work
+- Remove Id from start lists
+
 TODO:
 - Fix bug with OT accuracy only down to seconds
 - When saving a new competition, update the competition_list <ul>
@@ -34,6 +38,7 @@ TODO:
 - NRs in lane list
 - Marking NRs/WRs in results
 - Support for mixed comp days
+- Divetime add to start list / lane lists
 
 WISHLIST:
 - User management

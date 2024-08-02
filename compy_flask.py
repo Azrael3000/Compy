@@ -101,9 +101,12 @@ class CompyFlask:
         def laneListPDF():
             return self.laneListPDF()
 
-        @app.route('/result', methods=['GET'])
+        @app.route('/result', methods=['GET', 'PUT'])
         def result():
-            return self.result(False)
+            if request.method == 'GET':
+                return self.result(False)
+            elif request.method == 'PUT':
+                return self.updateResult()
 
         @app.route('/result_pdf', methods=['GET'])
         def resultPDF():
@@ -254,7 +257,7 @@ class CompyFlask:
 
     def updateStartList(self):
         content = request.json
-        if not content.keys() >= {'day', 'discipline', 'to_remove', 'startlist'}:
+        if not self.dictHas(content, {'day', 'discipline', 'to_remove', 'startlist'}):
             logging.debug("Put request to start_list missing content: " + str(content.keys()))
             return {}, 400
         day = content["day"]
@@ -401,6 +404,12 @@ class CompyFlask:
         data["countries"] = self.data_.getCountries()
         data["result_countries"] = self.data_.getCountries(True)
 
+    def dictHas(self, d, keys):
+        if isinstance(keys, set):
+            return d.keys() >= keys
+        else:
+            return keys in d
+
     def result(self, pdf):
         discipline = request.args.get('discipline')
         gender = request.args.get('gender')
@@ -409,7 +418,6 @@ class CompyFlask:
         if (discipline is None or gender is None or country is None) and (req_type is None or not pdf):
             logging.debug("Get request to result without discipline, gender, country or type")
             return {}, 400
-        data = {}
         if pdf:
             if req_type == "all":
                 result_pdf = self.data_.getResultPDF()
@@ -421,15 +429,36 @@ class CompyFlask:
                 logging.debug("Sending: " + result_pdf)
                 return send_file(result_pdf, as_attachment=True)
         else:
-            result, result_keys = self.data_.getResult(discipline, gender, country)
-            if not result is None:
-                data["result"] = result
-                data["result_keys"] = result_keys
-                data["status"] = "success"
-                data["status_msg"] = "Transfered result for " + discipline + "/" + gender + " country: " + country
-                return data, 200
+            return self.getResultDiscipline(discipline, gender, country)
         logging.debug("Could not get result for " + discipline + "/" + gender + " country: " + country)
         return {}, 400
+
+    def getResultDiscipline(self, discipline, gender, country):
+        result, result_keys = self.data_.getResult(discipline, gender, country, True)
+        data = {}
+        if not result is None:
+            data["result"] = result
+            data["result_keys"] = result_keys
+            data["status"] = "success"
+            data["status_msg"] = "Transfered result for " + discipline + "/" + gender + " country: " + country
+            return data, 200
+
+    def updateResult(self):
+        content = request.json
+        if not self.dictHas(content, {"discipline", "gender", "country", "id", "rp", "penalty", "card", "remarks"}):
+            breakpoint()
+            logging.debug("Put request to result without discipline, gender, country, id, rp, penalty, card, remarks")
+            return {}, 400
+        discipline = content["discipline"]
+        gender = content["gender"]
+        country = content["country"]
+        s_id = content["id"]
+        rp = content["rp"]
+        penalty = content["penalty"]
+        card = content["card"]
+        remarks = content["remarks"]
+        self.data_.updateResult(s_id, rp, penalty, card, remarks, discipline)
+        return self.getResultDiscipline(discipline, gender, country)
 
     def changeSpecialRankingName(self):
         content = request.json

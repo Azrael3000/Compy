@@ -30,10 +30,9 @@ var _days_with_disciplines_lanes = null;
 var _disciplines = null;
 var _countries = null;
 var _result_countries = null;
+var _cur_menu = {};
 var _sl = null;
 var _sl_remove = [];
-var _sl_discipline = "";
-var _sl_day = "";
 var _sl_edited = false;
 var _sl_athletes = null;
 var _ots = []; // date in YYYY:MM:DD:HH:MM:SS
@@ -53,8 +52,7 @@ $(window).on('load', function() {
     _result_countries = null;
     _sl = null;
     _sl_remove = [];
-    _sl_discipline = "";
-    _sl_day = "";
+    _cur_menu = {};
     _sl_edited = false;
     _sl_athletes = null;
     $('#special_ranking_name').val("Newcomer");
@@ -551,21 +549,16 @@ $(document).ready(function() {
         let id_arr = this.id.split('_'); // button id is equal to "sl_" + day + "_" + discipline
         day = id_arr[1];
         discipline = id_arr[2];
-        let data = {
-            day: day,
-            discipline: discipline
-        };
+        _cur_menu = {discipline: discipline, day: day};
         $.ajax({
             type: "GET",
-            url: "/start_list?" + $.param(data),
+            url: "/start_list?" + $.param(_cur_menu),
             success: function(data) {
                 console.log(data.status_msg);
                 if (data.start_list)
                     generateStartList(data.start_list);
                     _sl = data.start_list;
                     _sl_remove = [];
-                    _sl_discipline = discipline;
-                    _sl_day = day;
                     _sl_edited = false;
                     _sl_athletes = null;
             }
@@ -831,7 +824,7 @@ $(document).ready(function() {
                         </td>
                     </tr>
                     <tr>
-                        <td><button id="sl_overlay_cancel" type="button">Cancel</button></td>
+                        <td><button id="overlay_cancel" type="button">Cancel</button></td>
                         <td><button id="sl_edit_save" type="button">Save</button></td>
                     </tr>
                 </table>
@@ -861,7 +854,7 @@ $(document).ready(function() {
                         </td>
                     </tr>
                     <tr>
-                        <td><button id="sl_overlay_cancel" type="button">Cancel</button></td>
+                        <td><button id="overlay_cancel" type="button">Cancel</button></td>
                         <td><button id="sl_edit_save" type="button">Save</button></td>
                     </tr>
                 </table>
@@ -869,7 +862,7 @@ $(document).ready(function() {
         }
         showOverlayBox(400, 300, content);
     });
-    $('#overlay_box').on('click', '#sl_overlay_cancel', function() {
+    $('#overlay_box').on('click', '#overlay_cancel', function() {
         hideOverlayBox();
     });
     $('#overlay_box').on('click', '#sl_edit_save', function() {
@@ -916,7 +909,7 @@ $(document).ready(function() {
                             <td><input type="time" id="sl_break_duration" value="00:00"/></td>
                         </tr>
                         <tr>
-                            <td><button id="sl_overlay_cancel" type="button">Cancel</button></td>
+                            <td><button id="overlay_cancel" type="button">Cancel</button></td>
                             <td><button id="sl_break_save" type="button">Save</button></td>
                         </tr>
                     </table>
@@ -966,7 +959,7 @@ $(document).ready(function() {
         _sl_edited = true;
     });
     $('#sl_content').on('click', '#sl_add', function() {
-        if (_sl_discipline == "")
+        if (_cur_menu.discipline == "")
             return;
         $.ajax({
             type: "GET",
@@ -975,9 +968,9 @@ $(document).ready(function() {
                 console.log(data.status_msg);
                 let ap_btn = `<input type="number" step="1" id="sl_add_ap" value="1"/>`;
                 let cmas = $("input[name='comp_type']:checked").val() == "cmas";
-                if (cmas && _sl_discipline in ["DNF", "DYN", "DYNB"])
+                if (cmas && _cur_menu.discipline in ["DNF", "DYN", "DYNB"])
                     ap_btn = `<input type="number" step="0.5" id="sl_add_ap" value="1"/>`;
-                else if (_sl_discipline == "STA")
+                else if (_cur_menu.discipline == "STA")
                     ap_btn = `<input type="time" id="sl_add_ap" value="00:01"/>`;
                 content = `
                     Add athlete<br>
@@ -1002,7 +995,7 @@ $(document).ready(function() {
                             <td><input type="number" id="sl_add_lane" value="1"/></td>
                         </tr>
                         <tr>
-                            <td><button id="sl_overlay_cancel" type="button">Cancel</button></td>
+                            <td><button id="overlay_cancel" type="button">Cancel</button></td>
                             <td><button id="sl_add_save" type="button">Save</button></td>
                         </tr>
                     </table>
@@ -1038,7 +1031,7 @@ $(document).ready(function() {
     $('#sl_content').on('click', '#sl_save', function() {
         var _sl_edited = false;
         var _sl_athletes = null;
-        let data = {startlist: _sl, to_remove: _sl_remove, day: _sl_day, discipline: _sl_discipline};
+        let data = {startlist: _sl, to_remove: _sl_remove, day: _cur_menu.day, discipline: _cur_menu.discipline};
         $.ajax({
             type: "PUT",
             url: "/start_list",
@@ -1050,13 +1043,135 @@ $(document).ready(function() {
                 generateStartList(data.start_list);
                 _sl = data.start_list;
                 _sl_remove = [];
-                _sl_discipline = discipline;
                 _sl_edited = false;
                 _sl_athletes = null;
             }
         });
     });
+    $('#results_content').on('click', '.result_add', function() {
+        let id = Number(this.id.split('_')[1]); // id is result_${id}
+        let name = $(`#result_Name_${id}`).html();
+        let rp = 0; // TODO STA
+        let content = generateResultContent("Add", name, rp, 0, "", "checked", "", "");
+        _sl_athletes = id;
+        showOverlayBox(400, 800, content);
+    });
+    $('#results_content').on('click', '.result_edit', function() {
+        //TODO: card auto select and forbid
+        //TODO: autoselect remarks
+        let id = Number(this.id.split('_')[1]); // id is result_${id}
+        let name = $(`#result_Name_${id}`).html();
+        let rp = $(`#result_RP_${id}`).html();
+        let ap = $(`#result_AP_${id}`).html();
+        let card = $(`#result_Card_${id}`).html();
+        let penalty = $(`#result_Penalty_${id}`).html();
+        let remark = $(`#result_Remarks_${id}`).html();
+        let is_sta = _cur_menu.discipline == "STA";
+        let penalty_not_reached_ap = "";
+        let federation = $("input[name='comp_type']:checked").val();
+        if (federation == "aida") {
+            penalty_not_reached_ap = 0;
+            if (is_sta) {
+                // TODO
+            }
+            else if (ap > rp) {
+                let delta = ap - rp;
+                let factor = _cur_menu.discipline[0] == "D" ? 0.5 : 1.;
+                penalty_not_reached_ap = delta*factor;
+            }
+            if (penalty_not_reached_ap > 0) {
+                penalty -= penalty_not_reached_ap;
+                penalty_not_reached_ap = ` + ${penalty_not_reached_ap} (UNDER AP)`;
+            }
+            else
+                penalty_not_reached_ap = "";
+        }
+        let rcw_checked = card == "WHITE" ? "checked" : "";
+        let rcy_checked = card == "YELLOW" ? "checked" : "";
+        let rcr_checked = card == "RED" ? "checked" : "";
+        let content = generateResultContent("Edit", name, rp, penalty, penalty_not_reached_ap, rcw_checked, rcy_checked, rcr_checked);
+        _sl_athletes = id;
+        showOverlayBox(400, 800, content);
+    });
+    $('#overlay_box').on('click', '#result_save', function() {
+        let rp = $('#result_rp').val();
+        let penalty = $('#result_penalty').val();
+        let card = $("input[name='result_card']:checked").val();
+        let remarks = $.map($('input[name="result_remark"]:checked'), function (a) { return a.value; }).join();
+        let id = _sl_athletes;
+        _sl_athletes = null;
+        let data = {id: id, rp: rp, penalty: penalty, card: card, remarks: remarks, discipline: _cur_menu.discipline, gender: _cur_menu.gender, country: _cur_menu.country};
+        $.ajax({
+            type: "PUT",
+            url: "/result",
+            data: JSON.stringify(data),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data) {
+                console.log(data.status_msg);
+                hideOverlayBox();
+                showResults(data.result, data.result_keys);
+            }
+        });
+    });
 });
+
+function generateResultContent(type_str, name, rp, penalty, penalty_not_reached_ap, rcw_checked, rcy_checked, rcr_checked) {
+    let is_sta = _cur_menu.discipline == "STA";
+    let rp_input_type = is_sta ? "time" : "number"; // TODO does not work for STA, change rp
+    let federation = $("input[name='comp_type']:checked").val();
+    let content = `
+        ${type_str} result for ${name}<br>
+        <table>
+            <tr>
+                <td>RP</td>
+                <td><input type="${rp_input_type}" id="result_rp" value="${rp}"/></td>
+            </tr>
+            <tr>
+                <td>Penalty</td>
+                <td><input type="number" id="result_penalty" value="${penalty}"/>${penalty_not_reached_ap}</td>
+            </tr>
+            <tr>
+                <td>Card</td>
+                <td>
+                    <div id="result_card_chooser">
+                        <input type="radio" name="result_card" value="WHITE" id="result_card_white" ${rcw_checked}/>
+                        <label for="result_card_white">WHITE</label>`;
+     if (federation == "aida") {
+        content +=     `<input type="radio" name="result_card" value="YELLOW" id="result_card_yellow" ${rcy_checked}/>
+                        <label for="result_card_yellow">YELLOW</label>`;
+     }
+     content +=        `<input type="radio" name="result_card" value="RED" id="result_card_red" ${rcr_checked}/>
+                        <label for="result_card_red">RED</label>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td>Remark</td>
+                <td>
+                    <div id="result_remark_chooser">`;
+     if (federation == "aida") {
+        let aida_remarks = ["OK", "OTHER", "SHORT", "LATESTART", "GRAB", "LANYARD", "PULL", "TURN", "EARLYSTART", "START", "NO TAG", "UNDER AP", "DQSP", "DQJUMP", "DQOTHER", "DQAIRWAYS", "DQTOUCH", "DQLATESTART", "DQCHECK-IN", "DQBO-UW", "DQBO-SURFACE", "DQPULL", "DQOTHER-LANE", "DNS"];
+        for (let i = 0; i < aida_remarks.length; i++) {
+            let remark = aida_remarks[i];
+            content += `<input type="checkbox" name="result_remark" value="${remark}" id="result_remark_${remark}"/>
+                        <label for="result_remark_${remark}">${remark}</label><br>`;
+        }
+     }
+     else {
+        // TODO
+     }
+     content +=    `</div>
+                </td>
+            </tr>
+            <tr>
+                <td><button id="overlay_cancel" type="button">Cancel</button></td>
+                <td><button id="result_save" type="button">Save</button></td>
+            </tr>
+        </table>
+        `;
+    return content;
+}
 
 function calculateStartList() {
     let no_lane = $('#sl_no_lanes').val();
@@ -1413,40 +1528,51 @@ function selectResultDisciplineGender(discipline, gender)
 
 function getResult(discipline, gender, country)
 {
-    let data = {
-        discipline: discipline,
-        gender: gender,
-        country: country
-    };
+    _cur_menu = {discipline: discipline, gender: gender, country: country};
     $.ajax({
         type: "GET",
-        url: "/result?" + $.param(data),
+        url: "/result?" + $.param(_cur_menu),
         success: function(data) {
             console.log(data.status_msg);
-            let res = "";
-            if (data.result && data.result_keys) {
-                res += "<a href='#' class='results_pdf_button' id='result_pdf_" + discipline + "_" + gender + "_" + country + "'>Print PDF</a>";
-                res += "<table>";
-                res += "<tr>"
-                for (let j = 0; j < data.result_keys.length; j++)
-                {
-                        res += `<td>${data.result_keys[j]}</td>`;
-                }
-                res += "</tr>";
-                for (let i = 0; i < data.result.length; i++) {
-                    res += "<tr>"
-                    for (let j = 0; j < data.result_keys.length; j++)
-                    {
-                            res += "<td>" + data.result[i][data.result_keys[j]] + "</td>";
-                    }
-                    res += "</tr>";
-                }
-                res += "</table>";
-            }
-            let results_content = document.getElementById('results_content');
-            results_content.innerHTML = res;
+            showResults(data.result, data.result_keys);
         }
     });
+}
+
+function showResults(result, result_keys) {
+    let res = "";
+    if (result && result_keys) {
+        res += "<a href='#' class='results_pdf_button' id='result_pdf_" + discipline + "_" + gender + "_" + country + "'>Print PDF</a>";
+        res += "<table>";
+        res += "<tr>"
+        for (let j = 0; j < result_keys.length; j++)
+        {
+                res += `<td>${result_keys[j]}</td>`;
+        }
+        res += "<td/></tr>";
+        let start_not_set_found = false;
+        for (let i = 0; i < result.length; i++) {
+            res += "<tr>"
+            for (let j = 0; j < result_keys.length; j++)
+            {
+                    if (result[i]['Remarks'] == "" && !start_not_set_found) {
+                        res += "</tr><td/><td style='padding-top:10px'><b>Athletes without result</b></td><tr>";
+                        start_not_set_found = true;
+                    }
+                    res += `<td id='result_${result_keys[j]}_${result[i]["Id"]}'>${result[i][result_keys[j]]}</td>`;
+            }
+            if (discipline != "Overall" && discipline != $('#special_ranking_name').val()) {
+                if (start_not_set_found)
+                    res += `<td><button class='result_add' id='result_${result[i]["Id"]}'>Add result</button></td>`
+                else
+                    res += `<td><button class='result_edit' id='result_${result[i]["Id"]}'>Edit result</button></td>`
+            }
+            res += "</tr>";
+        }
+        res += "</table>";
+    }
+    let results_content = document.getElementById('results_content');
+    results_content.innerHTML = res;
 }
 
 function formatTime(date, countdown=false, full_date=false) {

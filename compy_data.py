@@ -573,12 +573,21 @@ class CompyData:
         to_remove = [int(tr) for tr in to_remove]
         # remove all starts from the start list that were removed and make sure they belong to this comp
         if len(to_remove) > 0:
-            self.db_.execute(
-                '''DELETE FROM start WHERE id IN
-                   (SELECT s.id FROM start s
-                    INNER JOIN competition_athlete ca ON ca.id == s.competition_athlete_id
-                    WHERE s.id IN ? AND ca.competition_id == ?''',
-                (str(tuple(to_remove)), self.id_))
+            if len(to_remove) == 1:
+                self.db_.execute(
+                    '''DELETE FROM start WHERE id IN
+                       (SELECT s.id FROM start s
+                        INNER JOIN competition_athlete ca ON ca.id == s.competition_athlete_id
+                        WHERE s.id == ? AND ca.competition_id == ?''',
+                    (to_remove[0], self.id_))
+            else:
+                rlist = str(tuple(to_remove))
+                self.db_.execute(
+                    '''DELETE FROM start WHERE id IN
+                       (SELECT s.id FROM start s
+                        INNER JOIN competition_athlete ca ON ca.id == s.competition_athlete_id
+                        WHERE s.id IN ? AND ca.competition_id == ?''',
+                    (rlist, self.id_))
 
         # remove all breaks
         self.db_.execute("DELETE FROM break WHERE competition_id == ? AND discipline == ? AND day == ?",
@@ -863,7 +872,7 @@ class CompyData:
             html.write_pdf(fname)
             return fname
 
-    def getResult(self, discipline, gender, country):
+    def getResult(self, discipline, gender, country, with_empty=False):
         if self.comp_file is None:
             return None, None
         result = []
@@ -925,11 +934,13 @@ class CompyData:
             return res_list, result_keys
         else:
             cmd = '''SELECT a.first_name, a.last_name, a.country, a.club,
-                            s.AP, s.RP, s.penalty, s.card, s.remarks
+                            s.AP, s.RP, s.penalty, s.card, s.remarks, s.id
                      FROM start s
                      INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
                      INNER JOIN athlete a ON ca.athlete_id == a.id
-                     WHERE s.discipline == ? AND a.gender == ? AND s.remarks IS NOT NULL'''
+                     WHERE s.discipline == ? AND a.gender == ?'''
+            if not with_empty: # remove unset results if requested
+                cmd += " AND s.remarks IS NOT NULL"
             args = (discipline, gender)
             if country != 'International' and country != self.special_ranking_name:
                 cmd += " AND a.country = ?"
@@ -949,15 +960,16 @@ class CompyData:
                            'AP_float': r[4],
                            'AP': self.convertPerformance(r[4], discipline),
                            'RP': self.convertPerformance(r[5], discipline) if r[8] != "DNS" else 0.,
-                           'Penalty': r[6] if r[8] != "DNS" else "",
-                           'Card': r[7] if r[8] != "DNS" else "",
-                           'Remarks': r[8],
-                           'Points': "%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline)}
+                           'Penalty': r[6] if r[8] != "DNS" and r[5] is not None else "",
+                           'Card': r[7] if r[8] != "DNS" and r[5] is not None else "",
+                           'Remarks': r[8] if r[5] is not None or r[8] == "DNS" else "",
+                           'Points': "%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline),
+                           'Id': r[9]}
                            for i,r in enumerate(db_out)]
                 result_keys += ["AP", "RP", "Penalty", "Card", "Remarks", "Points"]
 
                 # sorting according to rp (descending), card (white before others), ap (descending)
-                result.sort(key=lambda r: (-float(r['Points']), 0 if r['Card'] == "WHITE" or r['Remarks'] != "DNS" else 1, -r['AP_float']))
+                result.sort(key=lambda r: self.sortResultsWeightsAida(r))
             else:
                 result = [{'Rank': i,
                            'Name': r[0] + " " + r[1],
@@ -966,7 +978,8 @@ class CompyData:
                            'RP': self.convertPerformance(r[5], discipline) if r[8] != "DNS" else 0.,
                            'Card': r[7] if r[8] != "DNS" else "",
                            'Remarks': r[8],
-                           'Points': "%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline)}
+                           'Points': "%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline),
+                           'Id': r[9]}
                            for i,r in enumerate(db_out)]
                 result_keys += ["RP", "Card", "Remarks"]
 
@@ -976,7 +989,7 @@ class CompyData:
             cur_points = 1000000
             cur_ap = ""
             for i in range(len(result)):
-                if result[i]["Points"] == 0:
+                if float(result[i]["Points"]) == 0.:
                     result[i]["Rank"] = ""
                 elif result[i]["Points"] == cur_points and (self.comp_type == "cmas" or result[i]["AP"] == cur_ap):
                     result[i]["Rank"] = ""
@@ -987,8 +1000,19 @@ class CompyData:
                     result[i]["Rank"] = i+1
             return result, result_keys
 
+    def sortResultsWeightsAida(self, r):
+        w0 = -float(r['Points'])
+        w1 = 0
+        w2 = -r['AP_float']
+        if r['Card'] != "WHITE" and r['Remarks'] == "DNS":
+            w1 = 1
+        if r['RP'] == "":
+            w1 = 2
+            w2 = r['Name']
+        return (w0, w1, w2)
+
     def computePoints(self, rp, penalty, card, remarks, discipline):
-        if card == "RED" or remarks == "DNS":
+        if card == "RED" or remarks == "DNS" or rp is None:
             return 0.
         if self.comp_type == "CMAS":
             return rp - penalty
@@ -1283,7 +1307,7 @@ class CompyData:
                 self.db_.execute(
                     '''INSERT INTO competition_athlete
                        (competition_id, athlete_id, special_ranking) VALUES(?, ?, ?)''',
-                    (comp_id, self.id_, False))
+                    (self.id_, a_id[0][0], False))
                 # TODO check if rest of arguments are identical
                 return 0
         else:
@@ -1329,3 +1353,36 @@ class CompyData:
     def getMinFromTime(self, time_str):
         h_m = time_str.split(':')
         return int(h_m[0])*60 + int(h_m[1])
+
+    def updateResult(self, s_id, rp, penalty, card, remarks, discipline):
+        s_id = int(s_id)
+        penalty = float(penalty)
+        rp = self.cleanPerf(rp, discipline)
+        # TODO sanity checks for card and remarks and discipline
+        ap = self.db_.execute(
+                '''SELECT s.ap
+                   FROM competition_athlete ca
+                   INNER JOIN start s ON ca.id == s.competition_athlete_id
+                   WHERE s.id == ?''',
+                s_id)
+        if ap is not None:
+            under_ap_penalty = self.getUnderApPenalty(ap[0][0], rp, discipline) if self.comp_type == "aida" else 0
+            self.db_.execute(
+                '''UPDATE start SET rp = ?, penalty = ?, card = ?, remarks = ? WHERE id == ?''',
+                (rp, under_ap_penalty + penalty, card, remarks, s_id))
+            return 0
+        return 1
+
+    def getUnderApPenalty(self, ap, rp, discipline):
+        factor = 1.
+        if discipline == "STA":
+            ap = self.getMinFromTime(ap)
+            rp = self.getMinFromTime(rp)
+            factor = 0.2
+        elif discipline[0] == "D":
+            factor = 0.5
+        rp = float(rp)
+        if rp < ap:
+            return (ap - rp)*factor
+        else:
+            return 0.
