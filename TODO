@@ -25,10 +25,8 @@
 
 KNOWN BUGS:
 - Moving breaks up/down does not work
-- Remove Id from start lists
 
 TODO:
-- Fix bug with OT accuracy only down to seconds
 - When saving a new competition, update the competition_list <ul>
 - When refreshing file ask user whether he wants to delete all athletes or only update
 - Load values of undefined on startup
@@ -39,6 +37,7 @@ TODO:
 - Marking NRs/WRs in results
 - Support for mixed comp days
 - Divetime add to start list / lane lists
+- Athletes without result sort by OT
 
 WISHLIST:
 - User management

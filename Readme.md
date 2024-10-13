@@ -56,12 +56,16 @@ Future features can be seen in the TODO file.
  - Set up the environmen: `cp .env_sample .env`
  - For deployments you MUST edit the .env file and provide a new secret. A new one can be generated e.g. by running
    `python3 -c "import secrets; print(secrets.token_hex())"`
+ - Start a virtual environment and install required packages:
+   - Linux: `source venv/bin/activate && pip install -r requirements.txt`
  - Set up the database and run the server: `python3 compy.py --init_db`
 
 ## Running the software
 
  - Download the repository
  - Navigate with a terminal to the folder containing `compy.py`
+ - Start a virtual environment:
+   - Linux: `source venv/bin/activate`
  - Execute `compy.py`
    - Linux: `python3 compy.py`
    - Windows: `python3.exe compy.py`

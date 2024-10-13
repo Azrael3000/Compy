@@ -209,16 +209,18 @@ function getCountdownDuration() {
         return 3;
 }
 
-function getDateNow() {
+function getDateNow(with_correction = true) {
     let now = new Date();
-    //now.setDate(now.getDate() + 6);
+    //now.setDate(now.getDate() + 7);
     //now.setHours(now.getHours() + 1);
-    //now.setMinutes(now.getMinutes() + 42);
-    seconds_adjust = parseInt($("#seconds_adjust").val(), 10);
-    deciseconds_adjust = parseInt($("#deciseconds_adjust").val(), 10);
-    //console.log(seconds_adjust, deciseconds_adjust*100);
-    now.setSeconds(now.getSeconds() + seconds_adjust);
-    now.setMilliseconds(now.getMilliseconds() + deciseconds_adjust*100);
+    //now.setMinutes(now.getMinutes() + 11);
+    if (with_correction) {
+        seconds_adjust = parseInt($("#seconds_adjust").val(), 10);
+        deciseconds_adjust = parseInt($("#deciseconds_adjust").val(), 10);
+        //console.log(seconds_adjust, deciseconds_adjust*100);
+        now.setSeconds(now.getSeconds() + seconds_adjust);
+        now.setMilliseconds(now.getMilliseconds() + deciseconds_adjust*100);
+    }
     return now;
 }
 
@@ -244,7 +246,7 @@ function getNextPlayTime(ot = false) {
         return -1;
     }
 
-    return nextPlayTime - now;
+    return nextPlayTime - getDateNow();
 }
 
 // Schedule the audio to play at the next play time
@@ -258,6 +260,7 @@ function schedulePlay() {
         sec = (delay - (hour*3600 + min*60)*1000)/1000;
         console.log("Next play in:", hour, "h", min, "min", sec, "s");
         _audioTimeout = setTimeout(function() {
+            //console.log("Starting play at", new Date().toISOString());
             _audioElement.play();
             setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, getCountdownDuration()*60*1000);
             setTimeout(function() { $('#stop_countdown_btn').prop("disabled", true); }, (getCountdownDuration()*60 + 30)*1000);
@@ -290,11 +293,14 @@ $(document).ready(function() {
     // Start scheduling the plays
     schedulePlay();
 
-    setInterval(function() {
+    function updateTime() {
         $('#time').text(formatTime(getDateNow()), false);
         $('#countdown_ot').text(formatTime(getNextPlayTime(true), true));
         testAutoPlay();
-    },  100);
+        window.requestAnimationFrame(updateTime);
+    };
+
+    updateTime();
 
     function testAutoPlay() {
         // Attempt to play the audio immediately
@@ -1621,11 +1627,11 @@ function formatTime(date, countdown=false, full_date=false) {
 
 function fillOtsForDebuggin() {
     // countdown 1 = now + 2:10
-    let c1 = getDateNow();
+    let c1 = getDateNow(false);
     c1.setMinutes(c1.getMinutes() + 2);
     c1.setSeconds(c1.getSeconds() + 10);
     // countdown 2 = now + 4:50
-    let c2 = getDateNow();
+    let c2 = getDateNow(false);
     c2.setMinutes(c2.getMinutes() + 4);
     c2.setSeconds(c2.getSeconds() + 50);
     _ots.push(formatTime(c1, false, true));

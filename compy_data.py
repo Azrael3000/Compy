@@ -304,8 +304,8 @@ class CompyData:
                 ca_id = self.db_.execute('''SELECT competition_athlete.id FROM competition_athlete
                                             INNER JOIN athlete
                                             ON competition_athlete.athlete_id == athlete.id
-                                            WHERE athlete.aida_id=?''',
-                                         aida_id)
+                                            WHERE athlete.aida_id=? AND competition_athlete.competition_id == ?''',
+                                         (aida_id, self.id_))
                 dis = r['Discipline']
                 ap = ap_lambda(r['Meters or Min'], r['Sec(STA only)'], dis, self)
                 ot = self.parseTime(r['OT'])
@@ -670,6 +670,7 @@ class CompyData:
             merged_pdf.write_pdf(fname)
             return fname
         start_df = pd.DataFrame(self.getStartList(day, discipline))
+        start_df.drop("Id", axis=1, inplace=True)
         html_string = start_df.to_html(index=False, justify="left", classes="df_table")
         day_obj = datetime.strptime(day, "%Y-%m-%d")
         human_day = day_obj.strftime("%d. %m. %Y")
@@ -934,7 +935,7 @@ class CompyData:
             return res_list, result_keys
         else:
             cmd = '''SELECT a.first_name, a.last_name, a.country, a.club,
-                            s.AP, s.RP, s.penalty, s.card, s.remarks, s.id
+                            s.AP, s.RP, s.penalty, s.card, s.remarks, s.id, s.OT
                      FROM start s
                      INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
                      INNER JOIN athlete a ON ca.athlete_id == a.id
@@ -964,7 +965,8 @@ class CompyData:
                            'Card': r[7] if r[8] != "DNS" and r[5] is not None else "",
                            'Remarks': r[8] if r[5] is not None or r[8] == "DNS" else "",
                            'Points': "%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline),
-                           'Id': r[9]}
+                           'Id': r[9],
+                           'OT': r[10]}
                            for i,r in enumerate(db_out)]
                 result_keys += ["AP", "RP", "Penalty", "Card", "Remarks", "Points"]
 
@@ -1008,7 +1010,7 @@ class CompyData:
             w1 = 1
         if r['RP'] == "":
             w1 = 2
-            w2 = r['Name']
+            w2 = self.getMinFromTime(r['OT'])
         return (w0, w1, w2)
 
     def computePoints(self, rp, penalty, card, remarks, discipline):
@@ -1070,6 +1072,9 @@ class CompyData:
                 return None
             if self.comp_type == "cmas":
                 result_df.drop("Points", axis=1, inplace=True)
+            result_df.drop("Id", axis=1, inplace=True)
+            result_df.drop("AP_float", axis=1, inplace=True)
+            result_df.drop("OT", axis=1, inplace=True)
             if top3:
                 gender_str = "Female" if g == "F" else "Male"
                 html_string += "<h3>" + gender_str + "</h3>\n"
@@ -1206,7 +1211,7 @@ class CompyData:
                 this_break["Dis2"] = db_out[i+1][1]
                 this_break["OT1"] = db_out[i][0]
                 this_break["OT2"] = db_out[i+1][0]
-                time = self.getMinFromTime(this_break["OT1"]) - self.getMinFromTime(this_break["OT2"])
+                time = self.getMinFromTime(this_break["OT2"]) - self.getMinFromTime(this_break["OT1"])
                 min_break = min(min_break, time)
                 this_break["Break"] = str(int(time/60)).zfill(2) + ":" + str(time%60).zfill(2)
                 breaks_list.append(this_break)
