@@ -23,9 +23,6 @@
 
  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-KNOWN BUGS:
-- Moving breaks up/down does not work
-
 TODO:
 - When saving a new competition, update the competition_list <ul>
 - When refreshing file ask user whether he wants to delete all athletes or only update
@@ -50,9 +47,6 @@ WISHLIST:
 - Automated start list generation with breaks based on PB
 - LED screen (show starters)
 - Testing
-
-Wishlist CD:
-- Non-AIDA members (requires start list and athletes modification)
 
 Wishlist DE:
 - AIDA Youth (Overall) 2nd special ranking

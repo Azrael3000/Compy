@@ -296,7 +296,6 @@ $(document).ready(function() {
     function updateTime() {
         $('#time').text(formatTime(getDateNow()), false);
         $('#countdown_ot').text(formatTime(getNextPlayTime(true), true));
-        testAutoPlay();
         window.requestAnimationFrame(updateTime);
     };
 
@@ -328,11 +327,14 @@ $(document).ready(function() {
                         // Handle other errors
                         console.error('An error occurred while attempting to play audio:', error);
                     }
+                    setTimeout(testAutoPlay(), 1000);
                 });
             _audioElement.pause();
             _audioElement.currentTime =  0;
         }
     }
+
+    testAutoPlay();
 
     // Function to stop the audio and reset the playhead
     function stopAudio() {
@@ -771,14 +773,14 @@ $(document).ready(function() {
         if (i < 0 || i >= _sl.length-1)
             return;
         if (_sl[i].Name == "Break") {
-            removeBreak(i);
-            addBreak(i);
+            duration = removeBreak(i);
+            addBreak(i, duration);
         }
         else if (_sl[i+1].Name == "Break") {
             if (i == 0) // don't allow break at 0
                 return;
-            removeBreak(i+1);
-            addBreak(i-1);
+            duration = removeBreak(i+1);
+            addBreak(i-1, duration);
         }
         else {
             [_sl[i].Name,        _sl[i+1].Name       ] = [_sl[i+1].Name,        _sl[i].Name       ];
@@ -794,14 +796,14 @@ $(document).ready(function() {
         if (i < 1 || i >= _sl.length)
             return;
         if (_sl[i].Name == "Break") {
-            removeBreak(i);
-            addBreak(i-2);
+            duration = removeBreak(i);
+            addBreak(i-2, duration);
         }
         else if (_sl[i-1].Name == "Break") {
             if (i == _sl.length-1)
                 return; // don't allow break at end
-            removeBreak(i-1);
-            addBreak(i-1);
+            duration = removeBreak(i-1);
+            addBreak(i-1, duration);
         }
         else {
             [_sl[i].Name,        _sl[i-1].Name       ] = [_sl[i-1].Name,        _sl[i].Name       ];
@@ -1203,10 +1205,18 @@ function calculateStartList() {
     _sl_edited = true;
 }
 
-function addBreak(i) {
+function addBreak(i, duration) {
     if (i >= 0 && i < _sl.length-1) {
-        let break_date = $('#sl_break_duration')[0].valueAsDate;
-        break_str = dateToStr(break_date);
+        let break_str = null;
+        let break_date = null;
+        if (duration != null)
+        {
+            break_date = strToDate(duration);
+            break_str = duration;
+        } else {
+            break_date = $('#sl_break_duration')[0].valueAsDate;
+            break_str = dateToStr(break_date);
+        }
         let break_entry = {Name: "Break", AP: break_str, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1};
         _sl.splice(i+1, 0, break_entry);
         let ot_old = timeToMinutes(_sl[i+2].OT);
@@ -1221,6 +1231,7 @@ function addBreak(i) {
 function removeBreak(i) {
     if (i == 0 || i == _sl.length-1)
         return; // should not happen
+    duration = _sl[i].AP;
     _sl.splice(i, 1);
     let interval = $('#sl_interval').val();
     // if interval is not set, remove the break but don't change anything
@@ -1233,6 +1244,7 @@ function removeBreak(i) {
         for (let j = i; j < _sl.length; j++)
             adjustOTbyDiff(j, diff);
     }
+    return duration;
 }
 
 function adjustOTbyDiff(j, diff) {
