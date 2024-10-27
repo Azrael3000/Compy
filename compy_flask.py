@@ -135,6 +135,10 @@ class CompyFlask:
         def athletes():
             return self.getAthletes()
 
+        @app.route('/national_records', methods=['GET'])
+        def nationalRecords():
+            return self.nationalRecords()
+
         app.run()
 
     def uploadFile(self):
@@ -524,3 +528,10 @@ class CompyFlask:
         data = {"status": "success", "status_msg": "Successfully received athlete data"}
         self.data_.getAthleteData(data)
         return data, 200
+
+    def nationalRecords(self):
+        status = self.data_.updateNationalRecords()
+        if status == 0:
+            return {"status": "success", "status_msg": "Successfully updated national records"}, 200
+        else:
+            return {"status": "error", "status_msg": "Error while updating national records"}, 500

@@ -38,10 +38,15 @@ except ImportError:
     exit(-1)
 import re
 import math
+from packaging.version import Version
 try:
     import country_converter
+    assert Version(country_converter.version.__version__) >= Version("1.2")
 except ImportError:
     print("Could not find country_converter. Install with 'pip3 install country_converter'")
+    exit(-1)
+except AssertionError:
+    print("country_converter found with version", country_converter.version.__version__, "but version >= 1.2 required, please update it.")
     exit(-1)
 import os
 import json
@@ -87,11 +92,12 @@ class CompyData:
         self.disciplines_ = 0
         self.selected_country_ = None
 
-        self.NR = namedtuple("NR", ["country", "gender", "discipline"])
+        self.NR = namedtuple("NR", ["federation", "country", "cls", "gender", "discipline"])
 
         self.name_ = "undefined"
 
         with self.app_.app_context():
+            #self.updateNationalRecords();
             # try and find it first
             c_id = self.db_.execute("SELECT id FROM competition WHERE name=?", self.name_)
             if c_id is not None:
@@ -231,6 +237,20 @@ class CompyData:
         else:
             return self.selected_country_
 
+    @property
+    def nr(self):
+        if self.nrs_ is None:
+            nrs = self.db_.execute('''SELECT country, class, gender, discipline, value
+                                      FROM records
+                                      WHERE federation=?''',
+                                   self.comp_type)
+            if nrs is None:
+                return None
+            self.nrs_ = {}
+            for nr in nrs:
+                self.nrs_[self.NR(self.comp_type, nr[0], nr[1], nr[2], nr[3])] = nr[4]
+        return self.nrs_
+
     def changeSponsorImage(self, img_content):
         self.sponsor_img_ = {}
         img_base64 = base64.b64encode(img_content).decode('utf-8')
@@ -290,10 +310,6 @@ class CompyData:
             for sr in sr_ids:
                 self.setSpecialRanking(sr[0], True, False)
 
-        # Do check if country converter is >= 1.2
-        # only update if new nationalities are available (or forced)
-        #self.nrs_ = self.getNationalRecords()
-
         self.save()
 
         ap_lambda = lambda x, y, d, self: None if math.isnan(x) else (int(x)*60+float(y) if d=="STA" else float(x))
@@ -331,14 +347,14 @@ class CompyData:
                                         VALUES (?, ?, ?, ?, ?, ?)''',
                                      (ca_id[0][0], dis, lane, ot, ap, day))
 
-    def getNationalRecords(self):
+    def getNationalRecordsAida(self):
         empty_req = requests.post('https://www.aidainternational.org/public_pages/all_national_records.php', data={})
         html = empty_req.text
         start = html.find('id="nationality"')
         start = html.find('<option', start)
         end = html.find('</select>', start)
         nationalities = str.splitlines(html[start:end])
-        p = re.compile("\<option.*value=\"([0-9]+)\">(.*)\</option\>")
+        p = re.compile("<option.*value=\"([0-9]+)\">(.*)</option>")
         country_value_map = {}
         cc = country_converter.CountryConverter()
         for n in nationalities:
@@ -346,9 +362,9 @@ class CompyData:
             if result:
                 country_value_map[cc.convert(result.group(2), to = 'IOC')] = result.group(1)
         nrs = {}
-        for c in self.countries:
+        for c_ioc, c_str in country_value_map.items():
             data = {
-                'nationality': str(country_value_map[c]),
+                'nationality': str(c_str),
                 'discipline': '',
                 'gender': '',
                 'apply': ''
@@ -359,17 +375,25 @@ class CompyData:
             start = html.find('<tr>', start)
             end = html.find('</tbody>', start)
             entries = str.splitlines(html[start:end])[:-1]
-            p = re.compile("\<td\>(.*)\</td\>")
+            p = re.compile("<td>(.*)</td>")
             for i in range(int(len(entries)/10)):
                 gender = p.search(entries[i*10 + 2]).group(1)
                 dis = p.search(entries[i*10 + 3]).group(1)
-                result = p.search(entries[i*10 + 4]).group(1)
+                res_str = p.search(entries[i*10 + 4]).group(1)
+                result = 0.
+                if dis == "STA":
+                    p_dis = re.compile("([0-9]+):([0-9][0-9])")
+                    res_re = p_dis.search(res_str)
+                    result = float(res_re.group(1))*60.0 + float(res_re.group(2))
+                else:
+                    p_dis = re.compile("[0-9]+")
+                    result = float(p_dis.search(res_str).group(0))
                 points = float(p.search(entries[i*10 + 6]).group(1))
-                nrs[self.NR(country=c, gender=gender, discipline=dis)] = [result, points]
+                nrs[self.NR(federation="aida", country=c_ioc, cls="", gender=gender, discipline=dis)] = result
         logging.debug("National records:")
         logging.debug("Country | Gender | Discipline | Result | Points")
         for key, val in nrs.items():
-            logging.debug("%s | %s | %s | %s | %d", key.country, key.gender, key.discipline, val[0], val[1])
+            logging.debug("%s | %s | %s | %s | %d", key.country, key.gender, key.discipline, val)
         logging.debug("-----------------")
         return nrs
 
@@ -472,7 +496,7 @@ class CompyData:
         for i in range(delta.days + 1):
             yield (d0 + timedelta(days=i)).strftime('%Y-%m-%d')
 
-    def getDaysWithDisciplinesLanes(self):
+    def getDaysWithDisciplinesLanes(self, internal=False):
         dwd = {}
         for day in self.getDays():
             db_out = self.db_.execute('''SELECT DISTINCT discipline, lane FROM start s
@@ -485,7 +509,7 @@ class CompyData:
             disciplines_on_day = list({d[0] for d in db_out})
             disciplines_w_lanes = {}
             for dis in disciplines_on_day:
-                disciplines_w_lanes[dis] = [d[1] for d in db_out if d[0]==dis]
+                disciplines_w_lanes[dis] = [d[1] if internal else self.laneStyleConverter(d[1]) for d in db_out if d[0]==dis]
             dwd[day] = disciplines_w_lanes
         logging.debug("dwd:" + str(dwd))
         return dwd
@@ -548,7 +572,7 @@ class CompyData:
                       'Discipline': discipline,
                       'Id': r[6]}
                       for r in db_out]
-        startlist.sort(key=lambda r: (self.getMinFromTime(r['OT']), int(r['Lane'])))
+        startlist.sort(key=lambda r: (self.getMinFromTime(r['OT']), int(self.laneStyleConverter(r['Lane'], True))))
 
         br_out = self.db_.execute('''
             SELECT duration, idx
@@ -618,7 +642,7 @@ class CompyData:
                     continue
                 ot = self.cleanTime(startlist[i]["OT"])
                 ap = self.cleanPerf(startlist[i]["AP"], discipline)
-                lane = self.cleanNumber(startlist[i]["Lane"]) # TODO min/max
+                lane = self.cleanNumber(self.laneStyleConverter(startlist[i]["Lane"], true)) # TODO min/max
                 if int(startlist[i]["Id"]) < 0: # new s["art
                     self.db_.execute(
                         '''INSERT INTO start
@@ -678,12 +702,15 @@ class CompyData:
             <html>
             <head>
             <style>
+            table {{
+                margin-left: 2cm;
+            }}
             tr th:first-child {{
                 padding-left:0px;
                 text-align: left;
             }}
             tr td:first-child {{
-                padding-left:0px;
+                padding-left:0;
                 text-align: left;
             }}
             th, td {{
@@ -743,19 +770,20 @@ class CompyData:
 
     def getLaneList(self, day, discipline, lane):
         lane_db = self.laneStyleConverter(lane, True)
-        db_out = self.db_.execute('''SELECT a.first_name, a.last_name, s.AP, s.OT, a.country
+        db_out = self.db_.execute('''SELECT a.first_name, a.last_name, s.AP, s.OT, a.country, a.gender
                                      FROM athlete a
                                      INNER JOIN competition_athlete ca ON a.id == ca.athlete_id
                                      INNER JOIN start s ON s.competition_athlete_id == ca.id
-                                     WHERE s.discipline == ? AND s.lane == ? AND s.day == ?
+                                     WHERE s.discipline == ? AND s.lane == ? AND s.day == ? AND ca.competition_id == ?
                                   ''',
-                                  (discipline, lane, day))
+                                  (discipline, lane_db, day, self.id_))
         if db_out is None:
             return None
-        lane_list = [{'Name': r[0] + " " + r[1],
-                       'AP': self.convertPerformance(r[2], discipline),
-                       'OT': r[3],
-                       'NR': r[4]}
+        lane_list = [{'OT': r[3],
+                      'Name': r[0] + " " + r[1],
+                      'Nat': r[4],
+                      'AP': self.convertPerformance(r[2], discipline),
+                      'NR': self.convertPerformance(self.nr.get(self.NR(self.comp_type, r[4], "", r[5], discipline)), discipline)}
                        for r in db_out]
         lane_list.sort(key=lambda r: self.getMinFromTime(r['OT']))
         return lane_list
@@ -780,6 +808,9 @@ class CompyData:
         lane_df["RP"] = ""
         lane_df["Card"] = ""
         lane_df["Remarks"] = ""
+        cols = lane_df.columns.tolist()
+        cols = cols[0:4] + cols[5:] + [cols[4]]
+        lane_df = lane_df[cols]
         html_string = lane_df.to_html(index=False, justify="left", classes="df_table")
         day_obj = datetime.strptime(day, "%Y-%m-%d")
         human_day = day_obj.strftime("%d. %m. %Y")
@@ -792,28 +823,30 @@ class CompyData:
             }}
             tr th:first-child {{
                 padding-left:0px;
-                text-align: left;
             }}
             tr td:first-child {{
                 padding-left:0px;
-                text-align: left;
             }}
             th, td {{
-                padding:10px 0px 10px 50px;
+                padding:10px 0px 10px 20px;
                 text-align: center;
                 border-bottom: 1px solid #ddd;
             }}
             table th:nth-child(1) {{
-                width: 20%;
+                width: 5%;
             }}
             table th:nth-child(2) {{
-                width: 7%;
+                width: 21%;
+                text-align: left;
+            }}
+            table td:nth-child(2) {{
+                text-align: left;
             }}
             table th:nth-child(3) {{
-                width: 7%;
+                width: 5%;
             }}
             table th:nth-child(4) {{
-                width: 7%;
+                width: 5%;
             }}
             table th:nth-child(5) {{
                 width: 10%;
@@ -824,8 +857,11 @@ class CompyData:
             table th:nth-child(7) {{
                 width: 39%;
             }}
+            table th:nth-child(8) {{
+                width: 5%;
+            }}
             @page {{
-                margin: 4cm 1cm 1cm 1cm;
+                margin: 4cm 1cm 1.5cm 2.5cm;
                 size: A4 landscape;
                 @top-right {{
                     content: counter(page) "/" counter(pages);
@@ -845,9 +881,9 @@ class CompyData:
             }}
             footer {{
                 /* subtract @page margin */
-                bottom: -1cm;
-                height: 1cm;
-                text-align: center;
+                bottom: -1.5cm;
+                height: 1.5cm;
+                text-align: left;
                 vertical-align: center;
             }}
             </style>
@@ -858,7 +894,7 @@ class CompyData:
                 <h2>Lane list {} - lane {} - {}</h2>
             </header>
             {}
-            <footer></footer>
+            <footer><span style="margin-left:3mm">Judge Name:</span><span style="margin-left:8cm">Signature:</span></footer>
             </body>
             </html>
             """.format(self.name, discipline, lane, human_day, html_string, self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
@@ -889,8 +925,8 @@ class CompyData:
                      FROM start s
                      INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
                      INNER JOIN athlete a ON ca.athlete_id == a.id
-                     WHERE a.gender == ? AND s.remarks IS NOT NULL'''
-            args = (gender, )
+                     WHERE a.gender == ? AND s.remarks IS NOT NULL AND ca.competition_id == ?'''
+            args = (gender, self.id_)
 
             if country != 'International':
                 cmd += " AND a.country = ?"
@@ -910,7 +946,7 @@ class CompyData:
                         res[r[0]][d] = ''
                     if self.comp_type == "cmas":
                         res[r[0]]['Club'] = r[4]
-                res[r[0]][r[9]] = self.convertPerformance(r[5], r[9])
+                res[r[0]][r[9]] = 0 if r[7] == "RED" else self.convertPerformance(r[5], r[9])
                 res[r[0]]['Points'] += self.computePoints(r[5], r[6], r[7], r[8], r[9])
             # remove all 0 points and format points to two decimals after comma
             to_remove = []
@@ -935,14 +971,14 @@ class CompyData:
             return res_list, result_keys
         else:
             cmd = '''SELECT a.first_name, a.last_name, a.country, a.club,
-                            s.AP, s.RP, s.penalty, s.card, s.remarks, s.id, s.OT
+                            s.AP, s.RP, s.penalty, s.card, s.remarks, s.id, s.OT, a.gender
                      FROM start s
                      INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
                      INNER JOIN athlete a ON ca.athlete_id == a.id
-                     WHERE s.discipline == ? AND a.gender == ?'''
+                     WHERE s.discipline == ? AND a.gender == ? and ca.competition_id == ?'''
             if not with_empty: # remove unset results if requested
                 cmd += " AND s.remarks IS NOT NULL"
-            args = (discipline, gender)
+            args = (discipline, gender, self.id_)
             if country != 'International' and country != self.special_ranking_name:
                 cmd += " AND a.country = ?"
                 args += (country, )
@@ -954,6 +990,12 @@ class CompyData:
             if db_out is None:
                 return [], []
 
+            def check_nr(country, gender, rp, card):
+                if rp is None and card != "WHITE":
+                    return ""
+                this_nr = self.nr.get(self.NR(self.comp_type, country, "", gender, discipline))
+                return ", <b>NR</b>" if  this_nr is not None and this_nr < rp else ""
+
             if self.comp_type == "aida":
                 result = [{'Rank': i,
                            'Name': r[0] + " " + r[1],
@@ -963,8 +1005,8 @@ class CompyData:
                            'RP': self.convertPerformance(r[5], discipline) if r[8] != "DNS" else 0.,
                            'Penalty': r[6] if r[8] != "DNS" and r[5] is not None else "",
                            'Card': r[7] if r[8] != "DNS" and r[5] is not None else "",
-                           'Remarks': r[8] if r[5] is not None or r[8] == "DNS" else "",
-                           'Points': "%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline),
+                           'Remarks': (r[8] + check_nr(r[2], r[11], r[5], r[7])) if r[5] is not None or r[8] == "DNS" else "",
+                           'Points': ("%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline)),
                            'Id': r[9],
                            'OT': r[10]}
                            for i,r in enumerate(db_out)]
@@ -1006,9 +1048,9 @@ class CompyData:
         w0 = -float(r['Points'])
         w1 = 0
         w2 = -r['AP_float']
-        if r['Card'] != "WHITE" and r['Remarks'] == "DNS":
+        if r['Card'] != "WHITE":
             w1 = 1
-        if r['RP'] == "":
+        if r['RP'] == "" or r['Remarks'] == "DNS":
             w1 = 2
             w2 = self.getMinFromTime(r['OT'])
         return (w0, w1, w2)
@@ -1072,9 +1114,12 @@ class CompyData:
                 return None
             if self.comp_type == "cmas":
                 result_df.drop("Points", axis=1, inplace=True)
-            result_df.drop("Id", axis=1, inplace=True)
-            result_df.drop("AP_float", axis=1, inplace=True)
-            result_df.drop("OT", axis=1, inplace=True)
+            if "Id" in result_df.columns.tolist():
+                result_df.drop("Id", axis=1, inplace=True)
+            if "AP_float" in result_df.columns.tolist():
+                result_df.drop("AP_float", axis=1, inplace=True)
+            if "OT" in result_df.columns.tolist():
+                result_df.drop("OT", axis=1, inplace=True)
             if top3:
                 gender_str = "Female" if g == "F" else "Male"
                 html_string += "<h3>" + gender_str + "</h3>\n"
@@ -1091,6 +1136,8 @@ class CompyData:
                 # remove all Red cards
                 result_df = result_df[(result_df['Card'] != "RED")]
             html_string += result_df.to_html(index=False, justify="left", classes="df_table") + "\n"
+            html_string = html_string.replace("&lt;b&gt;", "<b>")
+            html_string = html_string.replace("&lt;/b&gt;", "</b>")
         html_string += self.getHtmlFooter();
 
         html = wp.HTML(string=html_string, base_url="/")
@@ -1321,17 +1368,17 @@ class CompyData:
             return 0
 
     def cleanTime(self, time):
-        ctime = regex.compile('[0-5]?\d:[0-5]\d$').match(str(time))
+        ctime = regex.compile('[0-5]?\\d:[0-5]\\d$').match(str(time))
         if ctime is None:
             return INVALID_TIME
         else:
             return ctime[0]
 
     def cleanNumber(self, n, digits = 0, minval = -sys.float_info.max, maxval = sys.float_info.max):
-        pstr = '^\d+'
+        pstr = '^\\d+'
         if digits > 0:
             pstr += '.?'
-        pstr += ''.join(['\d?' for i in range(digits)])
+        pstr += ''.join(['\\d?' for i in range(digits)])
         pattern = regex.compile(pstr)
         cn = pattern.match(str(n))
         if cn is None:
@@ -1343,7 +1390,7 @@ class CompyData:
 
     def cleanPerf(self, perf, discipline):
         if discipline == "STA":
-            return cleanTime(perf)
+            return self.cleanTime(perf)
         elif self.comp_type == "aida" or discipline in ['CWT', 'CWTB', 'FIM', 'CNF']:
             return self.cleanNumber(perf, 0, 1)
         else: # cmas dynamic disciplines
@@ -1391,3 +1438,19 @@ class CompyData:
             return (ap - rp)*factor
         else:
             return 0.
+
+    def updateNationalRecords(self):
+        # Do check if country converter is >= 1.2
+        try:
+            self.nrs_ = self.getNationalRecordsAida()
+            self.db_.execute("DELETE FROM records WHERE federation='aida'")
+            for nr_key, nr_val in self.nrs_.items():
+                self.db_.execute('''INSERT INTO records
+                                 ('federation', 'country', 'class', 'gender', 'discipline', 'value')
+                                 VALUES (?, ?, ?, ?, ?, ?)''',
+                                 (nr_key.federation, nr_key.country, nr_key.cls, nr_key.gender,
+                                 nr_key.discipline, nr_val))
+        except Exception as e:
+            logging.debug("Error", e)
+            return 1
+        return 0

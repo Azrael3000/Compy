@@ -347,6 +347,30 @@ $(document).ready(function() {
     $('input[name=seconds_adjust]').change(function() { changeTime(); });
     $('input[name=deciseconds_adjust]').change(function() { changeTime(); });
 
+    function showStatus(msg) {
+        let element = document.getElementById('file_upload_status');
+        element.style.display = "block";
+        element.innerHTML = msg;
+    }
+
+    $('#refresh_nrs').click(function() {
+        showStatus("Update of national records started.");
+        $('#refresh_nrs').prop("disabled", true);
+        $.ajax({
+            type: 'GET',
+            url: '/national_records',
+            success: function(data) {
+                showStatus("Update of national records completed.");
+            },
+            error: function(data) {
+                showStatus("Update of national records failed.");
+            },
+            complete: function (data) {
+                console.log(data.status_msg);
+                $('#refresh_nrs').prop("disabled", false);
+            }
+        })
+    });
     $('#upload_file_button').click(function() {
         let form_data = new FormData($('#upload_file')[0]);
         $.ajax({
@@ -648,6 +672,7 @@ $(document).ready(function() {
                             <td>OT</td>
                             <td>Name</td>
                             <td>AP</td>
+                            <td>Nat.</td>
                             <td>NR</td>
                             <td>RP</td>
                             <td>Card</td>
@@ -659,6 +684,7 @@ $(document).ready(function() {
                                 <td>${data.lane_list[i].OT}</td>
                                 <td>${data.lane_list[i].Name}</td>
                                 <td>${data.lane_list[i].AP}</td>
+                                <td>${data.lane_list[i].Nat}</td>
                                 <td>${data.lane_list[i].NR}</td>
                                 <td></td>
                                 <td></td>
