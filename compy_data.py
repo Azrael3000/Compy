@@ -36,8 +36,15 @@ try:
 except ImportError:
     print("Could not find requests. Install with 'pip3 install requests'")
     exit(-1)
-import re
+try:
+    import qrcode
+except ImportError:
+    print("Could not find qrcode. Install with 'pip3 install qrcode'")
+    exit(-1)
+import hashlib
 import math
+import random
+import re
 from packaging.version import Version
 try:
     import country_converter
@@ -52,6 +59,7 @@ import os
 import json
 import glob
 from datetime import datetime, timedelta, time
+from io import BytesIO
 import flask
 try:
     import weasyprint as wp
@@ -770,7 +778,7 @@ class CompyData:
 
     def getLaneList(self, day, discipline, lane):
         lane_db = self.laneStyleConverter(lane, True)
-        db_out = self.db_.execute('''SELECT a.first_name, a.last_name, s.AP, s.OT, a.country, a.gender
+        db_out = self.db_.execute('''SELECT a.first_name, a.last_name, s.AP, s.OT, a.country, a.gender, a.id
                                      FROM athlete a
                                      INNER JOIN competition_athlete ca ON a.id == ca.athlete_id
                                      INNER JOIN start s ON s.competition_athlete_id == ca.id
@@ -779,7 +787,8 @@ class CompyData:
                                   (discipline, lane_db, day, self.id_))
         if db_out is None:
             return None
-        lane_list = [{'OT': r[3],
+        lane_list = [{'id': r[6],
+                      'OT': r[3],
                       'Name': r[0] + " " + r[1],
                       'Nat': r[4],
                       'AP': self.convertPerformance(r[2], discipline),
@@ -805,6 +814,7 @@ class CompyData:
             merged_pdf.write_pdf(fname)
             return fname
         lane_df = pd.DataFrame(self.getLaneList(day, discipline, lane))
+        lane_df.drop("id", axis=1, inplace=True)
         lane_df["RP"] = ""
         lane_df["Card"] = ""
         lane_df["Remarks"] = ""
@@ -1454,3 +1464,84 @@ class CompyData:
             logging.debug("Error", e)
             return 1
         return 0
+
+    def isJudgeInCompetition(self, judge_id):
+        db_out = self.db_.execute(
+            "SELECT id FROM judge WHERE competition_id==? AND id==?",
+            (self.id_, judge_id))
+        if db_out is None:
+            return None
+        else:
+            return db_out[0][0]
+
+    def deleteJudge(self, judge_id):
+        self.db_.execute("DELETE FROM judge WHERE id=?", judge_id)
+
+    def getJudgeData(self, data):
+        data["judges"] = []
+        judges = self.db_.execute(
+            '''SELECT id, first_name, last_name FROM judge WHERE competition_id == ?''',
+            self.id_)
+        if judges is None:
+            return
+        for j in judges:
+            data["judges"].append(
+                {"last_name": j[2], "first_name": j[1], "id": j[0]})
+
+    def addJudge(self, first_name, last_name):
+        a_id = self.db_.execute(
+            "SELECT id FROM judge WHERE first_name == ? AND last_name == ? AND competition_id == ?",
+            (first_name, last_name, self.id_))
+        a = None
+        # user already in this comp
+        if a_id is not None:
+            return 1;
+        else:
+            salt = random.randrange(sys.maxsize)
+            j_id = self.db_.execute(
+                "INSERT INTO judge (first_name, last_name, salt, competition_id) VALUES (?, ?, ?, ?)",
+                (first_name, last_name, salt, self.id_))
+            return 0
+
+    def getJudgeQrCode(self, judge_id):
+        db_out = self.db_.execute(
+            "SELECT first_name, last_name, salt FROM judge WHERE competition_id==? AND id==?",
+            (self.id_, judge_id))
+        if db_out is None:
+            return None
+        else:
+            jhash = self.getJudgeQrCodeHash(db_out[0][0], db_out[0][1], db_out[0][2], judge_id)
+            # TODO make configurable
+            url = "http://127.0.0.1:5000/judge/" + str(self.id_) + "/" + str(judge_id)+"?hash=" + jhash
+            qr_code = qrcode.make(url)
+            ba = BytesIO()
+            qr_code.save(ba, format='PNG')
+            qr_code_base64 = "data:image/png;base64," + base64.b64encode(ba.getvalue()).decode('utf-8')
+            return (qr_code_base64, db_out[0][0], db_out[0][1], url)
+
+    def getJudgeQrCodeHash(self, first_name, last_name, salt, judge_id):
+        return hashlib.sha256((first_name + last_name + str(salt) + str(judge_id)).encode('utf-8')).hexdigest()
+
+    def getCompDataAndValidateJudge(self, comp_id, judge_id, judge_hash):
+        try:
+            assert(comp_id is not None)
+            assert(judge_id is not None)
+            comp_id = int(comp_id)
+            judge_id = int(judge_id)
+            assert(judge_hash.isalnum())
+        except:
+            return None
+        db_out = self.db_.execute(
+            "SELECT first_name, last_name, salt FROM judge WHERE competition_id==? AND id==?",
+            (comp_id, judge_id))
+        db_out2 = self.db_.execute("SELECT name FROM competition WHERE id==?", comp_id)
+        if db_out is None or db_out2 is None:
+            return None
+
+        first_name = db_out[0][0]
+        last_name = db_out[0][1]
+        judge_hash_db = self.getJudgeQrCodeHash(first_name, last_name, db_out[0][2], judge_id)
+        if judge_hash_db != judge_hash:
+            return None
+
+        return (db_out2[0][0], first_name, last_name)

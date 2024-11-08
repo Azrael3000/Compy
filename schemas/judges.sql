@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS judge;
+
+CREATE TABLE judge (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  qr_code TEXT NOT NULL,
+  competition_id INTEGER NOT NULL
+);

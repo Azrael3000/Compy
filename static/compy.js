@@ -388,6 +388,7 @@ $(document).ready(function() {
                 element.innerHTML = data.status_msg;
                 populateSpecialRanking(data);
                 populateAthletes(data);
+                populateJudges(data);
                 setOTs(data);
                 initSubmenus(data, true);
             },
@@ -479,6 +480,63 @@ $(document).ready(function() {
             }
         })
     });
+    $('#judges_table').on("click", "#add_judge", function() {
+        let data = {
+            first_name: $('#judge_first_name')[0].value,
+            last_name: $('#judge_last_name')[0].value,
+        };
+        $.ajax({
+            url: '/judge',
+            data: JSON.stringify(data),
+            contentType: 'application/json',
+            dataType: 'json',
+            type: 'POST',
+            success: function(data) {
+                console.log(data.status_msg);
+                populateJudges(data);
+                $('#judge_first_name').val("");
+                $('#judge_last_name').val("");
+            },
+            error: function(data) {
+                console.log(data.status_msg);
+                // TODO show to user
+            }
+        });
+    });
+    $('#judges_table').on("click", ".show", function() {
+        let judge_id = this.id.split('_')[2]; // button id is equal to "show_judge_" + id
+        let data = {judge_id: judge_id};
+        $.ajax({
+            type: "GET",
+            url: "/judge/qr_code?" + $.param(data),
+            success: function(data)
+            {
+                console.log(data.status_msg);
+                content = `
+                    QR Code for ${data.judge_first_name} ${data.judge_last_name}:<br>
+                    <a href="${data.judge_url}" target="_blank"><img src="${data.judge_qr_code}" style="width:250px;"/></a><br>
+                    <button id="overlay_cancel" type="button">Close</button>
+                    `;
+                showOverlayBox(400, 300, content);
+            }
+        });
+    });
+    $('#judges_table').on("click", ".delete", function() {
+        let judge_id = this.id.split('_')[2]; // button id is equal to "del_judge_" + id
+        let data = {judge_id: judge_id};
+        $.ajax({
+            type: "DELETE",
+            url: "/judge",
+            data: JSON.stringify(data),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data)
+            {
+                console.log(data.status_msg);
+                populateJudges(data);
+            }
+        });
+    });
     $('#athletes_table').on("click", "#add_athlete", function() {
         let data = {
             first_name: $('#athlete_first_name')[0].value,
@@ -544,6 +602,7 @@ $(document).ready(function() {
                 console.log(data.status_msg);
                 populateSpecialRanking(data);
                 populateAthletes(data);
+                populateJudges(data);
                 initSubmenus(data, true);
                 if ('comp_name' in data) {
                     $('#comp_name').val(data.comp_name);
@@ -1063,8 +1122,8 @@ $(document).ready(function() {
         _sl_athletes = null;
     });
     $('#sl_content').on('click', '#sl_save', function() {
-        var _sl_edited = false;
-        var _sl_athletes = null;
+        let _sl_edited = false;
+        let _sl_athletes = null;
         let data = {startlist: _sl, to_remove: _sl_remove, day: _cur_menu.day, discipline: _cur_menu.discipline};
         $.ajax({
             type: "PUT",
@@ -1323,7 +1382,7 @@ function getPDF(type, params = {type: "all"})
 }
 
 function switchTo(id) {
-    let tab_ids = ['settings', 'athletes', 'special_ranking', 'breaks', 'start_lists', 'lane_lists', 'results']
+    let tab_ids = ['settings', 'judges', 'athletes', 'special_ranking', 'breaks', 'start_lists', 'lane_lists', 'results']
     for (let i = 0; i < tab_ids.length; i++) {
         let element = document.getElementById(tab_ids[i]);
         let button = document.getElementById(tab_ids[i] + "_button");
@@ -1333,6 +1392,35 @@ function switchTo(id) {
         } else {
             element.style.display = "none";
             button.style.fontWeight = "normal";
+        }
+    }
+}
+
+function populateJudges(data) {
+    $('#judges_table').html(`
+        <tr>
+            <td>First name</td>
+            <td>Last name</td>
+            <td>Action</td>
+        </tr>
+        <tr>
+            <td><input type="text" id="judge_first_name"/></td>
+            <td><input type="text" id="judge_last_name"/></td>
+            <td><button id="add_judge" type="button">Add</button></td>
+        </tr>`);
+    if (data.hasOwnProperty("judges")) {
+        let judges = data.judges;
+        for (let i = 0; i < judges.length; i++) {
+            $('#judges_table').append(`
+                <tr>
+                    <td>${judges[i].first_name}</td>
+                    <td>${judges[i].last_name}</td>
+                    <td>
+                        <button id="show_judge_${judges[i].id}" type="button" class="show">Show QR</button>
+                        <button id="del_judge_${judges[i].id}" type="button" class="delete">Delete</button>
+                    </td>
+                </tr>
+            `);
         }
     }
 }

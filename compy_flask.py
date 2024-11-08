@@ -25,7 +25,7 @@
 #  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 import logging
-from flask import Flask, render_template, request, send_file, Response
+from flask import Flask, render_template, request, send_file, Response, make_response
 from os import path, mkdir
 from werkzeug.utils import secure_filename
 try:
@@ -124,6 +124,21 @@ class CompyFlask:
         def changeSelectedCountry():
             return self.changeSelectedCountry()
 
+        @app.route('/judge', methods=['DELETE', 'POST'])
+        def judge():
+            if request.method == 'DELETE':
+                return self.deleteJudge()
+            elif request.method == 'POST':
+                return self.addJudge()
+
+        @app.route('/judge/qr_code', methods=['GET'])
+        def judgeQrCode():
+            return self.getJudgeQrCode()
+
+        @app.route('/judges', methods=['GET'])
+        def judges():
+            return self.getJudges()
+
         @app.route('/athlete', methods=['DELETE', 'POST'])
         def athlete():
             if request.method == 'DELETE':
@@ -138,6 +153,21 @@ class CompyFlask:
         @app.route('/national_records', methods=['GET'])
         def nationalRecords():
             return self.nationalRecords()
+
+        @app.route('/judge/<int:comp_id>/<int:judge_id>', methods=['GET'])
+        def judgeComp(comp_id, judge_id):
+            return self.getJudgeComp(comp_id, judge_id)
+
+        @app.route('/judge/athletes', methods=['GET'])
+        def judgeAthlete():
+            return self.getJudgeAthletes()
+
+        @app.route('/judge/athletes/result', methods=['GET', 'POST'])
+        def judgeAthleteResult():
+            if request.method == 'GET':
+                return self.getJudgeAthleteResult()
+            elif request.method == 'POST':
+                return self.setJudgeAthleteResult()
 
         app.run()
 
@@ -163,6 +193,7 @@ class CompyFlask:
                 data_file.save(fpath)
                 self.data_.compFileChange(fpath)
                 self.data_.getAthleteData(data)
+                self.data_.getJudgeData(data)
                 self.setSubmenuData(data)
                 self.data_.setOTs(data)
         data["status_msg"] = status_msg
@@ -230,6 +261,7 @@ class CompyFlask:
         comp_name = self.data_.load(comp_id)
         data = {}
         self.data_.getAthleteData(data)
+        self.data_.getJudgeData(data)
         data["comp_name"] = comp_name
         self.setSubmenuData(data)
         self.data_.setSpecialRankingName(data)
@@ -475,6 +507,79 @@ class CompyFlask:
         self.setSubmenuData(data)
         return data, 200
 
+    def deleteJudge(self):
+        judge_id = request.json.get('judge_id')
+        if judge_id is None:
+            logging.info("Could not delete judge without getting an id")
+            return {}, 400
+        try:
+            judge_id = int(judge_id)
+        except (ValueError, TypeError):
+            logging.info("judge id has wrong type")
+            return {}, 400
+
+        data = {}
+        judge_id = self.data_.isJudgeInCompetition(judge_id)
+        if judge_id is not None:
+            self.data_.deleteJudge(judge_id)
+            data = {"status": "success", "status_msg": "Successfully deleted judge with id " + str(judge_id)}
+            self.data_.getJudgeData(data)
+            return data, 200
+        else:
+            logging.info('Invalid judge id provided')
+            return {}, 400
+
+    def getJudgeQrCode(self):
+        judge_id = request.args.get('judge_id')
+        if judge_id is None:
+            logging.info("Could not get judge qr code without getting an id")
+            return {}, 400
+        try:
+            judge_id = int(judge_id)
+        except (ValueError, TypeError):
+            logging.info("judge id has wrong type")
+            return {}, 400
+
+        data = {}
+        judge_id = self.data_.isJudgeInCompetition(judge_id)
+        if judge_id is not None:
+            qr_data = self.data_.getJudgeQrCode(judge_id)
+            if qr_data is None:
+                logging.info('Could not get qr code for judge with id ' + str(judge_id))
+                return {}, 400
+            else:
+                data = {"status": "success", "status_msg": "Successfully got judge qr_code with id " + str(judge_id), "judge_qr_code": qr_data[0], "judge_first_name": qr_data[1], "judge_last_name": qr_data[2], "judge_url": qr_data[3]}
+                return data, 200
+        else:
+            logging.info('Invalid judge id provided')
+            return {}, 400
+
+    def addJudge(self):
+        content = request.json
+        if False in [key in content for key in ['first_name', 'last_name']]:
+            logging.info("Could not add judge due to missing data")
+            return {}, 400
+        first_name = content['first_name']
+        last_name = content['last_name']
+        if first_name is None or last_name is None:
+            logging.info("Could not add judge with incomplete information")
+            return {}, 400
+        status = self.data_.addJudge(first_name, last_name)
+        data = {}
+        if status == 0:
+            data = {"status": "success", "status_msg": "Successfully added judge"}
+            self.data_.getJudgeData(data)
+            return data, 200
+        elif status == 1:
+            data = {"status": "error", "status_msg": "Judge already exists"}
+            self.data_.getJudgeData(data)
+            return data, 200
+
+    def getJudges(self):
+        data = {"status": "success", "status_msg": "Successfully received judge data"}
+        self.data_.getJudgeData(data)
+        return data, 200
+
     def deleteAthlete(self):
         athlete_id = request.args.get('athlete_id')
         if athlete_id is None:
@@ -535,3 +640,66 @@ class CompyFlask:
             return {"status": "success", "status_msg": "Successfully updated national records"}, 200
         else:
             return {"status": "error", "status_msg": "Error while updating national records"}, 500
+
+    def getJudgeComp(self, comp_id, judge_id):
+        judge_hash = request.args.get('hash')
+        comp_data = self.data_.getCompDataAndValidateJudge(comp_id, judge_id, judge_hash)
+        if comp_data is None:
+            content = {"version": self.data_.version}
+            return make_response(render_template('404.html', **content), 404)
+
+        comp_name = comp_data[0]
+        first_name = comp_data[1]
+        last_name = comp_data[2]
+
+        self.data_.load(comp_id)
+
+        content = {"version": self.data_.version,
+                   "comp_id": comp_id,
+                   "comp_name": comp_name,
+                   "judge_id": judge_id,
+                   "judge_hash": judge_hash,
+                   "judge_first_name": first_name,
+                   "judge_last_name": last_name,
+                   "days_with_disciplines_lanes": self.data_.getDaysWithDisciplinesLanes()}
+        return render_template('judge.html', **content)
+
+    def isValidJudge(self):
+        judge_hash = request.args.get('judge_hash')
+        judge_id = request.args.get('judge_id')
+        comp_id = request.args.get('comp_id')
+
+        comp_data = self.data_.getCompDataAndValidateJudge(comp_id, judge_id, judge_hash)
+        return comp_data is not None
+
+    def getJudgeAthletes(self):
+        if not self.isValidJudge():
+            content = {"version": self.data_.version}
+            return make_response(render_template('404.html', **content), 404)
+
+        return self.laneList()
+
+    def getJudgeAthleteResult(self):
+        if not self.isValidJudge():
+            content = {"version": self.data_.version}
+            return make_response(render_template('404.html', **content), 404)
+
+        day = request.args.get('day')
+        discipline = request.args.get('discipline')
+        lane = request.args.get('lane')
+        athlete = request.args.get('athlete')
+        if day is None or discipline is None or lane is None or athelte is None:
+            logging.debug("Get request to athlete result without day, discipline, lane or athlete")
+            return {}, 400
+
+        data = self.data_.getAthleteResult(day, discipline, lane, athlete)
+        if data is None:
+            logging.debug("Get request to athlete result failed.")
+            return {}, 400
+
+        data = {}
+        return 200, data
+
+    def setJudgeAthleteResult(self):
+        data = {}
+        return 200, data
