@@ -30,6 +30,7 @@
     <title>Compy {{version}}</title>
     <script src="{{ url_for('static', filename='jquery-3.7.1.js') }}"></script>
     <script src="{{ url_for('static', filename='judge.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='judge.css') }}" type="text/css"/>
 </head>
 
 <body onload="init('{{judge_hash}}', {{judge_id}}, {{comp_id}}, {{days_with_disciplines_lanes}})">

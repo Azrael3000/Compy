@@ -162,7 +162,7 @@ class CompyFlask:
         def judgeAthlete():
             return self.getJudgeAthletes()
 
-        @app.route('/judge/athletes/result', methods=['GET', 'POST'])
+        @app.route('/judge/athlete/result', methods=['GET', 'POST'])
         def judgeAthleteResult():
             if request.method == 'GET':
                 return self.getJudgeAthleteResult()
@@ -681,14 +681,14 @@ class CompyFlask:
 
     def getJudgeAthleteResult(self):
         if not self.isValidJudge():
-            content = {"version": self.data_.version}
-            return make_response(render_template('404.html', **content), 404)
+            logging.debug("Not a valid judge")
+            return {}, 400
 
         day = request.args.get('day')
         discipline = request.args.get('discipline')
         lane = request.args.get('lane')
         athlete = request.args.get('athlete')
-        if day is None or discipline is None or lane is None or athelte is None:
+        if day is None or discipline is None or lane is None or athlete is None:
             logging.debug("Get request to athlete result without day, discipline, lane or athlete")
             return {}, 400
 
@@ -697,9 +697,10 @@ class CompyFlask:
             logging.debug("Get request to athlete result failed.")
             return {}, 400
 
-        data = {}
-        return 200, data
+        data["status"] = "success"
+        data["status_msg"] = "Completed request for athlete result of " + data["Name"]
+        return data, 200
 
     def setJudgeAthleteResult(self):
         data = {}
-        return 200, data
+        return data, 200

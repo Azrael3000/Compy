@@ -1,0 +1,19 @@
+.card {
+    width: 80px;
+    border: 1px solid black;
+    display: inline-block;
+    text-align: center;
+    line-height: 30px;
+}
+
+.card.white {
+    background: #ffffff;
+}
+
+.card.yellow {
+    background: #fffb00;
+}
+
+.card.red {
+    background: #ff0000;
+}

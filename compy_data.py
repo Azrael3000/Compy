@@ -1526,15 +1526,15 @@ class CompyData:
         try:
             assert(comp_id is not None)
             assert(judge_id is not None)
-            comp_id = int(comp_id)
+            self.id_ = int(comp_id)
             judge_id = int(judge_id)
             assert(judge_hash.isalnum())
         except:
             return None
         db_out = self.db_.execute(
             "SELECT first_name, last_name, salt FROM judge WHERE competition_id==? AND id==?",
-            (comp_id, judge_id))
-        db_out2 = self.db_.execute("SELECT name FROM competition WHERE id==?", comp_id)
+            (self.id_, judge_id))
+        db_out2 = self.db_.execute("SELECT name FROM competition WHERE id==?", self.id_)
         if db_out is None or db_out2 is None:
             return None
 
@@ -1545,3 +1545,33 @@ class CompyData:
             return None
 
         return (db_out2[0][0], first_name, last_name)
+
+    def getAthleteResult(self, day, discipline, lane, athlete_id):
+        try:
+            athlete_id = int(athlete_id)
+            lane = self.laneStyleConverter(lane, True)
+        except:
+            return None
+
+        db_out = self.db_.execute(
+            '''SELECT a.first_name, a.last_name, a.country,
+                      s.AP, s.RP, s.penalty, s.card, s.remarks, s.id, s.OT, a.gender
+               FROM start s
+               INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
+               INNER JOIN athlete a ON ca.athlete_id == a.id
+               WHERE s.discipline == ? AND ca.competition_id == ? AND a.id == ? AND s.day == ? AND s.lane == ?''',
+            (discipline, self.id_, athlete_id, day, lane))
+
+        if db_out is None:
+            return None
+
+        return {'Name': db_out[0][0] + " " + db_out[0][1],
+                'Country': db_out[0][2],
+                'AP': db_out[0][3],
+                'RP': db_out[0][4],
+                'Penalty': db_out[0][5],
+                'Card': db_out[0][6],
+                'Remarks': db_out[0][7],
+                'Id': db_out[0][8],
+                'OT': db_out[0][9],
+                'Gender': db_out[0][10]}
