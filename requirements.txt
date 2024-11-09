@@ -9,7 +9,7 @@ botocore==1.35.46
 Brlapi==0.8.5
 Brotli==1.1.0
 certifi==2024.6.2
-cffi==1.16.0
+cffi==1.17.1
 charset-normalizer==3.3.2
 click==8.1.7
 country-converter==1.2
@@ -45,7 +45,7 @@ nftables==0.1
 numpy==2.0.0
 olefile==0.47
 openpyxl==3.1.5
-packaging==23.2
+packaging==24.2
 pandas==2.2.2
 Paste==3.7.1
 pexpect==4.9.0
@@ -64,7 +64,7 @@ pydyf==0.10.0
 pyenchant==3.2.2
 PyGObject==3.48.1
 pykickstart==3.52
-pyOpenSSL==23.2.0
+pyOpenSSL==24.2.1
 pyparted==3.13.0
 pyphen==0.15.0
 PySocks==1.7.1
@@ -87,7 +87,7 @@ s3transfer==0.10.3
 selinux @ file:///builddir/build/BUILD/libselinux-3.7/src
 sepolicy @ file:///builddir/build/BUILD/selinux-3.7/python/sepolicy
 setools==4.5.1
-setuptools==69.0.3
+setuptools==75.3.0
 simpleaudio==1.0.4
 simpleline==1.9.0
 six==1.16.0
