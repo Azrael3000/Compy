@@ -158,6 +158,10 @@ class CompyFlask:
         def judgeComp(comp_id, judge_id):
             return self.getJudgeComp(comp_id, judge_id)
 
+        @app.route('/judge_json/<int:comp_id>/<int:judge_id>', methods=['GET'])
+        def judgeJsonComp(comp_id, judge_id):
+            return self.getJudgeComp(comp_id, judge_id, True)
+
         @app.route('/judge/athletes', methods=['GET'])
         def judgeAthlete():
             return self.getJudgeAthletes()
@@ -642,7 +646,7 @@ class CompyFlask:
         else:
             return {"status": "error", "status_msg": "Error while updating national records"}, 500
 
-    def getJudgeComp(self, comp_id, judge_id):
+    def getJudgeComp(self, comp_id, judge_id, return_json = False):
         judge_hash = request.args.get('hash')
         comp_data = self.data_.getCompDataAndValidateJudge(comp_id, judge_id, judge_hash)
         if comp_data is None:
@@ -663,7 +667,10 @@ class CompyFlask:
                    "judge_first_name": first_name,
                    "judge_last_name": last_name,
                    "days_with_disciplines_lanes": self.data_.getDaysWithDisciplinesLanes()}
-        return render_template('judge.html', **content)
+        if return_json:
+            return content, 200
+        else:
+            return render_template('judge.html', **content)
 
     def isValidJudge(self):
         judge_hash = request.args.get('judge_hash')
