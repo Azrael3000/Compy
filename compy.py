@@ -55,7 +55,8 @@ def compy(init_db=False):
     init_db = init_db or args.init_db
 
     # load local environment
-    if not dotenv.load_dotenv():
+    env_path = dotenv.find_dotenv(usecwd=True)
+    if not dotenv.load_dotenv(env_path, override=True):
         logging.error("Could not load .env file, make sure it exists (e.g. by copying from .env_sample")
         exit(-1)
 
