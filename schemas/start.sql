@@ -12,5 +12,6 @@ CREATE TABLE start (
   RP FLOAT,
   card TEXT,
   penalty FLOAT,
-  remarks TEXT
+  remarks TEXT,
+  judge_remarks TEXT
 );

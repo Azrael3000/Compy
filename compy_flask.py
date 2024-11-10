@@ -481,9 +481,9 @@ class CompyFlask:
 
     def updateResult(self):
         content = request.json
-        if not self.dictHas(content, {"discipline", "gender", "country", "id", "rp", "penalty", "card", "remarks"}):
+        if not self.dictHas(content, {"discipline", "gender", "country", "id", "rp", "penalty", "card", "remarks", "judge_remarks"}):
             breakpoint()
-            logging.debug("Put request to result without discipline, gender, country, id, rp, penalty, card, remarks")
+            logging.debug("Put request to result without discipline, gender, country, id, rp, penalty, card, remarks, judge_remarks")
             return {}, 400
         discipline = content["discipline"]
         gender = content["gender"]
@@ -493,7 +493,8 @@ class CompyFlask:
         penalty = content["penalty"]
         card = content["card"]
         remarks = content["remarks"]
-        self.data_.updateResult(s_id, rp, penalty, card, remarks, discipline)
+        judge_remarks = content["judge_remarks"]
+        self.data_.updateResult(s_id, rp, penalty, card, remarks, judge_remarks, discipline)
         return self.getResultDiscipline(discipline, gender, country)
 
     def changeSpecialRankingName(self):

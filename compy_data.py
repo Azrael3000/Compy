@@ -981,7 +981,7 @@ class CompyData:
             return res_list, result_keys
         else:
             cmd = '''SELECT a.first_name, a.last_name, a.country, a.club,
-                            s.AP, s.RP, s.penalty, s.card, s.remarks, s.id, s.OT, a.gender
+                            s.AP, s.RP, s.penalty, s.card, s.remarks, s.id, s.OT, a.gender, s.judge_remarks
                      FROM start s
                      INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
                      INNER JOIN athlete a ON ca.athlete_id == a.id
@@ -1016,11 +1016,12 @@ class CompyData:
                            'Penalty': r[6] if r[8] != "DNS" and r[5] is not None else "",
                            'Card': r[7] if r[8] != "DNS" and r[5] is not None else "",
                            'Remarks': (r[8] + check_nr(r[2], r[11], r[5], r[7])) if r[5] is not None or r[8] == "DNS" else "",
+                           'JudgeRemarks': r[12],
                            'Points': ("%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline)),
                            'Id': r[9],
                            'OT': r[10]}
                            for i,r in enumerate(db_out)]
-                result_keys += ["AP", "RP", "Penalty", "Card", "Remarks", "Points"]
+                result_keys += ["AP", "RP", "Penalty", "Card", "Remarks", "Points", "JudgeRemarks"]
 
                 # sorting according to rp (descending), card (white before others), ap (descending)
                 result.sort(key=lambda r: self.sortResultsWeightsAida(r))
@@ -1032,10 +1033,11 @@ class CompyData:
                            'RP': self.convertPerformance(r[5], discipline) if r[8] != "DNS" else 0.,
                            'Card': r[7] if r[8] != "DNS" else "",
                            'Remarks': r[8],
+                           'Judge Remarks': r[12],
                            'Points': "%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline),
                            'Id': r[9]}
                            for i,r in enumerate(db_out)]
-                result_keys += ["RP", "Card", "Remarks"]
+                result_keys += ["RP", "Card", "Remarks", "JudgeRemarks"]
 
                 # sorting according to rp (descending)
                 result.sort(key=lambda r: (-float(r['Points']), 0 if r['Remarks'] != "DNS" else 1))
@@ -1130,6 +1132,8 @@ class CompyData:
                 result_df.drop("AP_float", axis=1, inplace=True)
             if "OT" in result_df.columns.tolist():
                 result_df.drop("OT", axis=1, inplace=True)
+            if "JudgeRemarks" in result_df.columns.tolist():
+                result_df.drop("JudgeRemarks", axis=1, inplace=True)
             if top3:
                 gender_str = "Female" if g == "F" else "Male"
                 html_string += "<h3>" + gender_str + "</h3>\n"
@@ -1416,10 +1420,11 @@ class CompyData:
         h_m = time_str.split(':')
         return int(h_m[0])*60 + int(h_m[1])
 
-    def updateResult(self, s_id, rp, penalty, card, remarks, discipline):
+    def updateResult(self, s_id, rp, penalty, card, remarks, judge_remarks, discipline):
         s_id = int(s_id)
         penalty = float(penalty)
         rp = self.cleanPerf(rp, discipline)
+        rp = self.getMinFromTime(rp)
         # TODO sanity checks for card and remarks and discipline
         ap = self.db_.execute(
                 '''SELECT s.ap
@@ -1430,16 +1435,14 @@ class CompyData:
         if ap is not None:
             under_ap_penalty = self.getUnderApPenalty(ap[0][0], rp, discipline) if self.comp_type == "aida" else 0
             self.db_.execute(
-                '''UPDATE start SET rp = ?, penalty = ?, card = ?, remarks = ? WHERE id == ?''',
-                (rp, under_ap_penalty + penalty, card, remarks, s_id))
+                '''UPDATE start SET rp = ?, penalty = ?, card = ?, remarks = ?, judge_remarks = ? WHERE id == ?''',
+                (rp, under_ap_penalty + penalty, card, remarks, judge_remarks, s_id))
             return 0
         return 1
 
     def getUnderApPenalty(self, ap, rp, discipline):
         factor = 1.
         if discipline == "STA":
-            ap = self.getMinFromTime(ap)
-            rp = self.getMinFromTime(rp)
             factor = 0.2
         elif discipline[0] == "D":
             factor = 0.5
@@ -1555,7 +1558,7 @@ class CompyData:
 
         db_out = self.db_.execute(
             '''SELECT a.first_name, a.last_name, a.country,
-                      s.AP, s.RP, s.penalty, s.card, s.remarks, s.id, s.OT, a.gender
+                      s.AP, s.RP, s.penalty, s.card, s.remarks, s.id, s.OT, a.gender, s.judge_remarks
                FROM start s
                INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
                INNER JOIN athlete a ON ca.athlete_id == a.id
@@ -1567,11 +1570,12 @@ class CompyData:
 
         return {'Name': db_out[0][0] + " " + db_out[0][1],
                 'Country': db_out[0][2],
-                'AP': db_out[0][3],
-                'RP': db_out[0][4],
+                'AP': self.convertPerformance(db_out[0][3], discipline),
+                'RP': self.convertPerformance(db_out[0][4], discipline),
                 'Penalty': db_out[0][5],
                 'Card': db_out[0][6],
                 'Remarks': db_out[0][7],
+                'JudgeRemarks': db_out[0][11],
                 'Id': db_out[0][8],
                 'OT': db_out[0][9],
                 'Gender': db_out[0][10]}

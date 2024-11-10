@@ -124,12 +124,14 @@ $(document).ready(function() {
         $('#penalty_entry').hide();
         $('#card_entry').hide();
         $('#remarks_entry').hide();
+        $('#judgeremarks_entry').hide();
     });
     $('#content').on("click", '.nav', function() {
         $('#rp_entry').hide();
         $('#card_entry').hide();
         $('#penalty_entry').hide();
         $('#remarks_entry').hide();
+        $('#judgeremarks_entry').hide();
         $('#edit_div').hide();
         if (this.id=="card_previous" || this.id=="rp_title_div" || this.id=="edit_button")
             $('#rp_entry').show();
@@ -137,9 +139,11 @@ $(document).ready(function() {
             $('#card_entry').show();
         else if (this.id == "card_next" || this.id == "remarks_previous" || this.id=="penalty_title_div")
             $('#penalty_entry').show();
-        else if (this.id == "penalty_next" || this.id=="remarks_title_div")
+        else if (this.id == "penalty_next" || this.id == "judgeremarks_previous" || this.id=="remarks_title_div")
             $('#remarks_entry').show();
-        else if (this.id == "remarks_next")
+        else if (this.id == "remarks_next" || this.id=="judgeremarks_title_div")
+            $('#judgeremarks_entry').show();
+        else if (this.id == "judgeremarks_next")
             $('#final_div').show();
         let type = this.id.split('_')[0];
         if (this.tagName != "DIV" && this.id != "edit_button") {
@@ -162,7 +166,8 @@ $(document).ready(function() {
         data = {RP: $('#rp_title').html(),
                 Card: $('#card_title').html(),
                 Penalty: $('#penalty_title').html(),
-                Remarks: $('#remarks_title').html(),};
+                Remarks: $('#remarks_title').html(),
+                Remarks: $('#judgeremarks_title').html()};
     });
     $('#content').on("click", ".card.selector", function() {
         $('.card.selector').removeClass("highlight");
@@ -290,6 +295,17 @@ function showResultEntryMask(data) {
                 <button id="remarks_next" class="nav">Next</button>
             </div>
         </div>
+        <div id="judgeremarks_div">
+            <div id="judgeremarks_title_div" class="nav">
+                Judge remarks: <span id="judgeremarks_title">${data.JudgeRemarks}</span>
+            </div>
+            <div id="judgeremarks_entry" style="display:none;">
+                <input type="text" id="judgeremarks_input"/><br>
+                <button id="judgeremarks_previous" class="nav">Previous</button>
+                <button class="cancel">Cancel</button>
+                <button id="judgeremarks_next" class="nav">Next</button>
+            </div>
+        </div>
         <div id="final_div" style="display:none">
             <button id="save_button">Save</button>
         </div>
@@ -309,3 +325,42 @@ function showResultEntryMask(data) {
 
     $('#content').html(content);
 }
+/* TODOS:
+ * RP input, only allow correct format
+ * Card input:
+ *  if rp < ap, don't allow white
+ *  if status is != OK don't allow white
+ *  if status is one of reds: only allow red
+ * penalties input:
+ *  only allow if card is yellow
+ *  list of penalties sum, ap < rp, possibility to add from dropdown, possibility to add number
+ * remarks input:
+ *  if card is white: ok
+ *  Available Remarks (check!)
+        OK -> w
+        OTHER -> y / r
+        SHORT -> y / r
+        LATESTART -> y / r
+        GRAB -> y / r
+        LANYARD -> y / r
+        PULL -> y / r
+        TURN -> y / r
+        EARLYSTART -> r
+        START -> y / r
+        NO TAG -> y / r
+        UNDER AP -> y / r
+        DQSP -> r
+        DQJUMP -> r
+        DQOTHER -> r
+        DQAIRWAYS -> r
+        DQTOUCH -> r
+        DQLATESTART -> r
+        DQCHECK-IN -> r
+        DQBO-UW -> r
+        DQBO-SURFACE -> r
+        DQPULL -> r
+        DQOTHER-LANE -> r
+        DQPULLX2 -> r
+        DNS -> r
+ * saving result
+ */

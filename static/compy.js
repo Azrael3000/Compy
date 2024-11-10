@@ -254,7 +254,6 @@ function schedulePlay() {
     let delay = getNextPlayTime();
 
     if (delay >= 0) {
-        //TODO: must be more accurate
         hour = Math.floor(delay/3600/1000);
         min = Math.floor((delay - hour*3600*1000)/60/1000);
         sec = (delay - (hour*3600 + min*60)*1000)/1000;
@@ -1144,8 +1143,8 @@ $(document).ready(function() {
     $('#results_content').on('click', '.result_add', function() {
         let id = Number(this.id.split('_')[1]); // id is result_${id}
         let name = $(`#result_Name_${id}`).html();
-        let rp = 0; // TODO STA
-        let content = generateResultContent("Add", name, rp, 0, "", "checked", "", "");
+        let rp = 0;
+        let content = generateResultContent("Add", name, rp, 0, "", "checked", "", "", "");
         _sl_athletes = id;
         showOverlayBox(400, 800, content);
     });
@@ -1159,17 +1158,19 @@ $(document).ready(function() {
         let card = $(`#result_Card_${id}`).html();
         let penalty = $(`#result_Penalty_${id}`).html();
         let remark = $(`#result_Remarks_${id}`).html();
+        let judge_remark = $(`#result_JudgeRemarks_${id}`).html();
         let is_sta = _cur_menu.discipline == "STA";
         let penalty_not_reached_ap = "";
         let federation = $("input[name='comp_type']:checked").val();
         if (federation == "aida") {
             penalty_not_reached_ap = 0;
             if (is_sta) {
-                // TODO
+                rp = timeToMinutes(rp);
+                ap = timeToMinutes(ap);
             }
-            else if (ap > rp) {
+            if (ap > rp) {
                 let delta = ap - rp;
-                let factor = _cur_menu.discipline[0] == "D" ? 0.5 : 1.;
+                let factor = _cur_menu.discipline == "STA" ? 0.2 : (_cur_menu.discipline[0] == "D" ? 0.5 : 1.);
                 penalty_not_reached_ap = delta*factor;
             }
             if (penalty_not_reached_ap > 0) {
@@ -1182,7 +1183,7 @@ $(document).ready(function() {
         let rcw_checked = card == "WHITE" ? "checked" : "";
         let rcy_checked = card == "YELLOW" ? "checked" : "";
         let rcr_checked = card == "RED" ? "checked" : "";
-        let content = generateResultContent("Edit", name, rp, penalty, penalty_not_reached_ap, rcw_checked, rcy_checked, rcr_checked);
+        let content = generateResultContent("Edit", name, rp, penalty, penalty_not_reached_ap, rcw_checked, rcy_checked, rcr_checked, judge_remark);
         _sl_athletes = id;
         showOverlayBox(400, 800, content);
     });
@@ -1191,9 +1192,10 @@ $(document).ready(function() {
         let penalty = $('#result_penalty').val();
         let card = $("input[name='result_card']:checked").val();
         let remarks = $.map($('input[name="result_remark"]:checked'), function (a) { return a.value; }).join();
+        let judge_remarks = $('#result_judge_remarks').val();
         let id = _sl_athletes;
         _sl_athletes = null;
-        let data = {id: id, rp: rp, penalty: penalty, card: card, remarks: remarks, discipline: _cur_menu.discipline, gender: _cur_menu.gender, country: _cur_menu.country};
+        let data = {id: id, rp: rp, penalty: penalty, card: card, remarks: remarks, judge_remarks: judge_remarks, discipline: _cur_menu.discipline, gender: _cur_menu.gender, country: _cur_menu.country};
         $.ajax({
             type: "PUT",
             url: "/result",
@@ -1209,9 +1211,11 @@ $(document).ready(function() {
     });
 });
 
-function generateResultContent(type_str, name, rp, penalty, penalty_not_reached_ap, rcw_checked, rcy_checked, rcr_checked) {
+function generateResultContent(type_str, name, rp, penalty, penalty_not_reached_ap, rcw_checked, rcy_checked, rcr_checked, judge_remarks) {
     let is_sta = _cur_menu.discipline == "STA";
     let rp_input_type = is_sta ? "time" : "number"; // TODO does not work for STA, change rp
+    if (is_sta)
+        rp = minutesToStr(rp, true);
     let federation = $("input[name='comp_type']:checked").val();
     let content = `
         ${type_str} result for ${name}<br>
@@ -1256,6 +1260,10 @@ function generateResultContent(type_str, name, rp, penalty, penalty_not_reached_
      }
      content +=    `</div>
                 </td>
+            </tr>
+            <tr>
+                <td>Judge Remarks</td>
+                <td><input type="text" id="result_judge_remarks" value="${judge_remarks}"/></td>
             </tr>
             <tr>
                 <td><button id="overlay_cancel" type="button">Cancel</button></td>
