@@ -49,6 +49,7 @@ var _comp_id = null;
 var _days_with_disciplines_lanes = null;
 var _menu = null;
 var _lane_list = null;
+var _result = null;
 
 function getBaseDict() {
     return {judge_hash: _judge_hash, judge_id: _judge_id, comp_id: _comp_id};
@@ -116,6 +117,56 @@ $(document).ready(function() {
     });
     $('#content').on("click", '#result_back', function() {
         showAthleteMenu(_lane_list);
+    });
+    $('#content').on("click", '.cancel', function() {
+        $('#edit_div').show();
+        $('#rp_entry').hide();
+        $('#penalty_entry').hide();
+        $('#card_entry').hide();
+        $('#remarks_entry').hide();
+    });
+    $('#content').on("click", '.nav', function() {
+        $('#rp_entry').hide();
+        $('#card_entry').hide();
+        $('#penalty_entry').hide();
+        $('#remarks_entry').hide();
+        $('#edit_div').hide();
+        if (this.id=="card_previous" || this.id=="rp_title_div" || this.id=="edit_button")
+            $('#rp_entry').show();
+        else if (this.id == "rp_next" || this.id=="penalty_previous" || this.id=="card_title_div")
+            $('#card_entry').show();
+        else if (this.id == "card_next" || this.id == "remarks_previous" || this.id=="penalty_title_div")
+            $('#penalty_entry').show();
+        else if (this.id == "penalty_next" || this.id=="remarks_title_div")
+            $('#remarks_entry').show();
+        else if (this.id == "remarks_next")
+            $('#final_div').show();
+        let type = this.id.split('_')[0];
+        if (this.tagName != "DIV" && this.id != "edit_button") {
+            if (type != "card" && $('#' + type + '_input').val() != "")
+                $('#' + type + '_title').html($('#' + type + '_input').val());
+            else if (type == "card") {
+                let hl = $('.card.selector.highlight');
+                if (hl.length == 1) {
+                    let color = "white";
+                    if (hl.hasClass("red"))
+                        color = "red";
+                    else if (hl.hasClass("yellow"))
+                        color = "yellow";
+                    $('#card_title').removeClass("red").removeClass("yellow").removeClass("white").addClass(color).html(color.toUpperCase());
+                }
+            }
+        }
+    });
+    $('#content').on("click", "#save_button", function() {
+        data = {RP: $('#rp_title').html(),
+                Card: $('#card_title').html(),
+                Penalty: $('#penalty_title').html(),
+                Remarks: $('#remarks_title').html(),};
+    });
+    $('#content').on("click", ".card.selector", function() {
+        $('.card.selector').removeClass("highlight");
+        $(this).addClass('highlight');
     });
 });
 
@@ -195,49 +246,65 @@ function showResultEntryMask(data) {
             ${data.Name} (OT: ${data.OT} | AP: ${data.AP})
         </div>
         <div id="rp_div">
-            RP: <span id="rp_title">${data.RP}</span><br>
+            <div id="rp_title_div" class="nav">
+                RP: <span id="rp_title">${data.RP}</span>
+            </div>
             <div id="rp_entry" style="display:__RP_DISPLAY__">
                 <input type="text" id="rp_input"/><br>
-                <button>Cancel</button>
-                <button>Next</button>
+                <button class="cancel">Cancel</button>
+                <button id="rp_next" class="nav">Next</button>
             </div>
-            Card: <span id="card_title" class="card ${data.Card.toLowerCase()}">${data.Card}</span><br>
+        </div>
+        <div id="card_div">
+            <div id="card_title_div" class="nav">
+                Card: <span id="card_title" class="card ${data.Card.toLowerCase()}">${data.Card}</span>
+            </div>
             <div id="card_entry" style="display:none;">
-                <span id="card_white" class="card white">WHITE</span>
-                <span id="card_yellow" class="card yellow">YELLOW</span>
-                <span id="card_red" class="card red">RED</span><br>
-                <button>Previous</button>
-                <button>Cancel</button>
-                <button>Next</button>
+                <span id="card_white" class="card white selector">WHITE</span>
+                <span id="card_yellow" class="card yellow selector">YELLOW</span>
+                <span id="card_red" class="card red selector">RED</span><br>
+                <button id="card_previous" class="nav">Previous</button>
+                <button class="cancel">Cancel</button>
+                <button id="card_next" class="nav">Next</button>
             </div>
-            Penalty: <span id="penalty_title">${data.Penalty}</span><br>
+        </div>
+        <div id="penalty_div">
+            <div id="penalty_title_div" class="nav">
+                Penalty: <span id="penalty_title">${data.Penalty}</span>
+            </div>
             <div id="penalty_entry" style="display:none;">
                 <input type="text" id="penalty_input"/><br>
-                <button>Previous</button>
-                <button>Cancel</button>
-                <button>Next</button>
+                <button id="penalty_previous" class="nav">Previous</button>
+                <button class="cancel">Cancel</button>
+                <button id="penalty_next" class="nav">Next</button>
             </div>
-            Remarks: <span id="penalty_title">${data.Remarks}</span><br>
+        </div>
+        <div id="remarks_div">
+            <div id="remarks_title_div" class="nav">
+                Remarks: <span id="remarks_title">${data.Remarks}</span>
+            </div>
             <div id="remarks_entry" style="display:none;">
                 <input type="text" id="remarks_input"/><br>
-                <button>Previous</button>
-                <button>Cancel</button>
-                <button>Next</button>
+                <button id="remarks_previous" class="nav">Previous</button>
+                <button class="cancel">Cancel</button>
+                <button id="remarks_next" class="nav">Next</button>
             </div>
-            <div id="final_buttons" style="display:none">
-                <button>Revert</button>
-                <button>Save</button>
-            </div>
+        </div>
+        <div id="final_div" style="display:none">
+            <button id="save_button">Save</button>
+        </div>
+        <div id="edit_div" style="display:__EDIT_DISPLAY__">
+            <button id="edit_button" type="button" class="nav">Edit</button>
         </div>
         `;
 
     if ('RP' in data && data.RP != "") {
         // show overview page
-        content = content.replace('__RP_DISPLAY__', 'none');
+        content = content.replace('__RP_DISPLAY__', 'none').replace('__EDIT_DISPLAY__', 'block');
     }
     else {
         // show edit form
-        content = content.replace('__RP_DISPLAY__', 'block');
+        content = content.replace('__RP_DISPLAY__', 'block').replace('__EDIT_DISPLAY__', 'none');
     }
 
     $('#content').html(content);

@@ -1,6 +1,6 @@
 .card {
     width: 80px;
-    border: 1px solid black;
+    border: 2px solid lightgrey;
     display: inline-block;
     text-align: center;
     line-height: 30px;
@@ -16,4 +16,8 @@
 
 .card.red {
     background: #ff0000;
+}
+
+.card.highlight {
+    border: 2px solid black;
 }
