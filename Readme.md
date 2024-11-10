@@ -48,6 +48,9 @@ Future features can be seen in the TODO file.
    - country_converter
    - flask
 
+On Windows:
+Install Weasyprint https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#windows (including the steps to install Msys and Pango)
+
 ## Installing the software
 
  - Navigate with a terminal (powershell on Windows) to the folder where you want to create the compy folder in
