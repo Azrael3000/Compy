@@ -27,6 +27,7 @@
 
 var _global_prev_name = "";
 var _days_with_disciplines_lanes = null;
+var _blocks = null;
 var _disciplines = null;
 var _countries = null;
 var _result_countries = null;
@@ -47,6 +48,7 @@ $(window).on('load', function() {
     $('#numeric_radio').prop('checked', true);
     $('#aida_radio').prop('checked', true);
     _days_with_disciplines_lanes = null;
+    _blocks = null;
     _disciplines = null;
     _countries = null;
     _result_countries = null;
@@ -65,7 +67,7 @@ function generateStartList(startlist) {
     let interval = 0;
     let sl = "";
     if (startlist) {
-        sl += "<a href='#' class='sl_pdf_button' id='sl_pdf_" + day + "_" + discipline + "'>Print PDF</a>";
+        sl += "<a href='#' class='sl_pdf_button' id='sl_pdf_" + day + "_" + block + "'>Print PDF</a>";
         sl += `
             <table>
                 <tr>
@@ -94,6 +96,7 @@ function generateStartList(startlist) {
         sl += `
             <tr>
                 <td>Name</td>
+                <td>Discipline</td>
                 <td>AP</td>
                 <td>Nationality</td>
                 <td>Warmup</td>
@@ -116,6 +119,7 @@ function generateStartList(startlist) {
             sl += `
                 <tr>
                     <td>${startlist[i].Name}</td>
+                    <td>${startlist[i].Discipline}</td>
                     <td>${startlist[i].AP}</td>
                     <td>${startlist[i].Nationality}</td>
                     <td>${startlist[i].Warmup}</td>
@@ -636,10 +640,12 @@ $(document).ready(function() {
         })
     });
     $("#sl_discipline_menu").on("click", "a", function() {
-        let id_arr = this.id.split('_'); // button id is equal to "sl_" + day + "_" + discipline
+        let id_arr = this.id.split('_'); // button id is equal to "sl_" + day + "_" + block
+        $('.sl_discipline_button').css('font-weight', 'normal');
+        $(this).css('font-weight', 'bold');
         day = id_arr[1];
-        discipline = id_arr[2];
-        _cur_menu = {discipline: discipline, day: day};
+        block = id_arr[2];
+        _cur_menu = {block: block, day: day};
         $.ajax({
             type: "GET",
             url: "/start_list?" + $.param(_cur_menu),
@@ -697,12 +703,12 @@ $(document).ready(function() {
         getPDF("start_list");
     });
     $("#sl_content").on("click", ".sl_pdf_button", function() {
-        let id_arr = this.id.split('_'); // button id is equal to "sl_pdf_" + day + "_" + discipline
+        let id_arr = this.id.split('_'); // button id is equal to "sl_pdf_" + day + "_" + block
         day = id_arr[2];
-        discipline = id_arr[3];
+        block = id_arr[3];
         let data = {
             day: day,
-            discipline: discipline
+            block: block
         };
         getPDF("start_list", data);
     });
@@ -871,6 +877,7 @@ $(document).ready(function() {
             [_sl[i].AP,          _sl[i+1].AP         ] = [_sl[i+1].AP,          _sl[i].AP         ];
             [_sl[i].Nationality, _sl[i+1].Nationality] = [_sl[i+1].Nationality, _sl[i].Nationality];
             [_sl[i].Id         , _sl[i+1].Id         ] = [_sl[i+1].Id         , _sl[i].Id         ];
+            [_sl[i].Discipline , _sl[i+1].Discipline ] = [_sl[i+1].Discipline , _sl[i].Discipline ];
         }
         generateStartList(_sl);
         _sl_edited = true;
@@ -894,6 +901,7 @@ $(document).ready(function() {
             [_sl[i].AP,          _sl[i-1].AP         ] = [_sl[i-1].AP,          _sl[i].AP         ];
             [_sl[i].Nationality, _sl[i-1].Nationality] = [_sl[i-1].Nationality, _sl[i].Nationality];
             [_sl[i].Id         , _sl[i-1].Id         ] = [_sl[i-1].Id         , _sl[i].Id         ];
+            [_sl[i].Discipline , _sl[i-1].Discipline ] = [_sl[i-1].Discipline , _sl[i].Discipline ];
         }
         generateStartList(_sl);
         _sl_edited = true;
@@ -935,6 +943,10 @@ $(document).ready(function() {
                 Edit start of ${_sl[i].Name}<br>
                 <input type="hidden" id="sl_edit_i" value="${i}"/>
                 <table>
+                    <tr>
+                        <td>Discipline</td>
+                        <td>${_sl[i].Discipline}</td>
+                    </tr>
                     <tr>
                         <td>AP</td>
                         <td>${ap_btn}</td>
@@ -1021,6 +1033,12 @@ $(document).ready(function() {
         calculateStartList();
     });
     $('#sl_content').on('click', '#sl_sort', function() {
+        function convertToInt(s) {
+            if (s.Discipline == 'STA')
+                return timeToMinutes(s.AP);
+            else
+                return Number(s.AP);
+        }
         if (_sl.length == 0)
             return;
         let brs = [];
@@ -1030,12 +1048,9 @@ $(document).ready(function() {
         }
         for (let i = brs.length-1; i >= 0; i--)
             _sl.splice(brs[i].i, 1);
-        if (_sl[0].Discipline == "STA") // assumes all starts are STA
-            _sl.sort((a,b) => Math.sign(timeToMinutes(a.AP)-timeToMinutes(b.AP)));
-        else
-            _sl.sort((a,b) => Math.sign(Number(a.AP)-Number(b.AP)));
+        _sl.sort((a,b) => Math.sign(convertToInt(a) - convertToInt(b)));
         for (let i = 0; i < brs.length; i++) {
-            let break_entry = {Name: "Break", AP: brs[i].time, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1};
+            let break_entry = {Name: "Break", AP: brs[i].time, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1, Discipline: ""};
             _sl.splice(brs[i].i, 0, break_entry);
         }
         calculateStartList();
@@ -1051,7 +1066,7 @@ $(document).ready(function() {
         _sl_edited = true;
     });
     $('#sl_content').on('click', '#sl_add', function() {
-        if (_cur_menu.discipline == "")
+        if (_cur_menu.block == "")
             return;
         $.ajax({
             type: "GET",
@@ -1064,6 +1079,14 @@ $(document).ready(function() {
                     ap_btn = `<input type="number" step="0.5" id="sl_add_ap" value="1"/>`;
                 else if (_cur_menu.discipline == "STA")
                     ap_btn = `<input type="time" id="sl_add_ap" value="00:01"/>`;
+                dis_chooser = "";
+                let disciplines = _blocks[_cur_menu.day][_cur_menu.block]["dis_s"].split(', ');
+                for (let i = 0; i < disciplines.length; i++) {
+                    let dis = disciplines[i];
+                    let checked = i == 0 ? "checked" : "";
+                    dis_chooser += `<input type="radio" name="sl_add_dis" value="${dis}" id="sl_add_dis_${dis}" ${checked}/>
+                                    <label for="sl_add_dis_${dis}">${dis}</label><br>`;
+                }
                 content = `
                     Add athlete<br>
                     <table>
@@ -1073,6 +1096,10 @@ $(document).ready(function() {
                                 <select id="sl_add_athlete">
                                 </select>
                             </td>
+                        </tr>
+                        <tr>
+                            <td>Discipline</td>
+                            <td>${dis_chooser}</td>
                         </tr>
                         <tr>
                             <td>AP</td>
@@ -1092,7 +1119,7 @@ $(document).ready(function() {
                         </tr>
                     </table>
                     `;
-                showOverlayBox(400, 200, content);
+                showOverlayBox(400, 300, content);
                 let sl_add_athlete = $('#sl_add_athlete');
                 sl_add_athlete.empty();
                 for (let i = 0; i < data.athletes.length; i++)
@@ -1103,9 +1130,10 @@ $(document).ready(function() {
     });
     $('#overlay_box').on('click', '#sl_add_save', function() {
         let i = Number($('#sl_add_athlete').find("option:selected").attr('value'));
+        let dis = $("input[name='sl_add_dis']:checked").val();
         if (!$('#sl_add_ap') || !i || i < 0 || i >= _sl_athletes.length)
             return;
-        let new_entry = {Name: _sl_athletes[i].first_name + " " + _sl_athletes[i].last_name, AP: $('#sl_add_ap').val(), Nationality: _sl_athletes[i].country, Warmup: "", OT: "", Lane: $('#sl_add_lane').val(), Id: -_sl_athletes[i].id};
+        let new_entry = {Name: _sl_athletes[i].first_name + " " + _sl_athletes[i].last_name, AP: $('#sl_add_ap').val(), Nationality: _sl_athletes[i].country, Warmup: "", OT: "", Lane: $('#sl_add_lane').val(), Id: -_sl_athletes[i].id, Discipline: dis};
         let ot = timeToMinutes($('#sl_add_ot').val());
         i = 0;
         for (; i < _sl.length; i++) {
@@ -1123,7 +1151,7 @@ $(document).ready(function() {
     $('#sl_content').on('click', '#sl_save', function() {
         let _sl_edited = false;
         let _sl_athletes = null;
-        let data = {startlist: _sl, to_remove: _sl_remove, day: _cur_menu.day, discipline: _cur_menu.discipline};
+        let data = {startlist: _sl, to_remove: _sl_remove, day: _cur_menu.day, block: _cur_menu.block};
         $.ajax({
             type: "PUT",
             url: "/start_list",
@@ -1310,7 +1338,7 @@ function addBreak(i, duration) {
             break_date = $('#sl_break_duration')[0].valueAsDate;
             break_str = dateToStr(break_date);
         }
-        let break_entry = {Name: "Break", AP: break_str, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1};
+        let break_entry = {Name: "Break", AP: break_str, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1, Discipline: ""};
         _sl.splice(i+1, 0, break_entry);
         let ot_old = timeToMinutes(_sl[i+2].OT);
         let ot_prev = timeToMinutes(_sl[i].OT);
@@ -1373,7 +1401,10 @@ function getPDF(type, params = {type: "all"})
                 link.download = comp_name + "_" + type + "s_top3.pdf";
             } else {
                 if (type == "start_list") {
-                    link.download = comp_name + "_" + type + "_" + params.day + "_" + params.discipline + ".pdf";
+                    let dis = params.block;
+                    if (_blocks != null)
+                        dis = _blocks[params.day][params.block]["dis_s"].replace(", ", "_");
+                    link.download = comp_name + "_" + type + "_" + params.day + "_" + dis + ".pdf";
                 } else if (type == "lane_list") {
                     link.download = comp_name + "_" + type + "_" + params.day + "_" + params.discipline + "_" + params.lane + ".pdf";
                 } else /* if (type == "result") */ {
@@ -1522,6 +1553,7 @@ function initSubmenus(data, reset=false)
 {
     if (reset) {
         _days_with_disciplines_lanes = null;
+        _blocks = null;
         _disciplines = null;
         _countries = null;
         _result_countries = null;
@@ -1530,22 +1562,34 @@ function initSubmenus(data, reset=false)
     if (data.hasOwnProperty("days_with_disciplines_lanes") && data.days_with_disciplines_lanes != null)
         _days_with_disciplines_lanes = data.days_with_disciplines_lanes;
 
+    if (data.hasOwnProperty("blocks") && data.blocks != null)
+        _blocks = data.blocks;
+
     if (_days_with_disciplines_lanes != null) {
-        // start_list and lane_list submenu
-        let sl_date_menu = document.getElementById('sl_date_menu');
-        let ll_date_menu = document.getElementById('ll_date_menu');
+        // lane_list submenu
+        let ll_date_menu = $('#ll_date_menu');
         let breaks_date_menu = $('#breaks_date_menu');
-        sl_date_menu.innerHTML = "";
-        ll_date_menu.innerHTML = "";
+        ll_date_menu.empty();
         breaks_date_menu.empty();
         keys = Object.keys(_days_with_disciplines_lanes);
         for (let i = 0; i < keys.length; i++) {
             let day = keys[i];
-            sl_date_menu.innerHTML += "<a href='#' onclick='selectListDay(\"start\", \"" + day + "\")'>" + day + "</a>&nbsp;";
-            ll_date_menu.innerHTML += "<a href='#' onclick='selectListDay(\"lane\", \"" + day + "\")'>" + day + "</a>&nbsp;";
+            ll_date_menu.append("<a href='#' onclick='selectListDay(\"lane\", \"" + day + "\")'>" + day + "</a>&nbsp;");
             breaks_date_menu.append("<a href='#' id='breaks_" + day + "'>" + day + "</a>&nbsp;");
         }
     }
+
+    // start_list submenu
+    let sl_date_menu = $('#sl_date_menu');
+    sl_date_menu.empty();
+    if (_blocks != null) {
+        keys = Object.keys(_blocks);
+        for (let i = 0; i < keys.length; i++) {
+            let day = keys[i];
+            sl_date_menu.append("<a href='#' id='sl_day_" + day + "' class='sl_day' onclick='selectStartListDay(\"" + day + "\")'>" + day + "</a>&nbsp;");
+        }
+    }
+    sl_date_menu.append("<button id='sl_add_day'>Add day</button>");
 
     // submenu for results
     if ("disciplines" in data && data.disciplines != null)
@@ -1582,44 +1626,50 @@ function initSubmenus(data, reset=false)
     }
 
     // lower tier menus
-    document.getElementById('sl_discipline_menu').innerHTML = "";
-    document.getElementById('sl_content').innerHTML = "";
-    document.getElementById('ll_discipline_menu').innerHTML = "";
-    document.getElementById('ll_lane_menu').innerHTML = "";
-    document.getElementById('ll_content').innerHTML = "";
-    document.getElementById('result_gender_menu').innerHTML = "";
-    document.getElementById('result_country_menu').innerHTML = "";
-    document.getElementById('results_content').innerHTML = "";
+    $('#sl_discipline_menu').empty();
+    $('#sl_content').empty();
+    $('#ll_discipline_menu').empty();
+    $('#ll_lane_menu').empty();
+    $('#ll_content').empty();
+    $('#result_gender_menu').empty();
+    $('#result_country_menu').empty();
+    $('#results_content').empty();
     $('#breaks_content').empty();
 }
 
 function selectListDay(type, day)
 {
     if (_days_with_disciplines_lanes != null && _days_with_disciplines_lanes.hasOwnProperty(day)) {
-        let type_char = "";
-        if (type == "start") {
-            type_char = "s";
-        } else if (type == "lane") {
-            type_char = "l";
-        } else {
+        if (type != "lane") {
             return;
         }
-        let l_discipline_menu = document.getElementById(type_char + 'l_discipline_menu');
+        let l_discipline_menu = document.getElementById('ll_discipline_menu');
         l_discipline_menu.innerHTML = "";
         disciplines = Object.keys(_days_with_disciplines_lanes[day]);
         for (let i = 0; i < disciplines.length; i++)
         {
             let dis = disciplines[i];
-            if (type == "start") {
-                l_discipline_menu.innerHTML += "<a href='#' class='sl_discipline_button' id='sl_" + day + "_" + dis + "'>" + dis + "</a>&nbsp;";
-            } else {
-                l_discipline_menu.innerHTML += "<a href='#' onclick='selectLaneListDayDiscipline(\"" + day + "\", \"" + dis + "\")'>" + dis + "</a>&nbsp;";
-            }
+            l_discipline_menu.innerHTML += "<a href='#' onclick='selectLaneListDayDiscipline(\"" + day + "\", \"" + dis + "\")'>" + dis + "</a>&nbsp;";
         }
-        if (type == "lane")
-            $('#ll_lane_menu').empty();
-        let l_content = document.getElementById(type_char + 'l_content');
-        l_content.innerHTML = "";
+        $('#ll_lane_menu').empty();
+        $('#ll_content').empty();
+    }
+}
+
+function selectStartListDay(day)
+{
+    if (_blocks != null && _blocks.hasOwnProperty(day)) {
+        $('.sl_day').css('font-weight', 'normal');
+        $('.sl_discipline_button').css('font-weight', 'normal');
+        $('#sl_day_' + day).css('font-weight', 'bold');
+        let dis_menu = $('#sl_discipline_menu');
+        dis_menu.empty();
+        let blocks = Object.keys(_blocks[day]);
+        for (let i = 0; i < blocks.length; i++) {
+            let block = _blocks[day][blocks[i]];
+            dis_menu.append("<a href='#' class='sl_discipline_button' id='sl_" + day + "_" + blocks[i] + "'>" + block['dis_s'] + "</a>&nbsp;");
+        }
+        $('#sl_content').empty();
     }
 }
 
@@ -1632,7 +1682,7 @@ function selectLaneListDayDiscipline(day, discipline)
         for (let i = 0; i < lanes.length; i++)
         {
             let lane = lanes[i];
-            l_lane_menu.innerHTML += "<a href='#' class='ll_lane_button' id='sl_" + day + "_" + discipline + "_" + lane + "'>" + lane + "</a>&nbsp;";
+            l_lane_menu.innerHTML += "<a href='#' class='ll_lane_button' id='ll_" + day + "_" + discipline + "_" + lane + "'>" + lane + "</a>&nbsp;";
         }
         $('#ll_content').html("");
     }

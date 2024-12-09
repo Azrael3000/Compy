@@ -280,32 +280,32 @@ class CompyFlask:
 
     def startList(self):
         day = request.args.get('day')
-        discipline = request.args.get('discipline')
-        if day is None or discipline is None:
-            logging.debug("Get request to start_list without day and discipline")
+        block = request.args.get('block')
+        if day is None or block is None:
+            logging.debug("Get request to start_list without day and block")
             return {}, 400
         data = {}
-        start_list = self.data_.getStartList(day, discipline)
+        start_list = self.data_.getStartList(day, block)
         if not start_list is None:
             data["start_list"] = start_list
             data["status"] = "success"
-            data["status_msg"] = "Transfered start list for " + day + ": " + discipline
+            data["status_msg"] = "Transfered start list for " + day + ": " + block
             return data, 200
         else:
-            logging.debug("Could not get start list for " + day + ": " + discipline)
+            logging.debug("Could not get start list for " + day + ": " + block)
             return {}, 400
 
     def updateStartList(self):
         content = request.json
-        if not self.dictHas(content, {'day', 'discipline', 'to_remove', 'startlist'}):
+        if not self.dictHas(content, {'day', 'block', 'to_remove', 'startlist'}):
             logging.debug("Put request to start_list missing content: " + str(content.keys()))
             return {}, 400
         day = content["day"]
-        discipline = content["discipline"]
+        block = content["block"]
         to_remove = content["to_remove"]
         startlist = content["startlist"]
-        ret = self.data_.updateStartList(day, discipline, to_remove, startlist)
-        start_list = self.data_.getStartList(day, discipline)
+        ret = self.data_.updateStartList(day, block, to_remove, startlist)
+        start_list = self.data_.getStartList(day, block)
         if ret == 0 and not start_list is None:
             data = {"status": "success", "status_msg": "Successfully updated start list", "start_list": start_list}
             return data, 200
@@ -313,26 +313,26 @@ class CompyFlask:
             data = {"status": "success", "status_msg": "Failed database update", "start_list": start_list}
             return data, 400
         else:
-            logging.debug("Could not update start list for " + day + " & " + discipline)
+            logging.debug("Could not update start list for " + day + " & " + block)
             return {}, 400
 
     def startListPDF(self):
         day = request.args.get('day')
-        discipline = request.args.get('discipline')
+        block = request.args.get('block')
         req_type = request.args.get('type')
-        if (day is None or discipline is None) and req_type is None:
-            logging.debug("Get request to start_list without day, discipline or type")
+        if (day is None or block is None) and req_type is None:
+            logging.debug("Get request to start_list without day, block or type")
             return {}, 400
         data = {}
         if req_type is not None and req_type == "all":
             start_list_pdf = self.data_.getStartListPDF()
         else:
-            start_list_pdf = self.data_.getStartListPDF(day, discipline)
+            start_list_pdf = self.data_.getStartListPDF(day, block)
         if not start_list_pdf is None:
             logging.debug("Sending: " + start_list_pdf)
             return send_file(start_list_pdf, as_attachment=True)
         else:
-            logging.debug("Could not get start list for " + day + ": " + discipline)
+            logging.debug("Could not get start list for " + day + ": " + block)
             return {}, 400
 
     def breaks(self):
@@ -399,6 +399,7 @@ class CompyFlask:
         if self.data_.changeLaneStyle(option) == 0:
             data = {}
             data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
+            data["blocks"] = self.data_.getBlocks()
             data["status_msg"] = "Successfully changed lane style"
             data["status"] = "success"
             return data, 200
@@ -415,6 +416,7 @@ class CompyFlask:
         if self.data_.changeCompType(option) == 0:
             data = {}
             data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
+            data["blocks"] = self.data_.getBlocks()
             data["status_msg"] = "Successfully changed comp type"
             data["status"] = "success"
             return data, 200
@@ -440,6 +442,7 @@ class CompyFlask:
 
     def setSubmenuData(self, data):
         data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
+        data["blocks"] = self.data_.getBlocks()
         data["disciplines"] = self.data_.getDisciplines()
         data["countries"] = self.data_.getCountries()
         data["result_countries"] = self.data_.getCountries(True)
@@ -666,7 +669,8 @@ class CompyFlask:
                    "judge_hash": judge_hash,
                    "judge_first_name": first_name,
                    "judge_last_name": last_name,
-                   "days_with_disciplines_lanes": self.data_.getDaysWithDisciplinesLanes()}
+                   "days_with_disciplines_lanes": self.data_.getDaysWithDisciplinesLanes(),
+                   "blocks": self.data_.getBlocks()}
         if return_json:
             return content, 200
         else:

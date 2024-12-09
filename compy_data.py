@@ -495,14 +495,36 @@ class CompyData:
             return self.name_
 
     def getDays(self):
-        if self.start_date is None:
+        days = self.db_.execute('''SELECT day FROM block WHERE competition_id==?''', self.id_)
+        if days is None:
             return
-        days = []
-        d0 = datetime.strptime(self.start_date, '%Y-%m-%d')
-        d1 = datetime.strptime(self.end_date, '%Y-%m-%d')
-        delta = d1 - d0
-        for i in range(delta.days + 1):
-            yield (d0 + timedelta(days=i)).strftime('%Y-%m-%d')
+        for day in days:
+            yield day[0]
+
+    def getBlocks(self):
+        day_block_lane = {}
+        for day in self.getDays():
+            blocks = self.db_.execute('SELECT id, disciplines FROM block WHERE competition_id==? AND day==?', (self.id_, day))
+            if blocks is None:
+                continue
+            block_lane = {}
+            for block in blocks:
+                lanes = self.db_.execute('SELECT DISTINCT lane FROM start s WHERE s.block==?', block[0])
+                if lanes is not None:
+                    lanes = [self.laneStyleConverter(l[0]) for l in lanes]
+                dis_s = self.disciplineIntToStr(block[1])
+                block_lane[block[0]] = {'dis_s': dis_s, 'lanes': lanes}
+            day_block_lane[day] = block_lane
+        return day_block_lane
+
+    def disciplineIntToStr(self, dis_i):
+        dis_s = ""
+        for i, dis in enumerate(DISCIPLINES):
+            if 1<<i & dis_i != 0:
+                if len(dis_s) > 0:
+                    dis_s += ", "
+                dis_s += dis
+        return dis_s
 
     def getDaysWithDisciplinesLanes(self, internal=False):
         dwd = {}
@@ -559,25 +581,25 @@ class CompyData:
             countries += self.countries
         return countries
 
-    def getStartList(self, day, discipline):
+    def getStartList(self, day, block):
         if self.comp_file is None:
             return None
         db_out = self.db_.execute('''
-            SELECT a.first_name, a.last_name, a.country, s.AP, s.OT, s.lane, s.id
+            SELECT a.first_name, a.last_name, a.country, s.AP, s.OT, s.lane, s.id, s.discipline
             FROM start s
             INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
             INNER JOIN athlete a ON ca.athlete_id == a.id
-            WHERE ca.competition_id==? AND s.discipline==? AND s.day==?''',
-            (self.id_, discipline, day))
+            WHERE ca.competition_id==? AND s.block==? AND s.day==?''',
+            (self.id_, block, day))
         if db_out is None:
             return []
         startlist = [{'Name': r[0] + " " + r[1],
                       'Nationality': r[2],
-                      'AP': self.convertPerformance(r[3], discipline),
+                      'AP': self.convertPerformance(r[3], r[7]),
                       'Warmup': self.getWTfromOT(r[4]),
                       'OT': r[4],
                       'Lane': self.laneStyleConverter(r[5]),
-                      'Discipline': discipline,
+                      'Discipline': r[7],
                       'Id': r[6]}
                       for r in db_out]
         startlist.sort(key=lambda r: (self.getMinFromTime(r['OT']), int(self.laneStyleConverter(r['Lane'], True))))
@@ -585,8 +607,8 @@ class CompyData:
         br_out = self.db_.execute('''
             SELECT duration, idx
             FROM break
-            WHERE competition_id == ? AND discipline == ? AND day == ?''',
-            (self.id_, discipline, day))
+            WHERE competition_id == ? AND block == ? AND day == ?''',
+            (self.id_, block, day))
         if br_out is not None:
             for br in br_out:
                 idx = int(br[1])
@@ -594,13 +616,14 @@ class CompyData:
                     continue
                 br_time = str(int(br[0]/60)) + ":" + str(br[0]%60).zfill(2)
                 startlist.insert(idx, {'Name': "Break", 'Nationality': "", 'AP': br_time, 'Warmup': "",
-                                       'OT': "", 'Lane': "", 'Discipline': discipline, 'Id': -1})
+                                       'OT': "", 'Lane': "", 'Discipline': "", 'Id': -1})
 
         return startlist
 
-    def updateStartList(self, day, discipline, to_remove, startlist):
+    def updateStartList(self, day, block, to_remove, startlist):
         day = self.cleanDay(day)
-        if discipline not in DISCIPLINES or day == INVALID_DATE:
+        block = self.cleanBlock(block)
+        if block is not None or day == INVALID_DATE:
             return -1
         to_remove = [int(tr) for tr in to_remove]
         # remove all starts from the start list that were removed and make sure they belong to this comp
@@ -622,16 +645,16 @@ class CompyData:
                     (rlist, self.id_))
 
         # remove all breaks
-        self.db_.execute("DELETE FROM break WHERE competition_id == ? AND discipline == ? AND day == ?",
-                         (self.id_, discipline, day))
+        self.db_.execute("DELETE FROM break WHERE competition_id == ? AND block == ? AND day == ?",
+                         (self.id_, block, day))
 
         for i in range(len(startlist)):
             if startlist[i]["Name"] == "Break":
                 duration = self.getMinFromTime(self.cleanTime(startlist[i]["AP"]))
                 self.db_.execute(
                     '''INSERT INTO break
-                       (competition_id, discipline, day, duration, idx) VALUES (?, ?, ?, ?, ?)''',
-                    (self.id_, discipline, day, duration, i))
+                       (competition_id, block, day, duration, idx) VALUES (?, ?, ?, ?, ?)''',
+                    (self.id_, block, day, duration, i))
             else: # start
                 ca_id = int(startlist[i]["Id"])
                 if ca_id < 0: # new start, in this case ca_id = - athlete_id
@@ -649,20 +672,23 @@ class CompyData:
                     log.warning("Invalid athlete not added to competition")
                     continue
                 ot = self.cleanTime(startlist[i]["OT"])
+                discipline = self.cleanDiscipline(startlist[i]['Discipline'], block)
+                if discipline is None:
+                    continue
                 ap = self.cleanPerf(startlist[i]["AP"], discipline)
                 lane = self.cleanNumber(self.laneStyleConverter(startlist[i]["Lane"], true)) # TODO min/max
                 if int(startlist[i]["Id"]) < 0: # new s["art
                     self.db_.execute(
                         '''INSERT INTO start
-                           (competition_athlete_id, discipline, lane, day, OT, AP)
+                           (competition_athlete_id, discipline, block, lane, day, OT, AP)
                            VALUES (?, ?, ?, ?, ?, ?)''',
-                        (ca_id[0][0], discipline, lane, day, ot, ap));
+                        (ca_id[0][0], discipline, block, lane, day, ot, ap));
                 else: #update start
                     self.db_.execute(
                         '''UPDATE start SET
-                           discipline=?, lane=?, day=?, OT=?, AP=?
+                           discipline=?, block=?, lane=?, day=?, OT=?, AP=?
                            WHERE id == ?''',
-                        (discipline, lane, day, ot, ap, ca_id[0][0]));
+                        (discipline, block, lane, day, ot, ap, ca_id[0][0]));
         return 0
 
     def convertPerformance(self, val, dis):
@@ -686,13 +712,13 @@ class CompyData:
         wt = str(math.floor(wtf/60)) + ":" + str(wtf%60).zfill(2)
         return wt
 
-    def getStartListPDF(self, day="all", discipline="all", in_memory=False):
-        if day=="all" and discipline=="all":
-            dwd = self.getDaysWithDisciplinesLanes()
+    def getStartListPDF(self, day="all", block="all", in_memory=False):
+        if day=="all" and block=="all":
+            day_block = self.getBlocks()
             files = []
-            for d in dwd:
-                for dis in dwd[d].keys():
-                    files.append(self.getStartListPDF(d, dis, True))
+            for d in day_block:
+                for block in day_block[d].keys():
+                    files.append(self.getStartListPDF(d, block, True))
             pages = []
             for doc in files:
                 for page in doc.pages:
@@ -701,11 +727,15 @@ class CompyData:
             fname = os.path.join(self.config.download_folder, self.name + "_start_lists.pdf")
             merged_pdf.write_pdf(fname)
             return fname
-        start_df = pd.DataFrame(self.getStartList(day, discipline))
+        start_df = pd.DataFrame(self.getStartList(day, block))
         start_df.drop("Id", axis=1, inplace=True)
         html_string = start_df.to_html(index=False, justify="left", classes="df_table")
         day_obj = datetime.strptime(day, "%Y-%m-%d")
         human_day = day_obj.strftime("%d. %m. %Y")
+        dis = self.db_.execute('SELECT disciplines FROM block WHERE competition_id==? AND id==?', (self.id_, block))
+        if dis is None:
+            return None
+        disciplines = self.disciplineIntToStr(dis[0][0])
         html_string = """
             <html>
             <head>
@@ -764,7 +794,7 @@ class CompyData:
             <footer><img src="{}" style="width:{}cm; height:{}cm;"></footer>
             </body>
             </html>
-            """.format(self.name, discipline, human_day, html_string, self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
+            """.format(self.name, disciplines, human_day, html_string, self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
         html = wp.HTML(string=html_string, base_url="/")
         #fname = os.path.join(self.config.download_folder, "test.html")
         #with open(fname, "w") as f:
@@ -772,7 +802,7 @@ class CompyData:
         if in_memory:
             return html.render()
         else:
-            fname = os.path.join(self.config.download_folder, self.name + "_start_list_" + day + "_" + discipline + ".pdf")
+            fname = os.path.join(self.config.download_folder, self.name + "_start_list_" + day + "_" + disciplines.replace(', ', '_') + ".pdf")
             html.write_pdf(fname)
             return fname
 
@@ -1381,6 +1411,17 @@ class CompyData:
             a.associateWithComp(self.id_)
             return 0
 
+    def cleanDiscipline(self, dis, block=None):
+        if dis not in DISCIPLINES:
+            return None
+        else:
+            if block is not None:
+                dis_i = DISCIPLINES.index(dis)
+                dis_in_block = self.db_.execute('SELECT disciplines FROM block WHERE id==?', block)
+                if dis_in_block is None or (dis_in_block[0] & 1<<dis_i) == 0:
+                    return None
+            return dis
+
     def cleanTime(self, time):
         ctime = regex.compile('[0-5]?\\d:[0-5]\\d$').match(str(time))
         if ctime is None:
@@ -1409,6 +1450,14 @@ class CompyData:
             return self.cleanNumber(perf, 0, 1)
         else: # cmas dynamic disciplines
             return self.cleanNumber(perf, 1, 1)
+
+    def cleanBlock(self, block):
+        block = int(block)
+        block = self.db_.execut('SELECT id FROM block WHERE id==? AND competition_id==?', (block, self.id_))
+        if block is not None:
+            return block[0]
+        else:
+            return None
 
     def cleanDay(self, day):
         if day in [d for d in self.getDays()]:
