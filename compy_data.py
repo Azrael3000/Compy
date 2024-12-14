@@ -79,6 +79,7 @@ from compy_config import CompyConfig
 INVALID_DATE="0000-00-00"
 INVALID_TIME="99:99"
 DISCIPLINES=["FIM", "CNF", "CWT", "CWTB", "STA", "DNF", "DYN", "DYNB"]
+FEDERATIONS=["aida", "cmas"]
 
 class CompyData:
 
@@ -91,7 +92,7 @@ class CompyData:
         self.config_ = CompyConfig()
         self.version_ = None
         self.lane_style_ = "numeric"
-        self.comp_type_ = "aida"
+        self.comp_type_ = FEDERATIONS[0]
         self.comp_file_ = ''
         self.start_date_ = None
         self.end_date_ = None
@@ -149,8 +150,7 @@ class CompyData:
         return self.comp_type_
 
     def changeCompType(self, comp_type):
-        allowed_comp_types = ["aida", "cmas"]
-        if comp_type not in allowed_comp_types:
+        if comp_type not in FEDERATIONS:
             return 1
         self.comp_type_ = comp_type
         self.save()
@@ -190,11 +190,7 @@ class CompyData:
 
     @property
     def disciplines(self):
-        dis = []
-        for bit, d in enumerate(DISCIPLINES):
-            if self.disciplines_ & 1<<bit:
-                dis.append(d)
-        return dis
+        return self.getDisciplinesFromInt(self.disciplines_)
 
     @property
     def sponsor_img_data(self):
@@ -301,8 +297,7 @@ class CompyData:
             if l == "Ends:":
                 self.end_date_ = df[df.keys()[1]][i]
             if l == "Disciplines:":
-                print([1<<DISCIPLINES.index(d) for d in df[df.keys()[1]][i].split(",")], df[df.keys()[1]][i].split(","))
-                self.disciplines_ = sum([1<<DISCIPLINES.index(d) for d in df[df.keys()[1]][i].split(",")])
+                self.disciplines_ = self.disciplineListToInt(df[df.keys()[1]][i].split(","))
             i += 1
         logging.debug("Start date: %s. End date: %s", self.start_date_, self.end_date_)
 
@@ -516,15 +511,6 @@ class CompyData:
                 block_lane[block[0]] = {'dis_s': dis_s, 'lanes': lanes}
             day_block_lane[day] = block_lane
         return day_block_lane
-
-    def disciplineIntToStr(self, dis_i):
-        dis_s = ""
-        for i, dis in enumerate(DISCIPLINES):
-            if 1<<i & dis_i != 0:
-                if len(dis_s) > 0:
-                    dis_s += ", "
-                dis_s += dis
-        return dis_s
 
     def getDaysWithDisciplinesLanes(self, internal=False):
         dwd = {}
@@ -1412,6 +1398,14 @@ class CompyData:
             return 0
 
     def cleanDiscipline(self, dis, block=None):
+        # for a list, we check each element
+        if isinstance(dis, list):
+            for d in dis:
+                res = self.cleanDiscipline(d, block)
+                if res is None:
+                    return None
+            return dis
+
         if dis not in DISCIPLINES:
             return None
         else:
@@ -1453,17 +1447,26 @@ class CompyData:
 
     def cleanBlock(self, block):
         block = int(block)
-        block = self.db_.execut('SELECT id FROM block WHERE id==? AND competition_id==?', (block, self.id_))
+        block = self.db_.execute('SELECT id FROM block WHERE id==? AND competition_id==?', (block, self.id_))
         if block is not None:
-            return block[0]
+            return block[0][0]
         else:
             return None
 
-    def cleanDay(self, day):
-        if day in [d for d in self.getDays()]:
-            return str(day)
+    def cleanDay(self, day, format_only = False):
+        if format_only:
+            day = str(day)
+            res = True
+            try:
+                res = bool(datetime.strptime(day, "%Y-%m-%d"))
+            except ValueError:
+                res = False
+            return day if res else INVALID_DATE
         else:
-            return INVALID_DATE
+            if day in [d for d in self.getDays()]:
+                return str(day)
+            else:
+                return INVALID_DATE
 
     def getMinFromTime(self, time_str):
         h_m = time_str.split(':')
@@ -1628,3 +1631,60 @@ class CompyData:
                 'Id': db_out[0][8],
                 'OT': db_out[0][9],
                 'Gender': db_out[0][10]}
+
+    def cleanFederation(self, federation):
+        if not federation in FEDERATIONS:
+            return None
+        else:
+            return federation
+
+    def getAllDisciplines(self, federation):
+        federation = self.cleanFederation(federation)
+        if federation is None:
+            return None
+        else:
+            return DISCIPLINES
+
+    def modifyBlock(self, day, disciplines, block, add):
+        day = self.cleanDay(day, True)
+        disciplines = self.cleanDiscipline(disciplines)
+        dis_i = self.disciplineListToInt(disciplines)
+        if add:
+            # check if entry exists already, if yes, we don't allow another
+            db_out = self.db_.execute('SELECT id FROM block WHERE competition_id==? AND day==? AND disciplines==?',
+                                      (self.id_, day, dis_i))
+            if db_out is None:
+                self.db_.execute('INSERT INTO block (competition_id, day, disciplines) VALUES (?, ?, ?)',
+                                 (self.id_, day, dis_i))
+                return 0
+            else:
+                return 1
+        else:
+            block = self.cleanBlock(block)
+            if block is None:
+                return 2
+            self.db_.execute(
+                '''UPDATE block SET day=?, disciplines=?
+                   WHERE competition_id==? AND id==?''',
+                (day, dis_i, self.id_, block))
+            return 0
+
+    def removeBlock(self, block):
+        block = self.cleanBlock(block)
+        if block is None:
+            return 1
+        self.db_.execute('DELETE FROM block WHERE id==? AND competition_id==?', (block, self.id_))
+        return 0
+
+    def getDisciplinesFromInt(self, dis_i):
+        dis = []
+        for bit, d in enumerate(DISCIPLINES):
+            if dis_i & 1<<bit:
+                dis.append(d)
+        return dis
+
+    def disciplineIntToStr(self, dis_i):
+        return ", ".join(self.getDisciplinesFromInt(dis_i))
+
+    def disciplineListToInt(self, dis):
+        return sum([1<<DISCIPLINES.index(d) for d in dis])

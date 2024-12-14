@@ -60,6 +60,8 @@ $(window).on('load', function() {
     $('#special_ranking_name').val("Newcomer");
     $('#country_chooser').hide();
     $('#overlay_blur').hide();
+    initSubmenus({}, true);
+    loadCompetition(1);
 });
 
 function generateStartList(startlist) {
@@ -67,6 +69,7 @@ function generateStartList(startlist) {
     let interval = 0;
     let sl = "";
     if (startlist) {
+        sl += `<button class='sl_edit_block' id='sl_edit_block_${day}_${block}'>Edit block</button><br>`;
         sl += "<a href='#' class='sl_pdf_button' id='sl_pdf_" + day + "_" + block + "'>Print PDF</a>";
         sl += `
             <table>
@@ -593,51 +596,7 @@ $(document).ready(function() {
     });
     $("#competition_list").delegate(".load_comp_button", "click", function() {
         let comp_id = this.id.substring(5); // button id is equal to "load_" + comp id
-        let data = {comp_id: comp_id};
-        $.ajax({
-            type: "POST",
-            url: "/load_comp",
-            data: JSON.stringify(data),
-            contentType: "application/json",
-            dataType: "json",
-            success: function(data)
-            {
-                console.log(data.status_msg);
-                populateSpecialRanking(data);
-                populateAthletes(data);
-                populateJudges(data);
-                initSubmenus(data, true);
-                if ('comp_name' in data) {
-                    $('#comp_name').val(data.comp_name);
-                }
-                if ("selected_country" in data) {
-                    if ($('#country_select option:contains(' + data.selected_country + ')').length) {
-                        $('#country_select').val(data.selected_country);
-                    }
-                }
-                if ('special_ranking_name' in data)
-                {
-                    $('#special_ranking_name').val(data.special_ranking_name);
-                    $('#special_ranking_button').children().text(data.special_ranking_name);
-                }
-                if ("lane_style" in data && data.lane_style == "alphabetic") {
-                    $('#alphabetic_radio').prop('checked', true);
-                } else {
-                    $('#numeric_radio').prop('checked', true);
-                }
-                if ("comp_type" in data) {
-                    _audioElement.remove();
-                    if (data.comp_type == "aida") {
-                        $('#aida_radio').prop('checked', true);
-                        _audioElement = new Audio('static/countdown_aida.wav');
-                    } else {
-                        $('#cmas_radio').prop('checked', true);
-                        _audioElement = new Audio('static/countdown_cmas.wav');
-                    }
-                }
-                setOTs(data);
-            }
-        })
+        loadCompetition(comp_id);
     });
     $("#sl_discipline_menu").on("click", "a", function() {
         let id_arr = this.id.split('_'); // button id is equal to "sl_" + day + "_" + block
@@ -702,10 +661,17 @@ $(document).ready(function() {
     $("#sl_all_pdf_button").click(function() {
         getPDF("start_list");
     });
+    $("#sl_content").on("click", ".sl_edit_block", function() {
+        let id_arr = this.id.split('_'); // button id is equal to "sl_edit_block_" + day + "_" + block
+        let day = id_arr[3];
+        let block = id_arr[4];
+        let disciplines = _blocks[day][block]["dis_s"].split(", ");
+        blockModify("edit", day, disciplines, block);
+    });
     $("#sl_content").on("click", ".sl_pdf_button", function() {
         let id_arr = this.id.split('_'); // button id is equal to "sl_pdf_" + day + "_" + block
-        day = id_arr[2];
-        block = id_arr[3];
+        let day = id_arr[2];
+        let block = id_arr[3];
         let data = {
             day: day,
             block: block
@@ -714,9 +680,9 @@ $(document).ready(function() {
     });
     $("#ll_lane_menu").on("click", "a", function() {
         let id_arr = this.id.split('_'); // button id is equal to "ll_" + day + "_" + discipline + "_" + lane
-        day = id_arr[1];
-        discipline = id_arr[2];
-        lane = id_arr[3];
+        let day = id_arr[1];
+        let discipline = id_arr[2];
+        let lane = id_arr[3];
         let data = {
             day: day,
             discipline: discipline,
@@ -1237,7 +1203,88 @@ $(document).ready(function() {
             }
         });
     });
+    $('#sl_date_menu').on('click', '#sl_add_day', function() {
+        blockModify("add");
+    });
+    $('#overlay_box').on('click', '#sl_modify_block_save', function() {
+        let dis = $.map($('input[name="sl_modify_block_dis"]:checked'), function (a) { return a.value; });
+        let day = $('#sl_modify_block_day').val();
+        let type = $('#sl_modify_block_type').val();
+        let block = $('#sl_modify_block_id').val();
+        let data = {day: day, dis: dis, block: block};
+        $.ajax({
+            type: type == "add" ? "POST" : "UPDATE",
+            url: "/block",
+            data: JSON.stringify(data),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data) {
+                console.log(data.status_msg);
+                hideOverlayBox();
+                initSubmenus(data, true);
+            }
+        })
+    });
+    $('#overlay_box').on('click', '#sl_modify_block_remove', function() {
+        let block = $('#sl_modify_block_id').val();
+        let data = {block: block};
+        $.ajax({
+            type: "DELETE",
+            url: "/block",
+            data: JSON.stringify(data),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data) {
+                console.log(data.status_msg);
+                hideOverlayBox();
+                initSubmenus(data, true);
+            }
+        })
+    });
 });
+
+function blockModify(type, day = "", disciplines = [], block = -1)
+{
+    let federation = $("input[name='comp_type']:checked").val();
+    $.ajax({
+        type: "GET",
+        url: `disciplines/${federation}`,
+        success: function(data) {
+            let all_disciplines = data.disciplines;
+            let dis_chooser = "";
+            for (let i = 0; i < all_disciplines.length; i++)
+            {
+                let dis = all_disciplines[i];
+                let checked = (disciplines.length > 0 && disciplines.includes(dis)) ? "checked" : "";
+                dis_chooser += `<input type="checkbox" name="sl_modify_block_dis" value="${dis}" id="sl_modify_block_dis_${dis}" ${checked}/>
+                                <label for="sl_modify_block_dis_${dis}">${dis}</label><br>`;
+            }
+            var typeU = type[0].toUpperCase() + type.slice(1);
+            let day_value = day == "" ? "" : `value="${day}"`;
+            let delete_btn = type == "edit" ? "&nbsp;<button id='sl_modify_block_remove' type='button'>Remove</button>" : "";
+            content = `
+                ${typeU} block<br>
+                <input type="hidden" id="sl_modify_block_type" value="${type}"/>
+                <input type="hidden" id="sl_modify_block_id" value="${block}"/>
+                <table>
+                    <tr>
+                        <td>Day</td>
+                        <td><input type="date" id="sl_modify_block_day" ${day_value}/></td>
+                    </tr>
+                    <tr>
+                        <td>Disciplines</td>
+                        <td>${dis_chooser}</td>
+                    </tr>
+                    <tr>
+                        <td><button id="overlay_cancel" type="button">Cancel</button></td>
+                        <td><button id="sl_modify_block_save" type="button">Save</button>${delete_btn}</td>
+                    </tr>
+                </table>
+                `;
+            showOverlayBox(400, 400, content);
+        }
+    });
+}
 
 function generateResultContent(type_str, name, rp, penalty, penalty_not_reached_ap, rcw_checked, rcy_checked, rcr_checked, judge_remarks) {
     let is_sta = _cur_menu.discipline == "STA";
@@ -1589,7 +1636,7 @@ function initSubmenus(data, reset=false)
             sl_date_menu.append("<a href='#' id='sl_day_" + day + "' class='sl_day' onclick='selectStartListDay(\"" + day + "\")'>" + day + "</a>&nbsp;");
         }
     }
-    sl_date_menu.append("<button id='sl_add_day'>Add day</button>");
+    sl_date_menu.append("<button id='sl_add_day'>Add block</button>");
 
     // submenu for results
     if ("disciplines" in data && data.disciplines != null)
@@ -1820,4 +1867,52 @@ function fillOtsForDebuggin() {
     c2.setSeconds(c2.getSeconds() + 50);
     _ots.push(formatTime(c1, false, true));
     _ots.push(formatTime(c2, false, true));
+}
+
+function loadCompetition(comp_id) {
+    let data = {comp_id: comp_id};
+    $.ajax({
+        type: "POST",
+        url: "/load_comp",
+        data: JSON.stringify(data),
+        contentType: "application/json",
+        dataType: "json",
+        success: function(data)
+        {
+            console.log(data.status_msg);
+            populateSpecialRanking(data);
+            populateAthletes(data);
+            populateJudges(data);
+            initSubmenus(data, true);
+            if ('comp_name' in data) {
+                $('#comp_name').val(data.comp_name);
+            }
+            if ("selected_country" in data) {
+                if ($('#country_select option:contains(' + data.selected_country + ')').length) {
+                    $('#country_select').val(data.selected_country);
+                }
+            }
+            if ('special_ranking_name' in data)
+            {
+                $('#special_ranking_name').val(data.special_ranking_name);
+                $('#special_ranking_button').children().text(data.special_ranking_name);
+            }
+            if ("lane_style" in data && data.lane_style == "alphabetic") {
+                $('#alphabetic_radio').prop('checked', true);
+            } else {
+                $('#numeric_radio').prop('checked', true);
+            }
+            if ("comp_type" in data) {
+                _audioElement.remove();
+                if (data.comp_type == "aida") {
+                    $('#aida_radio').prop('checked', true);
+                    _audioElement = new Audio('static/countdown_aida.wav');
+                } else {
+                    $('#cmas_radio').prop('checked', true);
+                    _audioElement = new Audio('static/countdown_cmas.wav');
+                }
+            }
+            setOTs(data);
+        }
+    })
 }

@@ -173,6 +173,19 @@ class CompyFlask:
             elif request.method == 'POST':
                 return self.setJudgeAthleteResult()
 
+        @app.route('/disciplines/<federation>', methods=['GET'])
+        def disciplines(federation):
+            return self.disciplines(federation)
+
+        @app.route('/block', methods=['POST', 'UPDATE', 'DELETE'])
+        def block():
+            if request.method == 'POST':
+                return self.modifyBlock(True)
+            elif request.method == 'UPDATE':
+                return self.modifyBlock(False)
+            elif request.method == 'DELETE':
+                return self.deleteBlock()
+
         app.run()
 
     def uploadFile(self):
@@ -716,3 +729,59 @@ class CompyFlask:
     def setJudgeAthleteResult(self):
         data = {}
         return data, 200
+
+    def disciplines(self, federation):
+        disciplines = self.data_.getAllDisciplines(federation)
+        if disciplines is None:
+            return {}, 400
+        else:
+            data = {"status": "success", "disciplines": disciplines}
+            return data, 200
+
+    def modifyBlock(self, add):
+        content = request.json
+        if False in [key in content for key in ['day', 'dis', 'block']]:
+            logging.info("Could not add/edit block due to missing data")
+            return {}, 400
+        day = content['day']
+        disciplines = content['dis']
+        block = content['block']
+        if disciplines is None or day is None or (not add and block is None):
+            logging.info("Could not add/edit block with incomplete information")
+            return {}, 400
+        ret = self.data_.modifyBlock(day, disciplines, block, add)
+        data = None
+        if ret == 0:
+            data = {"status": "success", "status_msg": "Successfully updated block"}
+        elif ret == 1:
+            data = {"status": "success", "status_msg": "Could not add block, already exists"}
+        elif ret == 2:
+            data = {"status": "success", "status_msg": "Could not edit block, does not exist"}
+        if data is not None:
+            data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
+            data["blocks"] = self.data_.getBlocks()
+            return data, 200
+        else:
+            return {}, 400
+
+    def deleteBlock(self):
+        content = request.json
+        if False in [key in content for key in ['block']]:
+            logging.info("Could not remove block due to missing data")
+            return {}, 400
+        block = content['block']
+        if block is None:
+            logging.info("Could not remove block with incomplete information")
+            return {}, 400
+        ret = self.data_.removeBlock(block)
+        data = None
+        if ret == 0:
+            data = {"status": "success", "status_msg": "Successfully removed block"}
+        elif ret == 1:
+            data = {"status": "success", "status_msg": "Could not remove block, does not exist"}
+        if data is not None:
+            data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
+            data["blocks"] = self.data_.getBlocks()
+            return data, 200
+        else:
+            return {}, 400
