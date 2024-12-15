@@ -1189,7 +1189,15 @@ $(document).ready(function() {
         let judge_remarks = $('#result_judge_remarks').val();
         let id = _sl_athletes;
         _sl_athletes = null;
-        let data = {id: id, rp: rp, penalty: penalty, card: card, remarks: remarks, judge_remarks: judge_remarks, discipline: _cur_menu.discipline, gender: _cur_menu.gender, country: _cur_menu.country};
+        let data = {id: id,
+                    rp: rp,
+                    penalty: penalty,
+                    card: card,
+                    remarks: remarks,
+                    judge_remarks: judge_remarks,
+                    discipline: _cur_menu.discipline,
+                    gender: _cur_menu.gender,
+                    country: _cur_menu.country};
         $.ajax({
             type: "PUT",
             url: "/result",

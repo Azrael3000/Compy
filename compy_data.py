@@ -794,7 +794,7 @@ class CompyData:
 
     def getLaneList(self, day, discipline, lane):
         lane_db = self.laneStyleConverter(lane, True)
-        db_out = self.db_.execute('''SELECT a.first_name, a.last_name, s.AP, s.OT, a.country, a.gender, a.id
+        db_out = self.db_.execute('''SELECT a.first_name, a.last_name, s.AP, s.OT, a.country, a.gender, a.id, s.id
                                      FROM athlete a
                                      INNER JOIN competition_athlete ca ON a.id == ca.athlete_id
                                      INNER JOIN start s ON s.competition_athlete_id == ca.id
@@ -804,6 +804,7 @@ class CompyData:
         if db_out is None:
             return None
         lane_list = [{'id': r[6],
+                      's_id': r[7],
                       'OT': r[3],
                       'Name': r[0] + " " + r[1],
                       'Nat': r[4],
@@ -1472,20 +1473,21 @@ class CompyData:
         h_m = time_str.split(':')
         return int(h_m[0])*60 + int(h_m[1])
 
-    def updateResult(self, s_id, rp, penalty, card, remarks, judge_remarks, discipline):
+    def updateResult(self, s_id, rp, penalty, card, remarks, judge_remarks):
         s_id = int(s_id)
         penalty = float(penalty)
-        rp = self.cleanPerf(rp, discipline)
-        rp = self.getMinFromTime(rp)
         # TODO sanity checks for card and remarks and discipline
-        ap = self.db_.execute(
-                '''SELECT s.ap
+        ap_dis = self.db_.execute(
+                '''SELECT s.ap, s.discipline
                    FROM competition_athlete ca
                    INNER JOIN start s ON ca.id == s.competition_athlete_id
                    WHERE s.id == ?''',
                 s_id)
-        if ap is not None:
-            under_ap_penalty = self.getUnderApPenalty(ap[0][0], rp, discipline) if self.comp_type == "aida" else 0
+        if ap_dis is not None:
+            discipline = ap_dis[0][1]
+            rp = self.cleanPerf(rp, discipline)
+            rp = self.getMinFromTime(rp)
+            under_ap_penalty = self.getUnderApPenalty(ap_dis[0][0], rp, discipline) if self.comp_type == "aida" else 0
             self.db_.execute(
                 '''UPDATE start SET rp = ?, penalty = ?, card = ?, remarks = ?, judge_remarks = ? WHERE id == ?''',
                 (rp, under_ap_penalty + penalty, card, remarks, judge_remarks, s_id))
@@ -1601,25 +1603,25 @@ class CompyData:
 
         return (db_out2[0][0], first_name, last_name)
 
-    def getAthleteResult(self, day, discipline, lane, athlete_id):
+    def getAthleteResult(self, s_id):
         try:
-            athlete_id = int(athlete_id)
-            lane = self.laneStyleConverter(lane, True)
+            s_id = int(s_id)
         except:
             return None
 
         db_out = self.db_.execute(
-            '''SELECT a.first_name, a.last_name, a.country,
-                      s.AP, s.RP, s.penalty, s.card, s.remarks, s.id, s.OT, a.gender, s.judge_remarks
+            '''SELECT a.first_name, a.last_name, a.country, s.AP, s.RP, s.penalty, s.card,
+                      s.remarks, s.OT, a.gender, s.judge_remarks, s.discipline
                FROM start s
                INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
                INNER JOIN athlete a ON ca.athlete_id == a.id
-               WHERE s.discipline == ? AND ca.competition_id == ? AND a.id == ? AND s.day == ? AND s.lane == ?''',
-            (discipline, self.id_, athlete_id, day, lane))
+               WHERE ca.competition_id == ? AND s.id == ?''',
+            (self.id_, s_id))
 
         if db_out is None:
             return None
 
+        discipline = db_out[0][11]
         return {'Name': db_out[0][0] + " " + db_out[0][1],
                 'Country': db_out[0][2],
                 'AP': self.convertPerformance(db_out[0][3], discipline),
@@ -1627,10 +1629,10 @@ class CompyData:
                 'Penalty': db_out[0][5],
                 'Card': db_out[0][6],
                 'Remarks': db_out[0][7],
-                'JudgeRemarks': db_out[0][11],
-                'Id': db_out[0][8],
-                'OT': db_out[0][9],
-                'Gender': db_out[0][10]}
+                'JudgeRemarks': db_out[0][10],
+                'Id': s_id,
+                'OT': db_out[0][8],
+                'Gender': db_out[0][9]}
 
     def cleanFederation(self, federation):
         if not federation in FEDERATIONS:

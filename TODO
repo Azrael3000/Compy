@@ -26,10 +26,8 @@
 TODO:
 - When saving a new competition, update the competition_list <ul>
 - When refreshing file ask user whether he wants to delete all athletes or only update
-- Load values of undefined on startup
-- NR/WR database (CMAS/AIDA, former with links to record pages)
-- Marking WRs in results
-- Support for mixed comp days
+- NR/CR/WR database (CMAS/AIDA, former with links to record pages)
+- Marking CR/WRs in results
 - Divetime add to start list / lane lists
 - Athletes without result sort by OT
 

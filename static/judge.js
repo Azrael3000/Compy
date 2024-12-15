@@ -30,16 +30,13 @@ class Menu {
         this.day = null;
         this.discipline = null;
         this.lane = null;
-        this.athlete = null;
+        this.s_id = null;
     }
-    setAthlete(athlete) {
-        this.athlete = athlete;
-    }
-    unsetAthlete() {
-        this.athlete = null;
+    unsetStartId() {
+        this.s_id = null;
     }
     getDict() {
-        return {'day': this.day, 'discipline': this.discipline, 'lane': this.lane, 'athlete': this.athlete}
+        return {'day': this.day, 'discipline': this.discipline, 'lane': this.lane, 's_id': this.s_id}
     }
 }
 
@@ -93,7 +90,7 @@ $(document).ready(function() {
     });
 
     $('#content').on("click", '.athlete_menu', function() {
-        _menu.athlete = this.id.split('_')[1];
+        _menu.s_id = this.id.split('_')[1];
         params = Object.assign({}, _menu.getDict(), getBaseDict())
         $.ajax({
             type: "GET",
@@ -163,11 +160,24 @@ $(document).ready(function() {
         }
     });
     $('#content').on("click", "#save_button", function() {
-        data = {RP: $('#rp_title').html(),
-                Card: $('#card_title').html(),
-                Penalty: $('#penalty_title').html(),
-                Remarks: $('#remarks_title').html(),
-                Remarks: $('#judgeremarks_title').html()};
+        data = {id: _menu.s_id,
+                rp: $('#rp_title').html(),
+                penalty: $('#penalty_title').html(),
+                card: $('#card_title').html(),
+                remarks: $('#remarks_title').html(),
+                judge_remarks: $('#judgeremarks_title').html()};
+        $.ajax({
+            type: "PUT",
+            url: "/result",
+            data: JSON.stringify(data),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data) {
+                console.log(data.status_msg);
+                if ('Name' in data)
+                    showResultEntryMask(data);
+            }
+        });
     });
     $('#content').on("click", ".card.selector", function() {
         $('.card.selector').removeClass("highlight");
@@ -176,7 +186,7 @@ $(document).ready(function() {
 });
 
 function showDayMenu() {
-    _menu.unsetAthlete();
+    _menu.unsetStartId();
     let menu = "";
     keys = Object.keys(_days_with_disciplines_lanes);
     for (let i = 0; i < keys.length; i++) {
@@ -187,7 +197,7 @@ function showDayMenu() {
 }
 
 function showDisciplineMenu(day) {
-    _menu.unsetAthlete();
+    _menu.unsetStartId();
     if (day in _days_with_disciplines_lanes) {
         let menu = `<button id="discipline_back" type="button">Back</button><br>`;
         keys = Object.keys(_days_with_disciplines_lanes[day]);
@@ -202,7 +212,7 @@ function showDisciplineMenu(day) {
 }
 
 function showLaneMenu(day, discipline) {
-    _menu.unsetAthlete();
+    _menu.unsetStartId();
     if (!day in _days_with_disciplines_lanes)
     {
         showDayMenu();
@@ -233,7 +243,7 @@ function showAthleteMenu(lane_list) {
         </tr>`;
     for (let i = 0; i < lane_list.length; i++) {
         menu += `
-            <tr id="athlete_${lane_list[i].id}" class="athlete_menu">
+            <tr id="athlete_${lane_list[i].s_id}" class="athlete_menu">
                 <td>${lane_list[i].OT}</td>
                 <td>${lane_list[i].Name} (${lane_list[i].Nat})</td>
                 <td>${lane_list[i].AP}</td>

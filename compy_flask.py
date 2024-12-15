@@ -166,12 +166,10 @@ class CompyFlask:
         def judgeAthlete():
             return self.getJudgeAthletes()
 
-        @app.route('/judge/athlete/result', methods=['GET', 'POST'])
+        @app.route('/judge/athlete/result', methods=['GET'])
         def judgeAthleteResult():
             if request.method == 'GET':
                 return self.getJudgeAthleteResult()
-            elif request.method == 'POST':
-                return self.setJudgeAthleteResult()
 
         @app.route('/disciplines/<federation>', methods=['GET'])
         def disciplines(federation):
@@ -501,21 +499,34 @@ class CompyFlask:
 
     def updateResult(self):
         content = request.json
-        if not self.dictHas(content, {"discipline", "gender", "country", "id", "rp", "penalty", "card", "remarks", "judge_remarks"}):
+        if not self.dictHas(content, {"id", "rp", "penalty", "card", "remarks", "judge_remarks"}):
             breakpoint()
             logging.debug("Put request to result without discipline, gender, country, id, rp, penalty, card, remarks, judge_remarks")
             return {}, 400
-        discipline = content["discipline"]
-        gender = content["gender"]
-        country = content["country"]
         s_id = content["id"]
         rp = content["rp"]
         penalty = content["penalty"]
         card = content["card"]
         remarks = content["remarks"]
         judge_remarks = content["judge_remarks"]
-        self.data_.updateResult(s_id, rp, penalty, card, remarks, judge_remarks, discipline)
-        return self.getResultDiscipline(discipline, gender, country)
+        res = self.data_.updateResult(s_id, rp, penalty, card, remarks, judge_remarks)
+        if res == 1:
+            logging.debug("Failed to set result")
+            return {}, 400
+        if self.dictHas(content, {"discipline", "gender", "country"}):
+            discipline = content["discipline"]
+            gender = content["gender"]
+            country = content["country"]
+            return self.getResultDiscipline(discipline, gender, country)
+        else:
+            data = self.data_.getAthleteResult(s_id)
+            if data is None:
+                logging.debug("Get request to athlete result failed.")
+                return {}, 400
+
+            data["status"] = "success"
+            data["status_msg"] = "Completed request for athlete result of " + data["Name"]
+            return data, 200
 
     def changeSpecialRankingName(self):
         content = request.json
@@ -712,22 +723,18 @@ class CompyFlask:
         day = request.args.get('day')
         discipline = request.args.get('discipline')
         lane = request.args.get('lane')
-        athlete = request.args.get('athlete')
-        if day is None or discipline is None or lane is None or athlete is None:
-            logging.debug("Get request to athlete result without day, discipline, lane or athlete")
+        s_id = request.args.get('s_id')
+        if day is None or discipline is None or lane is None or s_id is None:
+            logging.debug("Get request to athlete result without day, discipline, lane or start id")
             return {}, 400
 
-        data = self.data_.getAthleteResult(day, discipline, lane, athlete)
+        data = self.data_.getAthleteResult(s_id)
         if data is None:
             logging.debug("Get request to athlete result failed.")
             return {}, 400
 
         data["status"] = "success"
         data["status_msg"] = "Completed request for athlete result of " + data["Name"]
-        return data, 200
-
-    def setJudgeAthleteResult(self):
-        data = {}
         return data, 200
 
     def disciplines(self, federation):
