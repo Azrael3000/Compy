@@ -365,40 +365,40 @@ class CompyFlask:
 
     def laneList(self):
         day = request.args.get('day')
-        discipline = request.args.get('discipline')
+        block = request.args.get('block')
         lane = request.args.get('lane')
-        if day is None or discipline is None or lane is None:
-            logging.debug("Get request to lane_list without day, discipline or lane")
+        if day is None or block is None or lane is None:
+            logging.debug("Get request to lane_list without day, block or lane")
             return {}, 400
         data = {}
-        lane_list = self.data_.getLaneList(day, discipline, lane)
+        lane_list = self.data_.getLaneList(day, block, lane)
         if not lane_list is None:
             data["lane_list"] = lane_list
             data["status"] = "success"
-            data["status_msg"] = "Transfered lane list for " + day + ": " + discipline + "/" + lane
+            data["status_msg"] = "Transfered lane list for " + day + ": " + block + "/" + lane
             return data, 200
         else:
-            logging.debug("Could not get lane list for " + day + ": " + discipline + "/" + lane)
+            logging.debug("Could not get lane list for " + day + ": " + block + "/" + lane)
             return {}, 400
 
     def laneListPDF(self):
         day = request.args.get('day')
-        discipline = request.args.get('discipline')
+        block = request.args.get('block')
         lane = request.args.get('lane')
         req_type = request.args.get('type')
-        if (day is None or discipline is None or lane is None) and req_type is None:
-            logging.debug("Get request to lane_list without day, discipline, lane or type")
+        if (day is None or block is None or lane is None) and req_type is None:
+            logging.debug("Get request to lane_list without day, block, lane or type")
             return {}, 400
         data = {}
-        if req_type is not None and req_type == "all":
-            lane_list_pdf = self.data_.getLaneListPDF()
+        if req_type is not None and (req_type == "all" or req_type == "safety"):
+            lane_list_pdf = self.data_.getLaneListPDF(req_type == "safety")
         else:
-            lane_list_pdf = self.data_.getLaneListPDF(day, discipline, lane)
+            lane_list_pdf = self.data_.getLaneListPDF(False, day, block, lane)
         if not lane_list_pdf is None:
             logging.debug("Sending: " + lane_list_pdf)
             return send_file(lane_list_pdf, as_attachment=True)
         else:
-            logging.debug("Could not get lane list for " + day + ": " + discipline + "/" + lane)
+            logging.debug("Could not get lane list for " + day + ": " + block + "/" + lane)
             return {}, 400
 
     def changeLaneStyle(self):

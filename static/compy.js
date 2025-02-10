@@ -101,6 +101,7 @@ function generateStartList(startlist) {
                 <td>Name</td>
                 <td>Discipline</td>
                 <td>AP</td>
+                <td>PB</td>
                 <td>Nationality</td>
                 <td>Warmup</td>
                 <td>OT</td>
@@ -124,6 +125,7 @@ function generateStartList(startlist) {
                     <td>${startlist[i].Name}</td>
                     <td>${startlist[i].Discipline}</td>
                     <td>${startlist[i].AP}</td>
+                    <td>${startlist[i].PB}</td>
                     <td>${startlist[i].Nationality}</td>
                     <td>${startlist[i].Warmup}</td>
                     <td>${startlist[i].OT}</td>
@@ -143,12 +145,13 @@ function generateStartList(startlist) {
             }
             sl += `
                 </tr>`;
-            max_lane = Math.max(max_lane, startlist[i].Lane);
-            if (interval_ot1 == 0 && startlist[i].Lane == 1 && interval == 0)
+            if (interval_ot1 == 0 && startlist[i].Lane == convertNumericLaneToAcutal(1) && interval == 0)
                 interval_ot1 = timeToMinutes(startlist[i].OT);
             if (startlist[i].Name == "Break")
                 interval_ot1 = 0;
-            if (interval == 0 && startlist[i].Lane == 1 && interval_ot1 != 0)
+            else
+                max_lane = Math.max(max_lane, convertActualLaneToNumeric(startlist[i].Lane));
+            if (interval == 0 && startlist[i].Lane == convertNumericLaneToAcutal(1) && interval_ot1 != 0)
                 interval = Math.max(timeToMinutes(startlist[i].OT) - interval_ot1, 0);
         }
         sl += "</table>";
@@ -202,10 +205,12 @@ function showOverlayBox(width, height, content) {
     $('#overlay_box').width(width);
     $('#overlay_box').height(height);
     $('#overlay_box').html(content);
+    $('body').addClass('stop-scrolling');
 }
 
 function hideOverlayBox() {
     $('#overlay_blur').hide();
+    $('body').removeClass('stop-scrolling');
 }
 
 function getCountdownDuration() {
@@ -679,13 +684,13 @@ $(document).ready(function() {
         getPDF("start_list", data);
     });
     $("#ll_lane_menu").on("click", "a", function() {
-        let id_arr = this.id.split('_'); // button id is equal to "ll_" + day + "_" + discipline + "_" + lane
+        let id_arr = this.id.split('_'); // button id is equal to "ll_" + day + "_" + block + "_" + lane
         let day = id_arr[1];
-        let discipline = id_arr[2];
+        let block = id_arr[2];
         let lane = id_arr[3];
         let data = {
             day: day,
-            discipline: discipline,
+            block: block,
             lane: lane
         };
         $.ajax({
@@ -695,13 +700,15 @@ $(document).ready(function() {
                 console.log(data.status_msg);
                 let ll = "";
                 if (data.lane_list) {
-                    ll += "<a href='#' class='ll_pdf_button' id='ll_pdf_" + day + "_" + discipline + "_" + lane + "'>Print PDF</a>";
+                    ll += "<a href='#' class='ll_pdf_button' id='ll_pdf_" + day + "_" + block + "_" + lane + "'>Print PDF</a>";
                     ll += "<table>";
                     ll += `
                         <tr>
                             <td>OT</td>
+                            <td>Dis</td>
                             <td>Name</td>
                             <td>AP</td>
+                            <td>PB</td>
                             <td>Nat.</td>
                             <td>NR</td>
                             <td>RP</td>
@@ -712,8 +719,10 @@ $(document).ready(function() {
                         ll += `
                             <tr>
                                 <td>${data.lane_list[i].OT}</td>
+                                <td>${data.lane_list[i].Dis}</td>
                                 <td>${data.lane_list[i].Name}</td>
                                 <td>${data.lane_list[i].AP}</td>
+                                <td>${data.lane_list[i].PB}</td>
                                 <td>${data.lane_list[i].Nat}</td>
                                 <td>${data.lane_list[i].NR}</td>
                                 <td></td>
@@ -738,14 +747,17 @@ $(document).ready(function() {
     $("#ll_all_pdf_button").click(function() {
         getPDF("lane_list");
     });
+    $("#ll_safety_all_pdf_button").click(function() {
+        getPDF("lane_list", {"type": "safety"});
+    });
     $("#ll_content").on("click", ".ll_pdf_button", function() {
-        let id_arr = this.id.split('_'); // button id is equal to "ll_pdf_" + day + "_" + discipline + "_" + lane
+        let id_arr = this.id.split('_'); // button id is equal to "ll_pdf_" + day + "_" + block + "_" + lane
         day = id_arr[2];
-        discipline = id_arr[3];
+        block = id_arr[3];
         lane = id_arr[4];
         let data = {
             day: day,
-            discipline: discipline,
+            block: block,
             lane: lane
         };
         getPDF("lane_list", data);
@@ -841,6 +853,7 @@ $(document).ready(function() {
         else {
             [_sl[i].Name,        _sl[i+1].Name       ] = [_sl[i+1].Name,        _sl[i].Name       ];
             [_sl[i].AP,          _sl[i+1].AP         ] = [_sl[i+1].AP,          _sl[i].AP         ];
+            [_sl[i].PB,          _sl[i+1].PB         ] = [_sl[i+1].PB,          _sl[i].PB         ];
             [_sl[i].Nationality, _sl[i+1].Nationality] = [_sl[i+1].Nationality, _sl[i].Nationality];
             [_sl[i].Id         , _sl[i+1].Id         ] = [_sl[i+1].Id         , _sl[i].Id         ];
             [_sl[i].Discipline , _sl[i+1].Discipline ] = [_sl[i+1].Discipline , _sl[i].Discipline ];
@@ -865,6 +878,7 @@ $(document).ready(function() {
         else {
             [_sl[i].Name,        _sl[i-1].Name       ] = [_sl[i-1].Name,        _sl[i].Name       ];
             [_sl[i].AP,          _sl[i-1].AP         ] = [_sl[i-1].AP,          _sl[i].AP         ];
+            [_sl[i].PB,          _sl[i-1].PB         ] = [_sl[i-1].PB,          _sl[i].PB         ];
             [_sl[i].Nationality, _sl[i-1].Nationality] = [_sl[i-1].Nationality, _sl[i].Nationality];
             [_sl[i].Id         , _sl[i-1].Id         ] = [_sl[i-1].Id         , _sl[i].Id         ];
             [_sl[i].Discipline , _sl[i-1].Discipline ] = [_sl[i-1].Discipline , _sl[i].Discipline ];
@@ -898,12 +912,16 @@ $(document).ready(function() {
         }
         else {
             let ap_btn = `<input type="number" step="1" id="sl_edit_ap" value="${_sl[i].AP}"/>`;
+            let pb_btn = `<input type="number" step="1" id="sl_edit_pb" value="${_sl[i].PB}"/>`;
             let cmas = $("input[name='comp_type']:checked").val() == "cmas";
-            if (cmas && _sl[i].Discipline in ["DNF", "DYN", "DYNB"])
+            if (cmas && _sl[i].Discipline in ["DNF", "DYN", "DYNB"]) {
                 ap_btn = `<input type="number" step="0.5" id="sl_edit_ap" value="${_sl[i].AP}"/>`;
-            else if (_sl[i].Discipline == "STA") {
+                pb_btn = `<input type="number" step="0.5" id="sl_edit_pb" value="${_sl[i].PB}"/>`;
+            } else if (_sl[i].Discipline == "STA") {
                 let ap = _sl[i].AP.padStart(5, "0");
                 ap_btn = `<input type="time" id="sl_edit_ap" value="${ap}"/>`;
+                let pb = _sl[i].PB.padStart(5, "0");
+                pb_btn = `<input type="time" id="sl_edit_pb" value="${pb}"/>`;
             }
             content = `
                 Edit start of ${_sl[i].Name}<br>
@@ -916,6 +934,10 @@ $(document).ready(function() {
                     <tr>
                         <td>AP</td>
                         <td>${ap_btn}</td>
+                    </tr>
+                    <tr>
+                        <td>PB</td>
+                        <td>${pb_btn}</td>
                     </tr>
                     <tr>
                         <td>OT</td>
@@ -944,14 +966,18 @@ $(document).ready(function() {
                 let diff = timeToMinutes(br_new) - timeToMinutes(br_prev);
                 for (let j = i+1; j < _sl.length; j++)
                     adjustOTbyDiff(j, diff);
+                _sl[i].AP = br_new;
             }
             else {
                 if (_sl[i].Discipline == "STA") {
                     let ap = $('#sl_edit_ap')[0].valueAsDate;
                     _sl[i].AP = dateToStr(ap);
-                }
-                else
+                    let pb = $('#sl_edit_pb')[0].valueAsDate;
+                    _sl[i].PB = dateToStr(pb);
+                } else {
                     _sl[i].AP = $('#sl_edit_ap').val();
+                    _sl[i].PB = $('#sl_edit_pb').val();
+                }
                 let ot = $('#sl_edit_ot')[0].valueAsDate;
                 setOT(i, ot);
             }
@@ -1016,7 +1042,7 @@ $(document).ready(function() {
             _sl.splice(brs[i].i, 1);
         _sl.sort((a,b) => Math.sign(convertToInt(a) - convertToInt(b)));
         for (let i = 0; i < brs.length; i++) {
-            let break_entry = {Name: "Break", AP: brs[i].time, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1, Discipline: ""};
+            let break_entry = {Name: "Break", AP: brs[i].time, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1, Discipline: "", PB: ""};
             _sl.splice(brs[i].i, 0, break_entry);
         }
         calculateStartList();
@@ -1039,14 +1065,18 @@ $(document).ready(function() {
             url: "/athletes",
             success: function(data) {
                 console.log(data.status_msg);
-                let ap_btn = `<input type="number" step="1" id="sl_add_ap" value="1"/>`;
-                let cmas = $("input[name='comp_type']:checked").val() == "cmas";
-                if (cmas && _cur_menu.discipline in ["DNF", "DYN", "DYNB"])
-                    ap_btn = `<input type="number" step="0.5" id="sl_add_ap" value="1"/>`;
-                else if (_cur_menu.discipline == "STA")
-                    ap_btn = `<input type="time" id="sl_add_ap" value="00:01"/>`;
-                dis_chooser = "";
                 let disciplines = _blocks[_cur_menu.day][_cur_menu.block]["dis_s"].split(', ');
+                let ap_btn = `<input type="number" step="1" id="sl_add_ap" value="1"/>`;
+                let pb_btn = `<input type="number" step="1" id="sl_add_pb" value="1"/>`;
+                let cmas = $("input[name='comp_type']:checked").val() == "cmas";
+                if (cmas && disciplines[0] in ["DNF", "DYN", "DYNB"]) { //TODO proper handling of multiple disciplines
+                    ap_btn = `<input type="number" step="0.5" id="sl_add_ap" value="1"/>`;
+                    pb_btn = `<input type="number" step="0.5" id="sl_add_pb" value="1"/>`;
+                } else if (disciplines[0] == "STA") {
+                    ap_btn = `<input type="time" id="sl_add_ap" value="00:01"/>`;
+                    pb_btn = `<input type="time" id="sl_add_pb" value="00:01"/>`;
+                }
+                dis_chooser = "";
                 for (let i = 0; i < disciplines.length; i++) {
                     let dis = disciplines[i];
                     let checked = i == 0 ? "checked" : "";
@@ -1070,6 +1100,10 @@ $(document).ready(function() {
                         <tr>
                             <td>AP</td>
                             <td>${ap_btn}</td>
+                        </tr>
+                        <tr>
+                            <td>PB</td>
+                            <td>${pb_btn}</td>
                         </tr>
                         <tr>
                             <td>OT</td>
@@ -1097,9 +1131,9 @@ $(document).ready(function() {
     $('#overlay_box').on('click', '#sl_add_save', function() {
         let i = Number($('#sl_add_athlete').find("option:selected").attr('value'));
         let dis = $("input[name='sl_add_dis']:checked").val();
-        if (!$('#sl_add_ap') || !i || i < 0 || i >= _sl_athletes.length)
+        if (!$('#sl_add_ap') || isNaN(i) || i < 0 || i >= _sl_athletes.length)
             return;
-        let new_entry = {Name: _sl_athletes[i].first_name + " " + _sl_athletes[i].last_name, AP: $('#sl_add_ap').val(), Nationality: _sl_athletes[i].country, Warmup: "", OT: "", Lane: $('#sl_add_lane').val(), Id: -_sl_athletes[i].id, Discipline: dis};
+        let new_entry = {Name: _sl_athletes[i].first_name + " " + _sl_athletes[i].last_name, AP: $('#sl_add_ap').val(), PB: $('#sl_add_pb').val(), Nationality: _sl_athletes[i].country, Warmup: "", OT: "", Lane: $('#sl_add_lane').val(), Id: -_sl_athletes[i].id, Discipline: dis};
         let ot = timeToMinutes($('#sl_add_ot').val());
         i = 0;
         for (; i < _sl.length; i++) {
@@ -1153,7 +1187,8 @@ $(document).ready(function() {
         let penalty = $(`#result_Penalty_${id}`).html();
         let remark = $(`#result_Remarks_${id}`).html();
         let judge_remark = $(`#result_JudgeRemarks_${id}`).html();
-        let is_sta = _cur_menu.discipline == "STA";
+        let disciplines = _blocks[_cur_menu.day][_cur_menu.block]["dis_s"].split(', ');
+        let is_sta = disciplines[0] == "STA"; //TODO correct handling of multiple disciplines
         let penalty_not_reached_ap = "";
         let federation = $("input[name='comp_type']:checked").val();
         if (federation == "aida") {
@@ -1164,7 +1199,7 @@ $(document).ready(function() {
             }
             if (ap > rp) {
                 let delta = ap - rp;
-                let factor = _cur_menu.discipline == "STA" ? 0.2 : (_cur_menu.discipline[0] == "D" ? 0.5 : 1.);
+                let factor = disciplines[0] == "STA" ? 0.2 : (disciplines[0][0] == "D" ? 0.5 : 1.); //TODO correct handling of multiple disciplines
                 penalty_not_reached_ap = delta*factor;
             }
             if (penalty_not_reached_ap > 0) {
@@ -1195,7 +1230,7 @@ $(document).ready(function() {
                     card: card,
                     remarks: remarks,
                     judge_remarks: judge_remarks,
-                    discipline: _cur_menu.discipline,
+                    discipline: _cur_menu.discipline, //TODO correct handling of new _cur_menu structure
                     gender: _cur_menu.gender,
                     country: _cur_menu.country};
         $.ajax({
@@ -1373,7 +1408,7 @@ function calculateStartList() {
         }
         else if (lane == 1 && i != 0)
             ot.setMinutes(ot.getMinutes() + interval);
-        _sl[i].Lane = lane;
+        _sl[i].Lane = convertNumericLaneToAcutal(lane);
         setOT(i, ot);
         lane = lane % no_lane + 1;
     }
@@ -1393,7 +1428,7 @@ function addBreak(i, duration) {
             break_date = $('#sl_break_duration')[0].valueAsDate;
             break_str = dateToStr(break_date);
         }
-        let break_entry = {Name: "Break", AP: break_str, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1, Discipline: ""};
+        let break_entry = {Name: "Break", AP: break_str, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1, Discipline: "", PB: ""};
         _sl.splice(i+1, 0, break_entry);
         let ot_old = timeToMinutes(_sl[i+2].OT);
         let ot_prev = timeToMinutes(_sl[i].OT);
@@ -1452,6 +1487,8 @@ function getPDF(type, params = {type: "all"})
             let comp_name = document.getElementById("comp_name").value;
             if ("type" in params && params.type == "all") {
                 link.download = comp_name + "_" + type + "s.pdf";
+            } else if ("type" in params && params.type == "safety") {
+                link.download = comp_name + "_" + type + "s_safety.pdf";
             } else if ("type" in params && params.type == "top3") {
                 link.download = comp_name + "_" + type + "s_top3.pdf";
             } else {
@@ -1461,7 +1498,10 @@ function getPDF(type, params = {type: "all"})
                         dis = _blocks[params.day][params.block]["dis_s"].replace(", ", "_");
                     link.download = comp_name + "_" + type + "_" + params.day + "_" + dis + ".pdf";
                 } else if (type == "lane_list") {
-                    link.download = comp_name + "_" + type + "_" + params.day + "_" + params.discipline + "_" + params.lane + ".pdf";
+                    let dis = params.block;
+                    if (_blocks != null)
+                        dis = _blocks[params.day][params.block]["dis_s"].replace(", ", "_");
+                    link.download = comp_name + "_" + type + "_" + params.day + "_" + dis + "_" + params.lane + ".pdf";
                 } else /* if (type == "result") */ {
                     link.download = comp_name + "_" + type + "_" + params.discipline + "_" + params.country + "_" + params.gender + ".pdf";
                 }
@@ -1694,17 +1734,14 @@ function initSubmenus(data, reset=false)
 
 function selectListDay(type, day)
 {
-    if (_days_with_disciplines_lanes != null && _days_with_disciplines_lanes.hasOwnProperty(day)) {
-        if (type != "lane") {
-            return;
-        }
-        let l_discipline_menu = document.getElementById('ll_discipline_menu');
-        l_discipline_menu.innerHTML = "";
-        disciplines = Object.keys(_days_with_disciplines_lanes[day]);
-        for (let i = 0; i < disciplines.length; i++)
+    if (_blocks != null && _blocks.hasOwnProperty(day)) {
+        let l_discipline_menu = $('#ll_discipline_menu');
+        l_discipline_menu.empty();
+        blocks = Object.keys(_blocks[day]);
+        for (let i = 0; i < blocks.length; i++)
         {
-            let dis = disciplines[i];
-            l_discipline_menu.innerHTML += "<a href='#' onclick='selectLaneListDayDiscipline(\"" + day + "\", \"" + dis + "\")'>" + dis + "</a>&nbsp;";
+            let block = _blocks[day][blocks[i]];
+            l_discipline_menu.append("<a href='#' onclick='selectLaneListDayDiscipline(\"" + day + "\", \"" + blocks[i] + "\")'>" + block['dis_s'] + "</a>&nbsp;");
         }
         $('#ll_lane_menu').empty();
         $('#ll_content').empty();
@@ -1728,18 +1765,18 @@ function selectStartListDay(day)
     }
 }
 
-function selectLaneListDayDiscipline(day, discipline)
+function selectLaneListDayDiscipline(day, block)
 {
     if (_days_with_disciplines_lanes != null && _days_with_disciplines_lanes.hasOwnProperty(day)) {
-        let l_lane_menu = document.getElementById('ll_lane_menu');
-        l_lane_menu.innerHTML = "";
-        lanes = _days_with_disciplines_lanes[day][discipline];
+        let l_lane_menu = $('#ll_lane_menu');
+        l_lane_menu.empty();
+        lanes = _blocks[day][block]['lanes'];
         for (let i = 0; i < lanes.length; i++)
         {
             let lane = lanes[i];
-            l_lane_menu.innerHTML += "<a href='#' class='ll_lane_button' id='ll_" + day + "_" + discipline + "_" + lane + "'>" + lane + "</a>&nbsp;";
+            l_lane_menu.append("<a href='#' class='ll_lane_button' id='ll_" + day + "_" + block + "_" + lane + "'>" + lane + "</a>&nbsp;");
         }
-        $('#ll_content').html("");
+        $('#ll_content').empty();
     }
 }
 
@@ -1923,4 +1960,14 @@ function loadCompetition(comp_id) {
             setOTs(data);
         }
     })
+}
+
+function convertNumericLaneToAcutal(ilane) {
+    let lane_style = $("input[name='lane_style']:checked").val();
+    return lane_style == "numeric" ? ilane : String.fromCharCode(64+ilane);
+}
+
+function convertActualLaneToNumeric(alane) {
+    let lane_style = $("input[name='lane_style']:checked").val();
+    return lane_style == "numeric" ? alane : alane.charCodeAt()-64;
 }

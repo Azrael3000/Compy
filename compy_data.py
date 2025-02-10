@@ -504,7 +504,7 @@ class CompyData:
                 continue
             block_lane = {}
             for block in blocks:
-                lanes = self.db_.execute('SELECT DISTINCT lane FROM start s WHERE s.block==?', block[0])
+                lanes = self.db_.execute('SELECT DISTINCT lane FROM start s WHERE s.block==? ORDER BY lane', block[0])
                 if lanes is not None:
                     lanes = [self.laneStyleConverter(l[0]) for l in lanes]
                 dis_s = self.disciplineIntToStr(block[1])
@@ -571,7 +571,7 @@ class CompyData:
         if self.comp_file is None:
             return None
         db_out = self.db_.execute('''
-            SELECT a.first_name, a.last_name, a.country, s.AP, s.OT, s.lane, s.id, s.discipline
+            SELECT a.first_name, a.last_name, a.country, s.AP, s.OT, s.lane, s.id, s.discipline, s.PB
             FROM start s
             INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
             INNER JOIN athlete a ON ca.athlete_id == a.id
@@ -582,6 +582,7 @@ class CompyData:
         startlist = [{'Name': r[0] + " " + r[1],
                       'Nationality': r[2],
                       'AP': self.convertPerformance(r[3], r[7]),
+                      'PB': self.convertPerformance(r[8], r[7]),
                       'Warmup': self.getWTfromOT(r[4]),
                       'OT': r[4],
                       'Lane': self.laneStyleConverter(r[5]),
@@ -601,7 +602,7 @@ class CompyData:
                 if idx >= len(startlist):
                     continue
                 br_time = str(int(br[0]/60)) + ":" + str(br[0]%60).zfill(2)
-                startlist.insert(idx, {'Name': "Break", 'Nationality': "", 'AP': br_time, 'Warmup': "",
+                startlist.insert(idx, {'Name': "Break", 'Nationality': "", 'AP': br_time, 'PB': '', 'Warmup': "",
                                        'OT': "", 'Lane': "", 'Discipline': "", 'Id': -1})
 
         return startlist
@@ -609,7 +610,7 @@ class CompyData:
     def updateStartList(self, day, block, to_remove, startlist):
         day = self.cleanDay(day)
         block = self.cleanBlock(block)
-        if block is not None or day == INVALID_DATE:
+        if block is None or day == INVALID_DATE:
             return -1
         to_remove = [int(tr) for tr in to_remove]
         # remove all starts from the start list that were removed and make sure they belong to this comp
@@ -619,7 +620,7 @@ class CompyData:
                     '''DELETE FROM start WHERE id IN
                        (SELECT s.id FROM start s
                         INNER JOIN competition_athlete ca ON ca.id == s.competition_athlete_id
-                        WHERE s.id == ? AND ca.competition_id == ?''',
+                        WHERE s.id == ? AND ca.competition_id == ?)''',
                     (to_remove[0], self.id_))
             else:
                 rlist = str(tuple(to_remove))
@@ -662,27 +663,31 @@ class CompyData:
                 if discipline is None:
                     continue
                 ap = self.cleanPerf(startlist[i]["AP"], discipline)
-                lane = self.cleanNumber(self.laneStyleConverter(startlist[i]["Lane"], true)) # TODO min/max
+                pb = self.cleanPerf(startlist[i]["PB"], discipline)
+                if discipline == "STA":
+                    ap = self.getMinFromTime(ap)
+                    pb = self.getMinFromTime(pb)
+                lane = self.cleanNumber(self.laneStyleConverter(startlist[i]["Lane"], True)) # TODO min/max
                 if int(startlist[i]["Id"]) < 0: # new s["art
                     self.db_.execute(
                         '''INSERT INTO start
-                           (competition_athlete_id, discipline, block, lane, day, OT, AP)
-                           VALUES (?, ?, ?, ?, ?, ?)''',
-                        (ca_id[0][0], discipline, block, lane, day, ot, ap));
+                           (competition_athlete_id, discipline, block, lane, day, OT, AP, PB)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                        (ca_id[0][0], discipline, block, lane, day, ot, ap, pb));
                 else: #update start
                     self.db_.execute(
                         '''UPDATE start SET
-                           discipline=?, block=?, lane=?, day=?, OT=?, AP=?
+                           discipline=?, block=?, lane=?, day=?, OT=?, AP=?, PB=?
                            WHERE id == ?''',
-                        (discipline, block, lane, day, ot, ap, ca_id[0][0]));
+                        (discipline, block, lane, day, ot, ap, pb, ca_id[0][0]));
         return 0
 
     def convertPerformance(self, val, dis):
         if val is None:
             return ""
         if dis == "STA":
-            m = math.floor(val/60)
-            s = val - m*60
+            m = math.floor(int(val)/60)
+            s = int(val) - m*60
             out = str(int(m)) + ":"
             if self.comp_type == "aida":
                 out += str(int(s)).zfill(2)
@@ -715,6 +720,7 @@ class CompyData:
             return fname
         start_df = pd.DataFrame(self.getStartList(day, block))
         start_df.drop("Id", axis=1, inplace=True)
+        start_df.drop("PB", axis=1, inplace=True)
         html_string = start_df.to_html(index=False, justify="left", classes="df_table")
         day_obj = datetime.strptime(day, "%Y-%m-%d")
         human_day = day_obj.strftime("%d. %m. %Y")
@@ -792,36 +798,38 @@ class CompyData:
             html.write_pdf(fname)
             return fname
 
-    def getLaneList(self, day, discipline, lane):
+    def getLaneList(self, day, block, lane):
         lane_db = self.laneStyleConverter(lane, True)
-        db_out = self.db_.execute('''SELECT a.first_name, a.last_name, s.AP, s.OT, a.country, a.gender, a.id, s.id
+        db_out = self.db_.execute('''SELECT a.first_name, a.last_name, s.AP, s.OT, a.country, a.gender, a.id, s.id, s.PB, s.discipline
                                      FROM athlete a
                                      INNER JOIN competition_athlete ca ON a.id == ca.athlete_id
                                      INNER JOIN start s ON s.competition_athlete_id == ca.id
-                                     WHERE s.discipline == ? AND s.lane == ? AND s.day == ? AND ca.competition_id == ?
+                                     WHERE s.block == ? AND s.lane == ? AND s.day == ? AND ca.competition_id == ?
                                   ''',
-                                  (discipline, lane_db, day, self.id_))
+                                  (block, lane_db, day, self.id_))
         if db_out is None:
             return None
         lane_list = [{'id': r[6],
                       's_id': r[7],
                       'OT': r[3],
+                      'Dis': r[9],
                       'Name': r[0] + " " + r[1],
                       'Nat': r[4],
-                      'AP': self.convertPerformance(r[2], discipline),
-                      'NR': self.convertPerformance(self.nr.get(self.NR(self.comp_type, r[4], "", r[5], discipline)), discipline)}
+                      'AP': self.convertPerformance(r[2], r[9]),
+                      'PB': self.convertPerformance(r[8], r[9]),
+                      'NR': self.convertPerformance(self.nr.get(self.NR(self.comp_type, r[4], "", r[5], r[9])), r[9])}
                        for r in db_out]
         lane_list.sort(key=lambda r: self.getMinFromTime(r['OT']))
         return lane_list
 
-    def getLaneListPDF(self, day="all", discipline="all", lane="all", in_memory=False):
-        if day=="all" and discipline=="all":
-            dwd = self.getDaysWithDisciplinesLanes()
+    def getLaneListPDF(self, safety=False, day="all", block="all", lane="all", in_memory=False):
+        if day=="all" and block=="all":
+            blocks = self.getBlocks()
             files = []
-            for d in dwd:
-                for dis in dwd[d].keys():
-                    for l in dwd[d][dis]:
-                        files.append(self.getLaneListPDF(d, dis, l, True))
+            for day in blocks:
+                for block in blocks[day].keys():
+                    for lane in blocks[day][block]['lanes']:
+                        files.append(self.getLaneListPDF(safety, day, block, lane, True))
             pages = []
             for doc in files:
                 for page in doc.pages:
@@ -830,101 +838,370 @@ class CompyData:
             fname = os.path.join(self.config.download_folder, self.name + "_lane_lists.pdf")
             merged_pdf.write_pdf(fname)
             return fname
-        lane_df = pd.DataFrame(self.getLaneList(day, discipline, lane))
+        lane_df = pd.DataFrame(self.getLaneList(day, block, lane))
         lane_df.drop("id", axis=1, inplace=True)
-        lane_df["RP"] = ""
-        lane_df["Card"] = ""
-        lane_df["Remarks"] = ""
+        lane_df.drop("s_id", axis=1, inplace=True)
+        if safety:
+            lane_df.drop("Nat", axis=1, inplace=True)
+            lane_df.drop("NR", axis=1, inplace=True)
+
+        blocks = self.getBlocks()
+        block_str = blocks[day][int(block)]['dis_s']
+        block_str_underscore = block_str.replace(', ', '_')
+        has_multiple_dis = ',' in block_str
+
+        if not has_multiple_dis:
+            lane_df.drop("Dis", axis=1, inplace=True)
+        if not safety:
+            lane_df["RP"] = ""
+            lane_df["Card"] = ""
+            lane_df["Remarks"] = ""
         cols = lane_df.columns.tolist()
-        cols = cols[0:4] + cols[5:] + [cols[4]]
+        if not safety:
+            if has_multiple_dis:
+                cols = cols[0:5] + cols[7:] + cols[5:7]
+            else:
+                cols = cols[0:4] + cols[6:] + cols[4:6]
         lane_df = lane_df[cols]
         html_string = lane_df.to_html(index=False, justify="left", classes="df_table")
         day_obj = datetime.strptime(day, "%Y-%m-%d")
         human_day = day_obj.strftime("%d. %m. %Y")
-        html_string = """
-            <html>
-            <head>
-            <style>
-            table {{
-                width: 100%;
-            }}
-            tr th:first-child {{
-                padding-left:0px;
-            }}
-            tr td:first-child {{
-                padding-left:0px;
-            }}
-            th, td {{
-                padding:10px 0px 10px 20px;
-                text-align: center;
-                border-bottom: 1px solid #ddd;
-            }}
-            table th:nth-child(1) {{
-                width: 5%;
-            }}
-            table th:nth-child(2) {{
-                width: 21%;
-                text-align: left;
-            }}
-            table td:nth-child(2) {{
-                text-align: left;
-            }}
-            table th:nth-child(3) {{
-                width: 5%;
-            }}
-            table th:nth-child(4) {{
-                width: 5%;
-            }}
-            table th:nth-child(5) {{
-                width: 10%;
-            }}
-            table th:nth-child(6) {{
-                width: 10%;
-            }}
-            table th:nth-child(7) {{
-                width: 39%;
-            }}
-            table th:nth-child(8) {{
-                width: 5%;
-            }}
-            @page {{
-                margin: 4cm 1cm 1.5cm 2.5cm;
-                size: A4 landscape;
-                @top-right {{
-                    content: counter(page) "/" counter(pages);
-                }}
-            }}
-            header, footer {{
-                position: fixed;
-                left: 0;
-                right: 0;
-            }}
-            header {{
-                /* subtract @page margin */
-                top: -4cm;
-                height: 4cm;
-                text-align: center;
-                vertical-align: center;
-            }}
-            footer {{
-                /* subtract @page margin */
-                bottom: -1.5cm;
-                height: 1.5cm;
-                text-align: left;
-                vertical-align: center;
-            }}
-            </style>
-            </head>
-            <body>
-            <header>
-                <h1>{}</h1>
-                <h2>Lane list {} - lane {} - {}</h2>
-            </header>
-            {}
-            <footer><span style="margin-left:3mm">Judge Name:</span><span style="margin-left:8cm">Signature:</span></footer>
-            </body>
-            </html>
-            """.format(self.name, discipline, lane, human_day, html_string, self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
+        if safety:
+            if has_multiple_dis:
+                html_string = """
+                    <html>
+                    <head>
+                    <style>
+                    table {{
+                        width: 100%;
+                    }}
+                    h2 {{
+                        font-size: 4mm;
+                    }}
+                    tr th:first-child {{
+                        padding-left:0px;
+                    }}
+                    tr td:first-child {{
+                        padding-left:0px;
+                    }}
+                    th, td {{
+                        padding:1mm 0mm 1mm 1mm;
+                        text-align: center;
+                        font-size: 4mm;
+                        border-bottom: 1px solid #ddd;
+                    }}
+                    table th:nth-child(1) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(2) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(3) {{
+                        width: 21%;
+                        text-align: left;
+                    }}
+                    table td:nth-child(3) {{
+                        text-align: left;
+                    }}
+                    table th:nth-child(4) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(5) {{
+                        width: 4%;
+                    }}
+                    @page {{
+                        margin: 1.5cm 0.5cm 0.5cm 0.5cm;
+                        size: A5 portrait;
+                        @top-right {{
+                            content: counter(page) "/" counter(pages);
+                        }}
+                    }}
+                    header, footer {{
+                        position: fixed;
+                        left: 0;
+                        right: 0;
+                    }}
+                    header {{
+                        /* subtract @page margin */
+                        top: -1.5cm;
+                        height: 1.5cm;
+                        text-align: center;
+                        vertical-align: center;
+                    }}
+                    footer {{
+                        /* subtract @page margin */
+                        bottom: -0.5cm;
+                        height: 0.5cm;
+                        text-align: left;
+                        vertical-align: center;
+                    }}
+                    </style>
+                    </head>
+                    <body>
+                    <header>
+                        <h2>Safety lane list {} - lane {} - {}</h2>
+                    </header>
+                    {}
+                    <footer></footer>
+                    </body>
+                    </html>
+                    """.format(block_str, lane, human_day, html_string)
+            else:
+                html_string = """
+                    <html>
+                    <head>
+                    <style>
+                    table {{
+                        width: 100%;
+                    }}
+                    h2 {{
+                        font-size: 4mm;
+                    }}
+                    tr th:first-child {{
+                        padding-left:0px;
+                    }}
+                    tr td:first-child {{
+                        padding-left:0px;
+                    }}
+                    th, td {{
+                        padding:1mm 0mm 1mm 1mm;
+                        text-align: center;
+                        font-size: 4mm;
+                        border-bottom: 1px solid #ddd;
+                    }}
+                    table th:nth-child(1) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(2) {{
+                        width: 21%;
+                        text-align: left;
+                    }}
+                    table td:nth-child(2) {{
+                        text-align: left;
+                    }}
+                    table th:nth-child(3) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(4) {{
+                        width: 4%;
+                    }}
+                    @page {{
+                        margin: 1.5cm 0.5cm 0.5cm 0.5cm;
+                        size: A5 portrait;
+                        @top-right {{
+                            content: counter(page) "/" counter(pages);
+                        }}
+                    }}
+                    header, footer {{
+                        position: fixed;
+                        left: 0;
+                        right: 0;
+                    }}
+                    header {{
+                        /* subtract @page margin */
+                        top: -1.5cm;
+                        height: 1.5cm;
+                        text-align: center;
+                        vertical-align: center;
+                    }}
+                    footer {{
+                        /* subtract @page margin */
+                        bottom: -0.5cm;
+                        height: 0.5cm;
+                        text-align: left;
+                        vertical-align: center;
+                    }}
+                    </style>
+                    </head>
+                    <body>
+                    <header>
+                        <h2>Safety lane list {} - lane {} - {}</h2>
+                    </header>
+                    {}
+                    <footer></footer>
+                    </body>
+                    </html>
+                    """.format(block_str, lane, human_day, html_string)
+        else:
+            if has_multiple_dis:
+                html_string = """
+                    <html>
+                    <head>
+                    <style>
+                    table {{
+                        width: 100%;
+                    }}
+                    tr th:first-child {{
+                        padding-left:0px;
+                    }}
+                    tr td:first-child {{
+                        padding-left:0px;
+                    }}
+                    th, td {{
+                        padding:10px 0px 10px 20px;
+                        text-align: center;
+                        border-bottom: 1px solid #ddd;
+                    }}
+                    table th:nth-child(1) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(2) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(3) {{
+                        width: 21%;
+                        text-align: left;
+                    }}
+                    table td:nth-child(3) {{
+                        text-align: left;
+                    }}
+                    table th:nth-child(4) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(5) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(6) {{
+                        width: 10%;
+                    }}
+                    table th:nth-child(7) {{
+                        width: 10%;
+                    }}
+                    table th:nth-child(8) {{
+                        width: 39%;
+                    }}
+                    table th:nth-child(9) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(10) {{
+                        width: 4%;
+                    }}
+                    @page {{
+                        margin: 4cm 1cm 1.5cm 2.5cm;
+                        size: A4 landscape;
+                        @top-right {{
+                            content: counter(page) "/" counter(pages);
+                        }}
+                    }}
+                    header, footer {{
+                        position: fixed;
+                        left: 0;
+                        right: 0;
+                    }}
+                    header {{
+                        /* subtract @page margin */
+                        top: -4cm;
+                        height: 4cm;
+                        text-align: center;
+                        vertical-align: center;
+                    }}
+                    footer {{
+                        /* subtract @page margin */
+                        bottom: -1.5cm;
+                        height: 1.5cm;
+                        text-align: left;
+                        vertical-align: center;
+                    }}
+                    </style>
+                    </head>
+                    <body>
+                    <header>
+                        <h1>{}</h1>
+                        <h2>Lane list {} - lane {} - {}</h2>
+                    </header>
+                    {}
+                    <footer><span style="margin-left:3mm">Judge Name:</span><span style="margin-left:8cm">Signature:</span></footer>
+                    </body>
+                    </html>
+                    """.format(self.name, block_str, lane, human_day, html_string)
+            else:
+                html_string = """
+                    <html>
+                    <head>
+                    <style>
+                    table {{
+                        width: 100%;
+                    }}
+                    tr th:first-child {{
+                        padding-left:0px;
+                    }}
+                    tr td:first-child {{
+                        padding-left:0px;
+                    }}
+                    th, td {{
+                        padding:10px 0px 10px 20px;
+                        text-align: center;
+                        border-bottom: 1px solid #ddd;
+                    }}
+                    table th:nth-child(1) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(2) {{
+                        width: 21%;
+                        text-align: left;
+                    }}
+                    table td:nth-child(2) {{
+                        text-align: left;
+                    }}
+                    table th:nth-child(3) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(4) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(5) {{
+                        width: 10%;
+                    }}
+                    table th:nth-child(6) {{
+                        width: 10%;
+                    }}
+                    table th:nth-child(7) {{
+                        width: 39%;
+                    }}
+                    table th:nth-child(8) {{
+                        width: 4%;
+                    }}
+                    table th:nth-child(9) {{
+                        width: 4%;
+                    }}
+                    @page {{
+                        margin: 4cm 1cm 1.5cm 2.5cm;
+                        size: A4 landscape;
+                        @top-right {{
+                            content: counter(page) "/" counter(pages);
+                        }}
+                    }}
+                    header, footer {{
+                        position: fixed;
+                        left: 0;
+                        right: 0;
+                    }}
+                    header {{
+                        /* subtract @page margin */
+                        top: -4cm;
+                        height: 4cm;
+                        text-align: center;
+                        vertical-align: center;
+                    }}
+                    footer {{
+                        /* subtract @page margin */
+                        bottom: -1.5cm;
+                        height: 1.5cm;
+                        text-align: left;
+                        vertical-align: center;
+                    }}
+                    </style>
+                    </head>
+                    <body>
+                    <header>
+                        <h1>{}</h1>
+                        <h2>Lane list {} - lane {} - {}</h2>
+                    </header>
+                    {}
+                    <footer><span style="margin-left:3mm">Judge Name:</span><span style="margin-left:8cm">Signature:</span></footer>
+                    </body>
+                    </html>
+                    """.format(self.name, block_str, lane, human_day, html_string)
         html = wp.HTML(string=html_string, base_url="/")
         fname = os.path.join(self.config.download_folder, "test.html")
         with open(fname, "w") as f:
@@ -932,7 +1209,7 @@ class CompyData:
         if in_memory:
             return html.render()
         else:
-            fname = os.path.join(self.config.download_folder, self.name + "_lane_list_" + day + "_" + discipline + "_" + lane + ".pdf")
+            fname = os.path.join(self.config.download_folder, self.name + "_lane_list_" + day + "_" + block_str_underscore + "_" + lane + ".pdf")
             html.write_pdf(fname)
             return fname
 
@@ -1413,7 +1690,7 @@ class CompyData:
             if block is not None:
                 dis_i = DISCIPLINES.index(dis)
                 dis_in_block = self.db_.execute('SELECT disciplines FROM block WHERE id==?', block)
-                if dis_in_block is None or (dis_in_block[0] & 1<<dis_i) == 0:
+                if dis_in_block is None or (dis_in_block[0][0] & 1<<dis_i) == 0:
                     return None
             return dis
 
@@ -1486,7 +1763,8 @@ class CompyData:
         if ap_dis is not None:
             discipline = ap_dis[0][1]
             rp = self.cleanPerf(rp, discipline)
-            rp = self.getMinFromTime(rp)
+            if discipline == "STA":
+                rp = self.getMinFromTime(rp)
             under_ap_penalty = self.getUnderApPenalty(ap_dis[0][0], rp, discipline) if self.comp_type == "aida" else 0
             self.db_.execute(
                 '''UPDATE start SET rp = ?, penalty = ?, card = ?, remarks = ?, judge_remarks = ? WHERE id == ?''',

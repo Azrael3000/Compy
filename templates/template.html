@@ -30,6 +30,7 @@
     <title>Compy {{version}}</title>
     <script src="{{ url_for('static', filename='jquery-3.7.1.js') }}"></script>
     <script src="{{ url_for('static', filename='compy.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='compy.css') }}" type="text/css"/>
 </head>
 
 <body>
@@ -191,7 +192,8 @@
         <div id="ll_date_menu"></div>
         <div id="ll_discipline_menu"></div>
         <div id="ll_lane_menu"></div>
-        <a href="#" id="ll_all_pdf_button">Print all</a>
+        <a href="#" id="ll_all_pdf_button">Print all</a><br>
+        <a href="#" id="ll_safety_all_pdf_button">Print Safety all</a>
         <div id="ll_content"></div>
     </div>
     <div id="results" style="display:none">
