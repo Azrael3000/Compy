@@ -76,6 +76,8 @@ import sys
 import athlete
 from compy_config import CompyConfig
 
+import compy_utilities as u
+
 INVALID_DATE="0000-00-00"
 INVALID_TIME="99:99"
 DISCIPLINES=["FIM", "CNF", "CWT", "CWTB", "STA", "DNF", "DYN", "DYNB"]
@@ -343,12 +345,12 @@ class CompyData:
                                         (competition_athlete_id, discipline, lane, OT, AP, day,
                                          rp, card, penalty, remarks)
                                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                                     (ca_id[0][0], dis, lane, ot, ap, day, rp, card, penalty, remarks))
+                                     (ca_id[0][0], dis, lane, u.convTime(ot), ap, u.convDay(day), rp, card, penalty, remarks))
                 else:
                     self.db_.execute('''INSERT INTO start
                                         (competition_athlete_id, discipline, lane, OT, AP, day)
                                         VALUES (?, ?, ?, ?, ?, ?)''',
-                                     (ca_id[0][0], dis, lane, ot, ap, day))
+                                     (ca_id[0][0], dis, lane, u.convTime(ot), ap, u.convDay(day)))
 
     def getNationalRecordsAida(self):
         empty_req = requests.post('https://www.aidainternational.org/public_pages/all_national_records.php', data={})
@@ -471,7 +473,7 @@ class CompyData:
                                      comp_id)
         if load_data is None:
             logging.error("Could not find save file with id '" + id + "'")
-            return ""
+            return None
         else:
             self.id_ = comp_id
             comp_data = load_data[0]
@@ -494,12 +496,12 @@ class CompyData:
         if days is None:
             return
         for day in days:
-            yield day[0]
+            yield u.convDay(day[0])
 
     def getBlocks(self):
         day_block_lane = {}
         for day in self.getDays():
-            blocks = self.db_.execute('SELECT id, disciplines FROM block WHERE competition_id==? AND day==?', (self.id_, day))
+            blocks = self.db_.execute('SELECT id, disciplines FROM block WHERE competition_id==? AND day==?', (self.id_, u.convDay(day)))
             if blocks is None:
                 continue
             block_lane = {}
@@ -519,7 +521,7 @@ class CompyData:
                                          INNER JOIN competition_athlete ca
                                          ON s.competition_athlete_id == ca.id
                                          WHERE (ca.competition_id==? AND s.day==?)''',
-                                      (self.id_, day))
+                                      (self.id_, u.convDay(day)))
             if db_out is None:
                 continue
             disciplines_on_day = list({d[0] for d in db_out})
@@ -576,15 +578,15 @@ class CompyData:
             INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
             INNER JOIN athlete a ON ca.athlete_id == a.id
             WHERE ca.competition_id==? AND s.block==? AND s.day==?''',
-            (self.id_, block, day))
+            (self.id_, block, u.convDay(day)))
         if db_out is None:
             return []
         startlist = [{'Name': r[0] + " " + r[1],
                       'Nationality': r[2],
                       'AP': self.convertPerformance(r[3], r[7]),
                       'PB': self.convertPerformance(r[8], r[7]),
-                      'Warmup': self.getWTfromOT(r[4]),
-                      'OT': r[4],
+                      'Warmup': self.getWTfromOT(u.convTime(r[4])),
+                      'OT': u.convTime(r[4]),
                       'Lane': self.laneStyleConverter(r[5]),
                       'Discipline': r[7],
                       'Id': r[6]}
@@ -595,7 +597,7 @@ class CompyData:
             SELECT duration, idx
             FROM break
             WHERE competition_id == ? AND block == ? AND day == ?''',
-            (self.id_, block, day))
+            (self.id_, block, u.convDay(day)))
         if br_out is not None:
             for br in br_out:
                 idx = int(br[1])
@@ -633,7 +635,7 @@ class CompyData:
 
         # remove all breaks
         self.db_.execute("DELETE FROM break WHERE competition_id == ? AND block == ? AND day == ?",
-                         (self.id_, block, day))
+                         (self.id_, block, u.convDay(day)))
 
         for i in range(len(startlist)):
             if startlist[i]["Name"] == "Break":
@@ -641,7 +643,7 @@ class CompyData:
                 self.db_.execute(
                     '''INSERT INTO break
                        (competition_id, block, day, duration, idx) VALUES (?, ?, ?, ?, ?)''',
-                    (self.id_, block, day, duration, i))
+                    (self.id_, block, u.convDay(day), duration, i))
             else: # start
                 ca_id = int(startlist[i]["Id"])
                 if ca_id < 0: # new start, in this case ca_id = - athlete_id
@@ -673,13 +675,13 @@ class CompyData:
                         '''INSERT INTO start
                            (competition_athlete_id, discipline, block, lane, day, OT, AP, PB)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                        (ca_id[0][0], discipline, block, lane, day, ot, ap, pb));
+                        (ca_id[0][0], discipline, block, lane, u.convDay(day), u.convTime(ot), ap, pb));
                 else: #update start
                     self.db_.execute(
                         '''UPDATE start SET
                            discipline=?, block=?, lane=?, day=?, OT=?, AP=?, PB=?
                            WHERE id == ?''',
-                        (discipline, block, lane, day, ot, ap, pb, ca_id[0][0]));
+                        (discipline, block, lane, u.convDay(day), u.convTime(ot), ap, pb, ca_id[0][0]));
         return 0
 
     def convertPerformance(self, val, dis):
@@ -806,12 +808,12 @@ class CompyData:
                                      INNER JOIN start s ON s.competition_athlete_id == ca.id
                                      WHERE s.block == ? AND s.lane == ? AND s.day == ? AND ca.competition_id == ?
                                   ''',
-                                  (block, lane_db, day, self.id_))
+                                  (block, lane_db, u.convDay(day), self.id_))
         if db_out is None:
             return None
         lane_list = [{'id': r[6],
                       's_id': r[7],
-                      'OT': r[3],
+                      'OT': u.convTime(r[3]),
                       'Dis': r[9],
                       'Name': r[0] + " " + r[1],
                       'Nat': r[4],
@@ -1313,7 +1315,7 @@ class CompyData:
                            'JudgeRemarks': r[12],
                            'Points': ("%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline)),
                            'Id': r[9],
-                           'OT': r[10]}
+                           'OT': u.convTime(r[10])}
                            for i,r in enumerate(db_out)]
                 result_keys += ["AP", "RP", "Penalty", "Card", "Remarks", "Points", "JudgeRemarks"]
 
@@ -1556,7 +1558,7 @@ class CompyData:
                 '''SELECT s.OT, s.discipline FROM start s
                    INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
                    WHERE s.day = ? AND ca.competition_id = ? AND ca.athlete_id == ?''',
-                (day, self.id_, a[0]))
+                (u.convDay(day), self.id_, a[0]))
             if db_out is None:
                 continue
             n = len(db_out)
@@ -1564,8 +1566,8 @@ class CompyData:
                 this_break = {"Name": a[1] + " " + a[2]}
                 this_break["Dis1"] = db_out[i][1]
                 this_break["Dis2"] = db_out[i+1][1]
-                this_break["OT1"] = db_out[i][0]
-                this_break["OT2"] = db_out[i+1][0]
+                this_break["OT1"] = u.convTime(db_out[i][0])
+                this_break["OT2"] = u.convTime(db_out[i+1][0])
                 time = self.getMinFromTime(this_break["OT2"]) - self.getMinFromTime(this_break["OT1"])
                 min_break = min(min_break, time)
                 this_break["Break"] = str(int(time/60)).zfill(2) + ":" + str(time%60).zfill(2)
@@ -1581,11 +1583,11 @@ class CompyData:
                 '''SELECT DISTINCT s.OT from start s
                    INNER JOIN competition_athlete ca ON ca.id == s.competition_athlete_id
                    WHERE ca.competition_id == ? AND s.day == ?''',
-                (self.id_, day))
+                (self.id_, u.convDay(day)))
             if ots_on_day is None:
                 continue
             dayc = ":".join(day.split("-"))
-            ots += [dayc + ":" + ot[0] + ":00" for ot in ots_on_day]
+            ots += [dayc + ":" + u.convTime(ot[0]) + ":00" for ot in ots_on_day]
         data["ots"] = ots
 
     def setSpecialRankingName(self, data):
@@ -1932,10 +1934,10 @@ class CompyData:
         if add:
             # check if entry exists already, if yes, we don't allow another
             db_out = self.db_.execute('SELECT id FROM block WHERE competition_id==? AND day==? AND disciplines==?',
-                                      (self.id_, day, dis_i))
+                                      (self.id_, u.convDay(day), dis_i))
             if db_out is None:
                 self.db_.execute('INSERT INTO block (competition_id, day, disciplines) VALUES (?, ?, ?)',
-                                 (self.id_, day, dis_i))
+                                 (self.id_, u.convDay(day), dis_i))
                 return 0
             else:
                 return 1
@@ -1946,7 +1948,7 @@ class CompyData:
             self.db_.execute(
                 '''UPDATE block SET day=?, disciplines=?
                    WHERE competition_id==? AND id==?''',
-                (day, dis_i, self.id_, block))
+                (u.convDay(day), dis_i, self.id_, block))
             return 0
 
     def removeBlock(self, block):
@@ -1968,3 +1970,37 @@ class CompyData:
 
     def disciplineListToInt(self, dis):
         return sum([1<<DISCIPLINES.index(d) for d in dis])
+
+    def getFourStarts(self, previous):
+        comp = "<=" if previous else ">"
+        order = "DESC" if previous else "ASC"
+        cmd = '''SELECT a.first_name, a.last_name, a.country, s.OT, s.lane
+                 FROM start s
+                 INNER JOIN competition_athlete ca
+                 ON s.competition_athlete_id == ca.id
+                 INNER JOIN athlete a
+                 ON a.id = ca.athlete_id
+                 WHERE s.day*10000+s.OT == (
+                    SELECT s.day*10000+s.OT
+                    FROM start s
+                    INNER JOIN competition_athlete ca
+                    ON s.competition_athlete_id == ca.id
+                    INNER JOIN athlete a
+                    ON a.id = ca.athlete_id
+                    WHERE ca.competition_id = ? AND s.day*10000+s.OT {} ?
+                    ORDER BY s.day {}, s.OT {}
+                    LIMIT 1)
+                 ORDER BY s.lane
+                 LIMIT 4'''.format(comp, order, order)
+        now = datetime.now()
+        today = now.year*10000 + now.month*100 + now.day
+        time = now.hour*100 + now.minute
+        db_out = self.db_.execute(cmd, (self.id_, today*10000 + time))
+        if db_out is None:
+            return None
+        else:
+            return [{'name': d[0] + " " + d[1],
+                     'country': d[2],
+                     'OT': u.convTime(d[3]),
+                     'lane': self.laneStyleConverter(d[4])}
+                     for d in db_out]

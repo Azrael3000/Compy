@@ -35,14 +35,13 @@ TODO:
 
 WISHLIST:
 - Direct result entry from mobile
-- LED screen (show starters, 18px high text, height around 260px, 4:3 ratio)
 - Interface for registration
 - Interface for check in
 - Write results into excel
 - Result view for public, embeddable
 - Helper interface
 - User management
-- Capability for athletes to add PB or divetime (should be on lane list)
+- Capability for athletes to add divetime (should be on lane list)
 - Image storing for athletes
 - Overlays for streaming
 - Judge assignment to lanes

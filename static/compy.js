@@ -1925,6 +1925,8 @@ function loadCompetition(comp_id) {
         success: function(data)
         {
             console.log(data.status_msg);
+            // Update clock link
+            $('#clock_button').children()[0].href = "clock/" + comp_id
             populateSpecialRanking(data);
             populateAthletes(data);
             populateJudges(data);

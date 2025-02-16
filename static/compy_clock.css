@@ -1,0 +1,46 @@
+html, body {
+    text-align: center;
+    padding: 0;
+    margin: 0;
+    background: black;
+    color: white;
+    font-family: Sturkopf Grotesk, sans-serif;
+}
+#global {
+    margin: 0;
+    aspect-ratio: 16/9;
+    width: 100%;
+}
+#starts {
+    width: 100%;
+    overflow: hidden;
+    text-align: left;
+    font-size: 8vh;
+    padding-top: 3%;
+}
+#prev {
+    float: left;
+    width: 49%;
+    padding-left: 1%;
+}
+#next {
+    overflow: hidden;
+    width: 49%;
+    padding-left: 1%;
+}
+.title {
+    font-weight: bold;
+}
+#comp_title {
+    font-size: 12vh;
+}
+#time {
+    font-size: 30vh;
+    text-align: left;
+    margin-left: 35%;
+    width: 30%;
+    display: block;
+}
+.start_div {
+    border-top: white solid;
+}

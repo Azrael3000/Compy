@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<!---
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+           ━━━━━━━━━━━━━
+            ┏┓┏┓┳┳┓┏┓┓┏
+            ┃ ┃┃┃┃┃┃┃┗┫
+            ┗┛┗┛┛ ┗┣┛┗┛
+           ━━━━━━━━━━━━━
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Competition organization tool
+  for freediving competitions.
+
+  Copyright 2023 - Arno Mayrhofer
+
+  Licensed under the GNU AGPL
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Authors:
+
+  - Arno Mayrhofer
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-->
+<head>
+    <title>Compy {{version}}</title>
+    <script src="{{ url_for('static', filename='jquery-3.7.1.js') }}"></script>
+    <script src="{{ url_for('static', filename='compy_clock.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='compy_clock.css') }}" type="text/css"/>
+    <meta http-equiv="refresh" content="5"/>
+</head>
+
+<body>
+    <div id="global">
+        <span id="comp_title">{{comp_name}}</span>
+        <div>
+            <span id="time">&nbsp;</span>
+        </div>
+        <div id="starts">
+            <div id="prev">
+                {% if previous is not none %}
+                    <span id="prev_title" class="title">Current starts:</span>
+                    <div id="prev_div" class="start_div">
+                        {% for start in previous %}
+                            <span class="prev_start">{{start['OT']}} ({{start['lane']}}): {{start['name']}} ({{start['country']}})</span><br>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+            <div id="next">
+                {% if following is not none %}
+                    <span id="next_title" class="title">Next starts:</span>
+                    <div id="next_div" class="start_div">
+                        {% for start in following %}
+                            <span class="next_start">{{start['OT']}} ({{start['lane']}}): {{start['name']}} ({{start['country']}})</span><br>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        <div>
+    <div>
+</body>
+</html>
