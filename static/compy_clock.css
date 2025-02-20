@@ -4,43 +4,40 @@ html, body {
     margin: 0;
     background: black;
     color: white;
-    font-family: Sturkopf Grotesk, sans-serif;
+    /*font-family: Sturkopf Grotesk, sans-serif; */
+    font-family: sans-serif;
 }
 #global {
     margin: 0;
     aspect-ratio: 16/9;
     width: 100%;
 }
-#starts {
-    width: 100%;
-    overflow: hidden;
-    text-align: left;
-    font-size: 8vh;
-    padding-top: 3%;
-}
-#prev {
-    float: left;
-    width: 49%;
-    padding-left: 1%;
-}
-#next {
-    overflow: hidden;
-    width: 49%;
-    padding-left: 1%;
-}
-.title {
-    font-weight: bold;
-}
 #comp_title {
-    font-size: 12vh;
+    font-size: 8vh;
 }
 #time {
-    font-size: 30vh;
+    font-size: 25vh;
     text-align: left;
-    margin-left: 35%;
+    margin-left: 25%;
     width: 30%;
     display: block;
 }
-.start_div {
+#starts {
+    overflow: hidden;
+    text-align: left;
+    font-size: 8vh;
+    padding-left: 1%;
+    width: 98%;
+}
+#hl {
     border-top: white solid;
+    animation: expand 10s;
+    animation-timing-function: linear;
+}
+@keyframes expand {
+  from {width: 0;}
+  to {width: 98%;}
+}
+#start_title {
+    font-weight: bold;
 }

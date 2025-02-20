@@ -1971,9 +1971,9 @@ class CompyData:
     def disciplineListToInt(self, dis):
         return sum([1<<DISCIPLINES.index(d) for d in dis])
 
-    def getFourStarts(self, previous):
-        comp = "<=" if previous else ">"
-        order = "DESC" if previous else "ASC"
+    def getFourStarts(self, current):
+        comp = "<=" if current else ">"
+        order = "DESC" if current else "ASC"
         cmd = '''SELECT a.first_name, a.last_name, a.country, s.OT, s.lane
                  FROM start s
                  INNER JOIN competition_athlete ca
@@ -1993,8 +1993,8 @@ class CompyData:
                  ORDER BY s.lane
                  LIMIT 4'''.format(comp, order, order)
         now = datetime.now()
-        today = now.year*10000 + now.month*100 + now.day
-        time = now.hour*100 + now.minute
+        today = 20250222 #now.year*10000 + now.month*100 + now.day
+        time = 1300 #now.hour*100 + now.minute
         db_out = self.db_.execute(cmd, (self.id_, today*10000 + time))
         if db_out is None:
             return None

@@ -31,7 +31,11 @@
     <script src="{{ url_for('static', filename='jquery-3.7.1.js') }}"></script>
     <script src="{{ url_for('static', filename='compy_clock.js') }}"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='compy_clock.css') }}" type="text/css"/>
-    <meta http-equiv="refresh" content="5"/>
+    <script>
+        $(document).ready(function() {
+            setInterval(()=>{window.location.href="{{refresh_url}}"},10000);
+        });
+    </script>
 </head>
 
 <body>
@@ -41,22 +45,19 @@
             <span id="time">&nbsp;</span>
         </div>
         <div id="starts">
-            <div id="prev">
-                {% if previous is not none %}
-                    <span id="prev_title" class="title">Current starts:</span>
-                    <div id="prev_div" class="start_div">
-                        {% for start in previous %}
-                            <span class="prev_start">{{start['OT']}} ({{start['lane']}}): {{start['name']}} ({{start['country']}})</span><br>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            </div>
-            <div id="next">
-                {% if following is not none %}
-                    <span id="next_title" class="title">Next starts:</span>
-                    <div id="next_div" class="start_div">
-                        {% for start in following %}
-                            <span class="next_start">{{start['OT']}} ({{start['lane']}}): {{start['name']}} ({{start['country']}})</span><br>
+            <div id="list">
+                {% if alist is not none %}
+                    <span id="start_title">
+                        {% if current == 0: %}
+                        Current starts:
+                        {% else %}
+                        Next starts:
+                        {% endif %}
+                    </span>
+                    <div id="hl"></div>
+                    <div id="start_div">
+                        {% for start in alist %}
+                            <span class="start">{{start['OT']}} ({{start['lane']}}): {{start['name']}} ({{start['country']}})</span><br>
                         {% endfor %}
                     </div>
                 {% endif %}

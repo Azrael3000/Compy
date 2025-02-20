@@ -184,16 +184,21 @@ class CompyFlask:
             elif request.method == 'DELETE':
                 return self.deleteBlock()
 
-        @app.route('/clock/<int:comp_id>', methods=['GET'])
-        def clock(comp_id):
+        @app.route('/clock/<int:comp_id>/<int:current>', methods=['GET'])
+        def clock(comp_id, current):
+            current = (current+1) % 2
             comp_name = self.data_.load(comp_id)
-            previous = self.data_.getFourStarts(True)
-            following = self.data_.getFourStarts(False)
+            alist = self.data_.getFourStarts(current == 0)
+            if alist is None:
+                current = (current+1) % 2
+                alist = self.data_.getFourStarts(current == 0)
             if comp_name != None:
+                refresh_url = request.base_url[:request.base_url.rfind('/')+1] + str(current)
                 content = {"comp_name": comp_name,
                            "comp_id": comp_id,
-                           "previous": previous,
-                           "following": following}
+                           "alist": alist,
+                           "current": current,
+                           "refresh_url": refresh_url}
                 return render_template('clock.html', **content)
             else:
                 return {}, 400
