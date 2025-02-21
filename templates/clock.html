@@ -45,24 +45,22 @@
             <span id="time">&nbsp;</span>
         </div>
         <div id="starts">
-            <div id="list">
-                {% if alist is not none %}
-                    <span id="start_title">
-                        {% if current == 0: %}
-                        Current starts:
-                        {% else %}
-                        Next starts:
-                        {% endif %}
-                    </span>
-                    <div id="hl"></div>
-                    <div id="start_div">
-                        {% for start in alist %}
-                            <span class="start">{{start['OT']}} ({{start['lane']}}): {{start['name']}} ({{start['country']}})</span><br>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            </div>
-        <div>
-    <div>
+            {% if alist is not none %}
+                <span id="start_title">
+                    {% if current == 0: %}
+                    Current starts:
+                    {% else %}
+                    Next starts:
+                    {% endif %}
+                </span>
+                <div id="hl"></div>
+                <div>
+                    {% for start in alist %}
+                        <span class="{{"dns" if start['dns'] else ""}}">{{start['OT']}} ({{start['lane']}}): {{start['name']}} ({{start['country']}})</span><br>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
 </body>
 </html>

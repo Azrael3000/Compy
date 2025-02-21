@@ -41,3 +41,7 @@ html, body {
 #start_title {
     font-weight: bold;
 }
+.dns {
+    text-decoration: line-through;
+    color: #888888;
+}

@@ -1360,7 +1360,7 @@ class CompyData:
             w1 = 1
         if r['RP'] == "" or r['Remarks'] == "DNS":
             w1 = 2
-            w2 = self.getMinFromTime(r['OT'])
+            w2 = self.getMinFromTime(r['OT'])*100 + r['AP_float']
         return (w0, w1, w2)
 
     def computePoints(self, rp, penalty, card, remarks, discipline):
@@ -1974,7 +1974,7 @@ class CompyData:
     def getFourStarts(self, current):
         comp = "<=" if current else ">"
         order = "DESC" if current else "ASC"
-        cmd = '''SELECT a.first_name, a.last_name, a.country, s.OT, s.lane
+        cmd = '''SELECT a.first_name, a.last_name, a.country, s.OT, s.lane, s.remarks
                  FROM start s
                  INNER JOIN competition_athlete ca
                  ON s.competition_athlete_id == ca.id
@@ -1993,8 +1993,8 @@ class CompyData:
                  ORDER BY s.lane
                  LIMIT 4'''.format(comp, order, order)
         now = datetime.now()
-        today = 20250222 #now.year*10000 + now.month*100 + now.day
-        time = 1300 #now.hour*100 + now.minute
+        today = now.year*10000 + now.month*100 + now.day
+        time = now.hour*100 + now.minute
         db_out = self.db_.execute(cmd, (self.id_, today*10000 + time))
         if db_out is None:
             return None
@@ -2002,5 +2002,6 @@ class CompyData:
             return [{'name': d[0] + " " + d[1],
                      'country': d[2],
                      'OT': u.convTime(d[3]),
-                     'lane': self.laneStyleConverter(d[4])}
+                     'lane': self.laneStyleConverter(d[4]),
+                     'dns': d[5] == "DNS"}
                      for d in db_out]
