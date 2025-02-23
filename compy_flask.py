@@ -740,11 +740,11 @@ class CompyFlask:
             return {}, 400
 
         day = request.args.get('day')
-        discipline = request.args.get('discipline')
+        block = request.args.get('block')
         lane = request.args.get('lane')
         s_id = request.args.get('s_id')
-        if day is None or discipline is None or lane is None or s_id is None:
-            logging.debug("Get request to athlete result without day, discipline, lane or start id")
+        if day is None or block is None or lane is None or s_id is None:
+            logging.debug("Get request to athlete result without day, block, lane or start id")
             return {}, 400
 
         data = self.data_.getAthleteResult(s_id)

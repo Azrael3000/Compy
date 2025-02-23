@@ -28,7 +28,7 @@
 class Menu {
     contructor() {
         this.day = null;
-        this.discipline = null;
+        this.block = null;
         this.lane = null;
         this.s_id = null;
     }
@@ -36,14 +36,14 @@ class Menu {
         this.s_id = null;
     }
     getDict() {
-        return {'day': this.day, 'discipline': this.discipline, 'lane': this.lane, 's_id': this.s_id}
+        return {'day': this.day, 'block': this.block, 'lane': this.lane, 's_id': this.s_id}
     }
 }
 
 var _judge_hash = null;
 var _judge_id = null;
 var _comp_id = null;
-var _days_with_disciplines_lanes = null;
+var _blocks = null;
 var _menu = null;
 var _lane_list = null;
 var _result = null;
@@ -52,11 +52,11 @@ function getBaseDict() {
     return {judge_hash: _judge_hash, judge_id: _judge_id, comp_id: _comp_id};
 }
 
-function init(judge_hash, judge_id, comp_id, days_with_disciplines_lanes) {
+function init(judge_hash, judge_id, comp_id, blocks) {
     _judge_hash = judge_hash
     _judge_id = judge_id
     _comp_id = comp_id
-    _days_with_disciplines_lanes = days_with_disciplines_lanes
+    _blocks = blocks
     _menu = new Menu();
     showDayMenu();
 }
@@ -64,12 +64,12 @@ function init(judge_hash, judge_id, comp_id, days_with_disciplines_lanes) {
 $(document).ready(function() {
     $('#content').on("click", '.day_menu', function() {
         _menu.day = this.id.split('_')[1];
-        showDisciplineMenu(_menu.day);
+        showBlockMenu(_menu.day);
     });
 
-    $('#content').on("click", '.discipline_menu', function() {
-        _menu.discipline = this.id.split('_')[1];
-        showLaneMenu(_menu.day, _menu.discipline);
+    $('#content').on("click", '.block_menu', function() {
+        _menu.block = this.id.split('_')[1];
+        showLaneMenu(_menu.day, _menu.block);
     });
 
     $('#content').on("click", '.lane_menu', function() {
@@ -84,7 +84,7 @@ $(document).ready(function() {
                 if ('lane_list' in data)
                     showAthleteMenu(data.lane_list);
                 else
-                    showLaneMenu(_menu.day, _menu.discipline);
+                    showLaneMenu(_menu.day, _menu.block);
             }
         });
     });
@@ -103,14 +103,14 @@ $(document).ready(function() {
         });
     });
 
-    $('#content').on("click", '#discipline_back', function() {
+    $('#content').on("click", '#block_back', function() {
         showDayMenu(_menu.day);
     });
     $('#content').on("click", '#lane_back', function() {
-        showDisciplineMenu(_menu.day, _menu.discipline);
+        showBlockMenu(_menu.day, _menu.block);
     });
     $('#content').on("click", '#athlete_back', function() {
-        showLaneMenu(_menu.day, _menu.discipline, _menu.lane);
+        showLaneMenu(_menu.day, _menu.block, _menu.lane);
     });
     $('#content').on("click", '#result_back', function() {
         showAthleteMenu(_lane_list);
@@ -188,22 +188,22 @@ $(document).ready(function() {
 function showDayMenu() {
     _menu.unsetStartId();
     let menu = "";
-    keys = Object.keys(_days_with_disciplines_lanes);
+    keys = Object.keys(_blocks);
     for (let i = 0; i < keys.length; i++) {
         let day = keys[i];
-        menu += `<button id="day_${day}" type="button" class="day_menu">${day}</button><br>`;
+        menu += `<button id="block_${day}" type="button" class="day_menu">${day}</button><br>`;
     }
     $('#content').html(menu);
 }
 
-function showDisciplineMenu(day) {
+function showBlockMenu(day) {
     _menu.unsetStartId();
-    if (day in _days_with_disciplines_lanes) {
-        let menu = `<button id="discipline_back" type="button">Back</button><br>`;
-        keys = Object.keys(_days_with_disciplines_lanes[day]);
-        for (let i = 0; i < keys.length; i++) {
-            let discipline = keys[i];
-            menu += `<button id="menu_${discipline}" type="button" class="discipline_menu">${discipline}</button><br>`;
+    if (day in _blocks) {
+        let menu = `<button id="block_back" type="button">Back</button><br>`;
+        blocks = Object.keys(_blocks[day]);
+        for (let i = 0; i < blocks.length; i++) {
+            let block = _blocks[day][blocks[i]];
+            menu += `<button id="menu_${blocks[i]}" type="button" class="block_menu">${block['dis_s']}</button><br>`;
         }
         $('#content').html(menu);
     }
@@ -211,21 +211,21 @@ function showDisciplineMenu(day) {
         showDayMenu();
 }
 
-function showLaneMenu(day, discipline) {
+function showLaneMenu(day, block) {
     _menu.unsetStartId();
-    if (!day in _days_with_disciplines_lanes)
+    if (!day in _blocks)
     {
         showDayMenu();
         return;
     }
-    if (!discipline in _days_with_disciplines_lanes[day])
+    if (!block in _blocks[day])
     {
-        showDisciplineMenu(day);
+        showBlockMenu(day);
         return;
     }
     let menu = `<button id="lane_back" type="button">Back</button><br>`;
-    for (let i = 0; i < _days_with_disciplines_lanes[day][discipline].length; i++) {
-        let lane = _days_with_disciplines_lanes[day][discipline][i];
+    for (let i = 0; i < _blocks[day][block]['lanes'].length; i++) {
+        let lane = _blocks[day][block]['lanes'][i];
         menu += `<button id="menu_${lane}" type="button" class="lane_menu">${lane}</button><br>`;
     }
     $('#content').html(menu);
@@ -240,6 +240,7 @@ function showAthleteMenu(lane_list) {
             <td>OT</td>
             <td>Name (Nat.)</td>
             <td>AP</td>
+            <td>Dis</td>
         </tr>`;
     for (let i = 0; i < lane_list.length; i++) {
         menu += `
@@ -247,6 +248,7 @@ function showAthleteMenu(lane_list) {
                 <td>${lane_list[i].OT}</td>
                 <td>${lane_list[i].Name} (${lane_list[i].Nat})</td>
                 <td>${lane_list[i].AP}</td>
+                <td>${lane_list[i].Dis}</td>
             </tr>`;
     }
     menu += "</table>";
@@ -257,7 +259,7 @@ function showResultEntryMask(data) {
     let content = `
         <button id="result_back" type="button">Back</button><br>
         <div>
-            ${_menu.day} | ${_menu.discipline} | ${_menu.lane}<br>
+            ${_menu.day} | ${_menu.block} | ${_menu.lane}<br>
             ${data.Name} (OT: ${data.OT} | AP: ${data.AP})
         </div>
         <div id="rp_div">
