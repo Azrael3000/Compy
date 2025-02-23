@@ -802,7 +802,7 @@ class CompyData:
 
     def getLaneList(self, day, block, lane):
         lane_db = self.laneStyleConverter(lane, True)
-        db_out = self.db_.execute('''SELECT a.first_name, a.last_name, s.AP, s.OT, a.country, a.gender, a.id, s.id, s.PB, s.discipline
+        db_out = self.db_.execute('''SELECT a.first_name, a.last_name, s.AP, s.OT, a.country, a.gender, a.id, s.id, s.PB, s.discipline, s.RP, s.card, s.remarks
                                      FROM athlete a
                                      INNER JOIN competition_athlete ca ON a.id == ca.athlete_id
                                      INNER JOIN start s ON s.competition_athlete_id == ca.id
@@ -819,6 +819,9 @@ class CompyData:
                       'Nat': r[4],
                       'AP': self.convertPerformance(r[2], r[9]),
                       'PB': self.convertPerformance(r[8], r[9]),
+                      'RP': self.convertPerformance(r[10], r[9]),
+                      'Card': r[11],
+                      'Remarks': r[12],
                       'NR': self.convertPerformance(self.nr.get(self.NR(self.comp_type, r[4], "", r[5], r[9])), r[9])}
                        for r in db_out]
         lane_list.sort(key=lambda r: self.getMinFromTime(r['OT']))
@@ -843,6 +846,9 @@ class CompyData:
         lane_df = pd.DataFrame(self.getLaneList(day, block, lane))
         lane_df.drop("id", axis=1, inplace=True)
         lane_df.drop("s_id", axis=1, inplace=True)
+        lane_df.drop("RP", axis=1, inplace=True)
+        lane_df.drop("Card", axis=1, inplace=True)
+        lane_df.drop("Remarks", axis=1, inplace=True)
         if safety:
             lane_df.drop("Nat", axis=1, inplace=True)
             lane_df.drop("NR", axis=1, inplace=True)
@@ -1297,7 +1303,7 @@ class CompyData:
                 return [], []
 
             def check_nr(country, gender, rp, card):
-                if rp is None and card != "WHITE":
+                if rp is None or card != "WHITE":
                     return ""
                 this_nr = self.nr.get(self.NR(self.comp_type, country, "", gender, discipline))
                 return ", <b>NR</b>" if  this_nr is not None and this_nr < rp else ""
@@ -1992,7 +1998,7 @@ class CompyData:
                     LIMIT 1)
                  ORDER BY s.lane
                  LIMIT 4'''.format(comp, order, order)
-        now = datetime.now()
+        now = datetime.now() + timedelta(minutes=2)
         today = now.year*10000 + now.month*100 + now.day
         time = now.hour*100 + now.minute
         db_out = self.db_.execute(cmd, (self.id_, today*10000 + time))

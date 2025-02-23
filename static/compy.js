@@ -37,8 +37,6 @@ var _sl_remove = [];
 var _sl_edited = false;
 var _sl_athletes = null;
 var _ots = []; // date in YYYY:MM:DD:HH:MM:SS
-// debug for ots
-//fillOtsForDebuggin();
 var _autoplay_enabled = false;
 let _audioElement = new Audio('static/countdown_aida.wav'); // Set the path to your audio file
 let _audioTimeout = null;
@@ -725,9 +723,9 @@ $(document).ready(function() {
                                 <td>${data.lane_list[i].PB}</td>
                                 <td>${data.lane_list[i].Nat}</td>
                                 <td>${data.lane_list[i].NR}</td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
+                                <td>${data.lane_list[i].RP}</td>
+                                <td>${data.lane_list[i].Card}</td>
+                                <td>${data.lane_list[i].Remarks}</td>
                             </tr>`;
                     }
                     ll += "</table>";
@@ -1187,8 +1185,7 @@ $(document).ready(function() {
         let penalty = $(`#result_Penalty_${id}`).html();
         let remark = $(`#result_Remarks_${id}`).html();
         let judge_remark = $(`#result_JudgeRemarks_${id}`).html();
-        let disciplines = _blocks[_cur_menu.day][_cur_menu.block]["dis_s"].split(', ');
-        let is_sta = disciplines[0] == "STA"; //TODO correct handling of multiple disciplines
+        let is_sta = _cur_menu.discipline == "STA";
         let penalty_not_reached_ap = "";
         let federation = $("input[name='comp_type']:checked").val();
         if (federation == "aida") {
@@ -1199,7 +1196,7 @@ $(document).ready(function() {
             }
             if (ap > rp) {
                 let delta = ap - rp;
-                let factor = disciplines[0] == "STA" ? 0.2 : (disciplines[0][0] == "D" ? 0.5 : 1.); //TODO correct handling of multiple disciplines
+                let factor = _cur_menu.discipline == "STA" ? 0.2 : (_cur_menu.discipline[0] == "D" ? 0.5 : 1.);
                 penalty_not_reached_ap = delta*factor;
             }
             if (penalty_not_reached_ap > 0) {
@@ -1638,6 +1635,8 @@ function setOTs(data)
 {
     if ('ots' in data)
         _ots = data.ots
+        // debug for ots
+        //fillOtsForDebuggin();
         if (_audioTimeout)
             clearTimeout(_audioTimeout);
         schedulePlay();
@@ -1906,12 +1905,12 @@ function fillOtsForDebuggin() {
     let c1 = getDateNow(false);
     c1.setMinutes(c1.getMinutes() + 2);
     c1.setSeconds(c1.getSeconds() + 10);
-    // countdown 2 = now + 4:50
-    let c2 = getDateNow(false);
-    c2.setMinutes(c2.getMinutes() + 4);
-    c2.setSeconds(c2.getSeconds() + 50);
     _ots.push(formatTime(c1, false, true));
-    _ots.push(formatTime(c2, false, true));
+    // countdown 2 = now + 4:50
+    //let c2 = getDateNow(false);
+    //c2.setMinutes(c2.getMinutes() + 4);
+    //c2.setSeconds(c2.getSeconds() + 50);
+    //_ots.push(formatTime(c2, false, true));
 }
 
 function loadCompetition(comp_id) {
