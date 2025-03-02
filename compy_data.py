@@ -1754,6 +1754,11 @@ class CompyData:
             else:
                 return INVALID_DATE
 
+    def cleanCard(self, card):
+        if card in ["WHITE", "YELLOW", "RED"]:
+            return card
+        return None
+
     def getMinFromTime(self, time_str):
         h_m = time_str.split(':')
         return int(h_m[0])*60 + int(h_m[1])
@@ -1761,6 +1766,9 @@ class CompyData:
     def updateResult(self, s_id, rp, penalty, card, remarks, judge_remarks):
         s_id = int(s_id)
         penalty = float(penalty)
+        card = self.cleanCard(card)
+        if card is None:
+            return 1
         # TODO sanity checks for card and remarks and discipline
         ap_dis = self.db_.execute(
                 '''SELECT s.ap, s.discipline
@@ -1773,14 +1781,16 @@ class CompyData:
             rp = self.cleanPerf(rp, discipline)
             if discipline == "STA":
                 rp = self.getMinFromTime(rp)
-            under_ap_penalty = self.getUnderApPenalty(ap_dis[0][0], rp, discipline) if self.comp_type == "aida" else 0
+            under_ap_penalty = self.getUnderApPenalty(ap_dis[0][0], rp, discipline, card) if self.comp_type == "aida" else 0
             self.db_.execute(
                 '''UPDATE start SET rp = ?, penalty = ?, card = ?, remarks = ?, judge_remarks = ? WHERE id == ?''',
                 (rp, under_ap_penalty + penalty, card, remarks, judge_remarks, s_id))
             return 0
         return 1
 
-    def getUnderApPenalty(self, ap, rp, discipline):
+    def getUnderApPenalty(self, ap, rp, discipline, card):
+        if card != "YELLOW":
+            return 0
         factor = 1.
         if discipline == "STA":
             factor = 0.2

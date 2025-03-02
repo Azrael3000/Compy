@@ -289,8 +289,7 @@ $(document).ready(function() {
         showLaneMenu(_menu.day, _menu.block, _menu.lane);
     });
     $('#content').on("click", '#result_back', function() {
-        //TODO if (_menu.edited) { showSave(); }
-        showAthleteMenu(_lane_list);
+        saveContinue(function() { showAthleteMenu(_lane_list); });
     });
     $('#content').on('change', 'input', function() { _menu.edited = true; });
     $('#content').on("click", '#cancel', function() {
@@ -352,7 +351,6 @@ $(document).ready(function() {
         else if ((is_next && card_on) ||
                  (is_prev && remarks_on) ||
                   this.id=="info_penalty") {
-            // TODO for penalty calc let rp = $('#info_RP').children('.info').html();
             showPenalty();
         }
         else if ((is_next && penalty_on) ||
@@ -378,11 +376,11 @@ $(document).ready(function() {
     });
     $('#content').on("click", "#save", function() {
         data = {id: _menu.s_id,
-                rp: $('#rp_title').html(),
-                penalty: $('#penalty_title').html(),
+                rp: $('#info_RP').children('.info').html(),
+                penalty: $('#info_penalty').children('.info').html(),
                 card: $('#card_title').html(),
-                remarks: $('#remarks_title').html(),
-                judge_remarks: $('#judgeremarks_title').html()};
+                remarks: $('#info_remarks').children('.info_piece').children('.info').html(),
+                judge_remarks: $('#info_judge_remarks').children('.info_piece').children('.info').html()};
         $.ajax({
             type: "PUT",
             url: "/result",
@@ -541,7 +539,8 @@ function getJudgePenaltyUnder() {
     let rp = $('#info_RP').children('.info').html();
     let ap = $('#info_AP').children('.info').html();
     let dis = $('#info_dis').children('.info').html();
-    return penaltyUnderAP(rp, ap, _federation, dis);
+    let card = $('#card_title').html();
+    return penaltyUnderAP(rp, ap, card, _federation, dis);
 }
 
 function showAthlete(s_id) {
@@ -626,6 +625,30 @@ function showAthleteMenu(lane_list) {
     }
     menu += "</table>";
     $('#content').html(menu);
+}
+
+function saveContinue(next_action) {
+    if (_menu.edited) {
+        $('#content').hide();
+        $('#continue').show();
+        $('#continue').html(`
+            <div id="continue_msg">You have unsaved changes.<br>
+            Press 'Continue' if you want to discard them or 'Cancel' if you would like to get back.</div>
+            <button id="continue_btn">Continue</button>
+            <button onclick="switchBackToContent(null)">Cancel</button>
+        `);
+        $('#continue_btn').get(0).onclick = function() { switchBackToContent(next_action) };
+    } else {
+        $('#continue').hide();
+        next_action();
+    }
+}
+
+function switchBackToContent(next_action) {
+    $('#continue').hide();
+    $('#content').show();
+    if (next_action != null)
+        next_action();
 }
 
 function showResultEntryMask(data) {

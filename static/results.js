@@ -11,8 +11,8 @@ var REMARKS = {
     }
 };
 
-function penaltyUnderAP(rp, ap, federation, discipline) {
-    if (federation != "aida")
+function penaltyUnderAP(rp, ap, card, federation, discipline) {
+    if (federation != "aida" || card != "YELLOW")
         return null;
 
     penalty_not_reached_ap = 0;

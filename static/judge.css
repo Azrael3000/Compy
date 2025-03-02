@@ -46,8 +46,12 @@ html, body {
     font-weight: bold;
 }
 
-#content {
+#content, #continue {
     padding: 3vw 5vw 3vw 5vw;
+}
+
+#continue {
+    display: none;
 }
 
 button {
@@ -87,11 +91,15 @@ th:last-child, td:last-child {
     border-bottom-right-radius: 1vh;
 }
 
-.info_all {
+.info_all, #continue_msg {
     background-color: var(--white);
     border: 0.1vh solid var(--light);
     border-radius: 1vh;
     margin-bottom: 3vh;
+}
+
+#continue_msg {
+    padding: 3vw;
 }
 
 .info_all:after {
@@ -134,9 +142,10 @@ th:last-child, td:last-child {
     line-height: 2.5vh;
 }
 
-.info {
+.info, #continue_msg, .card, .remark, #under_ap_penalty {
     font-size: 3vh;
     line-height: 3.5vh;
+    color: var(--dark);
 }
 
 .card {
@@ -145,8 +154,6 @@ th:last-child, td:last-child {
     border-radius: 1vh;
     display: inline-block;
     text-align: center;
-    line-height: 3.5vh;
-    font-size: 3vh;
 }
 
 .card.white {
@@ -169,9 +176,7 @@ th:last-child, td:last-child {
     border: 0.1vw solid var(--medium);
     border-radius: 1vh;
     text-align: center;
-    line-height: 3.5vh;
     display: inline-block;
-    font-size: 3vh;
     padding: 0 1vw;
     margin-left: 1vw;
 }
@@ -187,7 +192,5 @@ input {
 }
 
 #under_ap_penalty {
-    font-size: 3vh;
-    line-height: 3.5vh;
     margin-left: 2vw;
 }

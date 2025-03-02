@@ -1177,7 +1177,7 @@ $(document).ready(function() {
         let remark = $(`#result_Remarks_${id}`).html();
         let judge_remark = $(`#result_JudgeRemarks_${id}`).html();
         let federation = $("input[name='comp_type']:checked").val();
-        let penalty_not_reached_ap = penaltyUnderAP(rp, ap, federation, _cur_menu.discipline);
+        let penalty_not_reached_ap = penaltyUnderAP(rp, ap, card, federation, _cur_menu.discipline);
         let penalty_not_reached_ap_str = "";
         if (penalty_not_reached_ap != null) {
             penalty -= penalty_not_reached_ap;
@@ -1902,7 +1902,7 @@ function loadCompetition(comp_id) {
         {
             console.log(data.status_msg);
             // Update clock link
-            $('#clock_button').children()[0].href = "clock/" + comp_id
+            $('#clock_button').children()[0].href = "clock/" + comp_id + "/0";
             populateSpecialRanking(data);
             populateAthletes(data);
             populateJudges(data);
