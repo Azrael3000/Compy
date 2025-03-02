@@ -1877,7 +1877,7 @@ class CompyData:
         db_out = self.db_.execute(
             "SELECT first_name, last_name, salt FROM judge WHERE competition_id==? AND id==?",
             (self.id_, judge_id))
-        db_out2 = self.db_.execute("SELECT name FROM competition WHERE id==?", self.id_)
+        db_out2 = self.db_.execute("SELECT name, comp_type FROM competition WHERE id==?", self.id_)
         if db_out is None or db_out2 is None:
             return None
 
@@ -1887,7 +1887,7 @@ class CompyData:
         if judge_hash_db != judge_hash:
             return None
 
-        return (db_out2[0][0], first_name, last_name)
+        return (db_out2[0][0], first_name, last_name, db_out2[0][1])
 
     def getAthleteResult(self, s_id):
         try:
@@ -1897,7 +1897,7 @@ class CompyData:
 
         db_out = self.db_.execute(
             '''SELECT a.first_name, a.last_name, a.country, s.AP, s.RP, s.penalty, s.card,
-                      s.remarks, s.OT, a.gender, s.judge_remarks, s.discipline
+                      s.remarks, s.OT, a.gender, s.judge_remarks, s.discipline, s.PB
                FROM start s
                INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
                INNER JOIN athlete a ON ca.athlete_id == a.id
@@ -1911,13 +1911,19 @@ class CompyData:
         return {'Name': db_out[0][0] + " " + db_out[0][1],
                 'Country': db_out[0][2],
                 'AP': self.convertPerformance(db_out[0][3], discipline),
+                'Dis': discipline,
+                'PB': self.convertPerformance(db_out[0][12], discipline),
                 'RP': self.convertPerformance(db_out[0][4], discipline),
                 'Penalty': db_out[0][5],
                 'Card': db_out[0][6],
                 'Remarks': db_out[0][7],
                 'JudgeRemarks': db_out[0][10],
                 'Id': s_id,
-                'OT': db_out[0][8],
+                'OT': u.convTime(db_out[0][8]),
+                'NR': self.convertPerformance( \
+                    self.nr.get( \
+                        self.NR(self.comp_type, db_out[0][2], "", db_out[0][9], discipline) \
+                    ), discipline),
                 'Gender': db_out[0][9]}
 
     def cleanFederation(self, federation):

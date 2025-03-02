@@ -1,23 +1,193 @@
+:root {
+    --dark: #002F6C;
+    --medium: #005B96;
+    --light: #00A4CC;
+    --highlight: #AEECEF;
+    --white: #F0F8FF;
+    --card-yellow: #ECDE41;
+    --card-red: #F83741;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background-image: linear-gradient(var(--medium), var(--dark));
+    height: 100%;
+    font-family: "sans";
+    background-attachment: fixed;
+    color: var(--medium);
+}
+
+#compy_title {
+    width: 95vw;
+    font-size: 2vh;
+    color: var(--medium);
+    background: var(--dark);
+    padding-left: 5vw;
+}
+
+#competition {
+    color: var(--highlight);
+    font-size: 3vh;
+    line-height: 4vh;
+    padding: 1vw 5vw 1vw 5vw;
+    border-bottom: 0.1vh solid var(--highlight);
+}
+
+#judge {
+    color: var(--highlight);
+    font-size: 2vh;
+    line-height: 3vh;
+    padding: 1vw 5vw 1vw 5vw;
+    border-bottom: 0.1vh solid var(--highlight);
+}
+
+#judge_name {
+    font-weight: bold;
+}
+
+#content {
+    padding: 3vw 5vw 3vw 5vw;
+}
+
+button {
+    width: 90vw;
+    border: 0.1vh solid var(--light);
+    background-color: var(--white);
+    color: var(--medium);
+    font-size: 3vh;
+    margin-bottom: 3vh;
+    border-radius: 1.5vh;
+    height: 5vh;
+}
+
+table {
+    width: 90vw;
+    border-spacing: 0 2vh;
+    margin-top: -2vh;
+    color: var(--dark);
+    font-size: 3vh;
+    line-height: 3.5vh;
+}
+
+th, td {
+    text-align: left;
+    padding: 2vw;
+    border: 0.1vh solid var(--light);
+    background-color: var(--white);
+}
+
+th:first-child, td:first-child {
+    border-top-left-radius: 1vh;
+    border-bottom-left-radius: 1vh;
+}
+
+th:last-child, td:last-child {
+    border-top-right-radius: 1vh;
+    border-bottom-right-radius: 1vh;
+}
+
+.info_all {
+    background-color: var(--white);
+    border: 0.1vh solid var(--light);
+    border-radius: 1vh;
+    margin-bottom: 3vh;
+}
+
+.info_all:after {
+    content: "";
+    clear: both;
+    display: table;
+}
+
+.info_all div:first-child {
+    padding-left: 3vw;
+}
+
+.info_piece {
+    float: left;
+}
+
+#info_ot {
+    width: 17vw;
+}
+
+#info_nat {
+    width: 14vw;
+}
+
+#info_name {
+    width: 55vw;
+}
+
+#info_RP, #info_card, #info_penalty {
+    width: 28vw;
+}
+
+#info_AP, #info_PB, #info_NR, #info_dis {
+    width: 21vw;
+}
+
+.info_head {
+    font-size: 2vh;
+    color: var(--light);
+    line-height: 2.5vh;
+}
+
+.info {
+    font-size: 3vh;
+    line-height: 3.5vh;
+}
+
 .card {
-    width: 80px;
-    border: 2px solid lightgrey;
+    width: 25vw;
+    border: 0.1vw solid var(--medium);
+    border-radius: 1vh;
     display: inline-block;
     text-align: center;
-    line-height: 30px;
+    line-height: 3.5vh;
+    font-size: 3vh;
 }
 
 .card.white {
-    background: #ffffff;
+    background: var(--white);
 }
 
 .card.yellow {
-    background: #fffb00;
+    background: var(--card-yellow);
 }
 
 .card.red {
-    background: #ff0000;
+    background: var(--card-red);
 }
 
-.card.highlight {
-    border: 2px solid black;
+.card.highlight, .remark.highlight {
+    border: 0.5vw solid var(--dark);
+}
+
+.remark {
+    border: 0.1vw solid var(--medium);
+    border-radius: 1vh;
+    text-align: center;
+    line-height: 3.5vh;
+    display: inline-block;
+    font-size: 3vh;
+    padding: 0 1vw;
+    margin-left: 1vw;
+}
+
+input {
+    font-size: 3vh;
+    color: var(--medium);
+    margin-bottom: 1vh;
+}
+
+#penalty_input {
+    width: 25vw;
+}
+
+#under_ap_penalty {
+    font-size: 3vh;
+    line-height: 3.5vh;
+    margin-left: 2vw;
 }

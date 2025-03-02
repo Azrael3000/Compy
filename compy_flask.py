@@ -702,6 +702,7 @@ class CompyFlask:
         comp_name = comp_data[0]
         first_name = comp_data[1]
         last_name = comp_data[2]
+        federation = comp_data[3]
 
         self.data_.load(comp_id)
 
@@ -712,6 +713,7 @@ class CompyFlask:
                    "judge_hash": judge_hash,
                    "judge_first_name": first_name,
                    "judge_last_name": last_name,
+                   "federation": federation,
                    "days_with_disciplines_lanes": self.data_.getDaysWithDisciplinesLanes(),
                    "blocks": self.data_.getBlocks()}
         if return_json:

@@ -167,12 +167,6 @@ function generateStartList(startlist) {
     }
 }
 
-function timeToMinutes(time) {
-    let h = Number(time.split(':')[0]);
-    let m = Number(time.split(':')[1]);
-    return h*60 + m;
-}
-
 function dateToStr(date, hZeroPad) {
     let h_str = date.getUTCHours().toString();
     if (hZeroPad)
@@ -909,18 +903,15 @@ $(document).ready(function() {
                 `;
         }
         else {
-            let ap_btn = `<input type="number" step="1" id="sl_edit_ap" value="${_sl[i].AP}"/>`;
-            let pb_btn = `<input type="number" step="1" id="sl_edit_pb" value="${_sl[i].PB}"/>`;
-            let cmas = $("input[name='comp_type']:checked").val() == "cmas";
-            if (cmas && _sl[i].Discipline in ["DNF", "DYN", "DYNB"]) {
-                ap_btn = `<input type="number" step="0.5" id="sl_edit_ap" value="${_sl[i].AP}"/>`;
-                pb_btn = `<input type="number" step="0.5" id="sl_edit_pb" value="${_sl[i].PB}"/>`;
-            } else if (_sl[i].Discipline == "STA") {
-                let ap = _sl[i].AP.padStart(5, "0");
-                ap_btn = `<input type="time" id="sl_edit_ap" value="${ap}"/>`;
-                let pb = _sl[i].PB.padStart(5, "0");
-                pb_btn = `<input type="time" id="sl_edit_pb" value="${pb}"/>`;
+            let input = getPerformanceInput(_sl[i].Discipline, $("input[name='comp_type']:checked").val());
+            let ap = _sl[i].AP;
+            let pb = _sl[i].PB;
+            if (_sl[i].Discipline == "STA") {
+                ap = ap.padStart(5, "0");
+                pb = pb.padStart(5, "0");
             }
+            let ap_btn = `<input type="${input['type']}" step="${input['step']}" id="sl_edit_ap" value="${ap}"/>`;
+            let pb_btn = `<input type="${input['type']}" step="${input['step']}" id="sl_edit_pb" value="${pb}"/>`;
             content = `
                 Edit start of ${_sl[i].Name}<br>
                 <input type="hidden" id="sl_edit_i" value="${i}"/>
@@ -1185,31 +1176,17 @@ $(document).ready(function() {
         let penalty = $(`#result_Penalty_${id}`).html();
         let remark = $(`#result_Remarks_${id}`).html();
         let judge_remark = $(`#result_JudgeRemarks_${id}`).html();
-        let is_sta = _cur_menu.discipline == "STA";
-        let penalty_not_reached_ap = "";
         let federation = $("input[name='comp_type']:checked").val();
-        if (federation == "aida") {
-            penalty_not_reached_ap = 0;
-            if (is_sta) {
-                rp = timeToMinutes(rp);
-                ap = timeToMinutes(ap);
-            }
-            if (ap > rp) {
-                let delta = ap - rp;
-                let factor = _cur_menu.discipline == "STA" ? 0.2 : (_cur_menu.discipline[0] == "D" ? 0.5 : 1.);
-                penalty_not_reached_ap = delta*factor;
-            }
-            if (penalty_not_reached_ap > 0) {
-                penalty -= penalty_not_reached_ap;
-                penalty_not_reached_ap = ` + ${penalty_not_reached_ap} (UNDER AP)`;
-            }
-            else
-                penalty_not_reached_ap = "";
+        let penalty_not_reached_ap = penaltyUnderAP(rp, ap, federation, _cur_menu.discipline);
+        let penalty_not_reached_ap_str = "";
+        if (penalty_not_reached_ap != null) {
+            penalty -= penalty_not_reached_ap;
+            penalty_not_reached_ap_str = ` + ${penalty_not_reached_ap} (UNDER AP)`;
         }
         let rcw_checked = card == "WHITE" ? "checked" : "";
         let rcy_checked = card == "YELLOW" ? "checked" : "";
         let rcr_checked = card == "RED" ? "checked" : "";
-        let content = generateResultContent("Edit", name, rp, penalty, penalty_not_reached_ap, rcw_checked, rcy_checked, rcr_checked, judge_remark);
+        let content = generateResultContent("Edit", name, rp, penalty, penalty_not_reached_ap_str, rcw_checked, rcy_checked, rcr_checked, judge_remark);
         _sl_athletes = id;
         showOverlayBox(400, 800, content);
     });
