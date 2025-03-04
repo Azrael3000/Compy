@@ -36,7 +36,7 @@ except ImportError:
 
 class CompyFlask:
 
-    def __init__(self, app, data):
+    def __init__(self, app, data, start_flask):
 
         self.data_ = data
         self.app_ = app
@@ -188,7 +188,8 @@ class CompyFlask:
         def clock(comp_id, current):
             return self.getClock(comp_id, current)
 
-        app.run()
+        if start_flask:
+            app.run()
 
     def uploadFile(self):
         if 'file' not in request.files:

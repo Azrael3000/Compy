@@ -47,7 +47,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
 
-def compy(init_db=False):
+def compy(start_flask, init_db = False):
     parser = argparse.ArgumentParser(prog='Compy', description='User interface for freediving competitions')
     parser.add_argument('--init_db', action='store_true', help="Initialize database. WARNING: Deletes all data")
     args = parser.parse_args()
@@ -68,7 +68,7 @@ def compy(init_db=False):
 
     data = compy_data.CompyData(db, app)
 
-    compy_flask.CompyFlask(app, data)
+    compy_flask.CompyFlask(app, data, start_flask)
 
-if __name__ == '__main__':
-    compy()
+start_flask = __name__ == '__main__'
+compy(start_flask)
