@@ -25,7 +25,7 @@
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 */
 
-var dbg = true;
+var dbg = false;
 
 class Menu {
     contructor() {
