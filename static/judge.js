@@ -667,6 +667,9 @@ function showResultEntryMask(data) {
     if (iCur < _lane_list.length-1) {
         next_athlete_btn = `<button onclick="showAthlete(${_lane_list[iCur+1]['s_id']})" type="button">Next athlete</button>`;
     }
+    let card = "";
+    if ('Card' in data && isValidCard(data.Card, _federation))
+        card = `<span id="card_title" class="card ${data.Card.toLowerCase()}">${data.Card}</span>`;
     let content = `
         <button id="result_back" type="button">Back</button><br>
         ${prev_athlete_btn}
@@ -710,7 +713,7 @@ function showResultEntryMask(data) {
                 </div>
                 <div id="info_card" class="info_piece nav">
                     <span class="info_head">Card</span><br>
-                    <span class="info"><span id="card_title" class="card ${data.Card.toLowerCase()}">${data.Card}</span></span>
+                    <span class="info">${card}</span>
                 </div>
                 <div id="info_penalty" class="info_piece nav">
                     <span class="info_head">Penalty</span><br>
@@ -745,17 +748,16 @@ function showResultEntryMask(data) {
         ${next_athlete_btn}
         `;
 
-    if ('RP' in data && data.RP != "") {
+    let showInfo = 'RP' in data && data.RP != "";
+    if (showInfo)
         // show overview page
         content = content.replace('__INFO_DISPLAY__', 'block').replace('__EDIT_DISPLAY__', 'none');
-    }
-    else {
+    else
         // show edit form
         content = content.replace('__INFO_DISPLAY__', 'none').replace('__EDIT_DISPLAY__', 'block');
-    }
 
     $('#content').html(content);
+
+    if (!showInfo)
+        showRP();
 }
-/* TODOS:
- * saving result
- */
