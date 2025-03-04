@@ -43,7 +43,7 @@ class CompyFlask:
 
         app.config['UPLOAD_FOLDER'] = self.data_.config.upload_folder
 
-        @app.route('/', methods=['GET'])
+        @app.route('/admin', methods=['GET'])
         def main():
             all_countries = country_converter.CountryConverter().data["IOC"].dropna().to_list()
             first_records = None #foo.get_records(Federation.AIDA, all_countries[0], Gender.FEMALE)
@@ -186,22 +186,7 @@ class CompyFlask:
 
         @app.route('/clock/<int:comp_id>/<int:current>', methods=['GET'])
         def clock(comp_id, current):
-            current = (current+1) % 2
-            comp_name = self.data_.load(comp_id)
-            alist = self.data_.getFourStarts(current == 0)
-            if alist is None:
-                current = (current+1) % 2
-                alist = self.data_.getFourStarts(current == 0)
-            if comp_name != None:
-                refresh_url = request.base_url[:request.base_url.rfind('/')+1] + str(current)
-                content = {"comp_name": comp_name,
-                           "comp_id": comp_id,
-                           "alist": alist,
-                           "current": current,
-                           "refresh_url": refresh_url}
-                return render_template('clock.html', **content)
-            else:
-                return {}, 400
+            return self.getClock(comp_id, current)
 
         app.run()
 
@@ -632,7 +617,7 @@ class CompyFlask:
         return data, 200
 
     def deleteAthlete(self):
-        athlete_id = request.args.get('athlete_id')
+        athlete_id = request.json.get('athlete_id')
         if athlete_id is None:
             logging.info("Could not delete athlete without getting an id")
             return {}, 400
@@ -646,7 +631,7 @@ class CompyFlask:
         ca_id, in_other_comp = self.data_.isAthleteInCompetition(athlete_id)
         if ca_id is not None:
             self.data_.deleteAthlete(ca_id, athlete_id, in_other_comp)
-            data = {"status": "success", "status_msg": "Successfully deleted athlete with id " + athlete_id + (" completely" if not in_other_comp else "")}
+            data = {"status": "success", "status_msg": "Successfully deleted athlete with id " + str(athlete_id) + (" completely" if not in_other_comp else "")}
             self.data_.getAthleteData(data)
             self.setSubmenuData(data)
             self.data_.setOTs(data)
@@ -811,5 +796,23 @@ class CompyFlask:
             data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
             data["blocks"] = self.data_.getBlocks()
             return data, 200
+        else:
+            return {}, 400
+
+    def getClock(self, comp_id, current):
+        current = (current+1) % 2
+        comp_name = self.data_.load(comp_id)
+        alist = self.data_.getFourStarts(current == 0)
+        if alist is None:
+            current = (current+1) % 2
+            alist = self.data_.getFourStarts(current == 0)
+        if comp_name != None:
+            refresh_url = request.base_url[:request.base_url.rfind('/')+1] + str(current)
+            content = {"comp_name": comp_name,
+                       "comp_id": comp_id,
+                       "alist": alist,
+                       "current": current,
+                       "refresh_url": refresh_url}
+            return render_template('clock.html', **content)
         else:
             return {}, 400

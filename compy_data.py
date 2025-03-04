@@ -1625,7 +1625,7 @@ class CompyData:
     def isAthleteInCompetition(self, athlete_id):
         db_out = self.db_.execute(
             "SELECT id FROM competition_athlete WHERE competition_id==? AND athlete_id==?",
-            (self.id, athlete_id))
+            (self.id_, athlete_id))
         if db_out is None:
             return None, None
         else:
@@ -1637,7 +1637,7 @@ class CompyData:
 
     def deleteAthlete(self, ca_id, a_id, in_other_comp):
         self.db_.execute("DELETE FROM start WHERE competition_athlete_id=?", ca_id)
-        self.db_.execute("DELETE FROM competition_athlete_id WHERE id=?", ca_id)
+        self.db_.execute("DELETE FROM competition_athlete WHERE id=?", ca_id)
         if not in_other_comp:
             self.db_.execute("DELETE FROM athlete WHERE id=?", a_id)
 

@@ -6,7 +6,7 @@ CREATE TABLE start (
   discipline TEXT NOT NULL,
   lane INTEGER NOT NULL,
   day TEXT NOT NULL,
-  block INTEGER NOT NULL
+  block INTEGER NOT NULL,
   OT TEXT NOT NULL,
   PB FLOAT,
   AP FLOAT,
@@ -14,5 +14,5 @@ CREATE TABLE start (
   card TEXT,
   penalty FLOAT,
   remarks TEXT,
-  judge_remarks TEXT,
+  judge_remarks TEXT
 );
