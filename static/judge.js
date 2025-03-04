@@ -660,12 +660,11 @@ function showResultEntryMask(data) {
     }
     let prev_athlete_btn = "";
     let next_athlete_btn = "";
-    //TODO when showAthlete prev or next, then if (_menu.edited) { showSave(); }
     if (iCur > 0) {
-        prev_athlete_btn = `<button onclick="showAthlete(${_lane_list[iCur-1]['s_id']})" type="button">Previous athlete</button><br>`;
+        prev_athlete_btn = `<button onclick="saveContinue(function() { showAthlete(${_lane_list[iCur-1]['s_id']}); })" type="button">Previous athlete</button><br>`;
     }
     if (iCur < _lane_list.length-1) {
-        next_athlete_btn = `<button onclick="showAthlete(${_lane_list[iCur+1]['s_id']})" type="button">Next athlete</button>`;
+        next_athlete_btn = `<button onclick="saveContinue(function() { showAthlete(${_lane_list[iCur+1]['s_id']}); })" type="button">Next athlete</button>`;
     }
     let card = "";
     if ('Card' in data && isValidCard(data.Card, _federation))
