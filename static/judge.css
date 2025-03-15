@@ -142,10 +142,14 @@ th:last-child, td:last-child {
     line-height: 2.5vh;
 }
 
-.info, #continue_msg, .card, .remark, #under_ap_penalty {
+.info, #continue_msg, .card, .remark, #under_ap_penalty, .error {
     font-size: 3vh;
     line-height: 3.5vh;
     color: var(--dark);
+}
+
+.error {
+    color: var(--card-red);
 }
 
 .card {
@@ -154,6 +158,7 @@ th:last-child, td:last-child {
     border-radius: 1vh;
     display: inline-block;
     text-align: center;
+    margin-bottom: 1vh;
 }
 
 .card.white {

@@ -434,7 +434,12 @@ function saveCard() {
     let hl = $('.card.selector.highlight');
     if (hl.length == 1) {
         let color = hl[0].id.split('_')[1];
-        $('#card_title').removeClass("red").removeClass("yellow").removeClass("white").addClass(color).html(color.toUpperCase());
+        let dis = $('#info_dis').children('.info').html();
+        if ($('#card_title').length == 0) {
+            let card = `<span id="card_title" class="card ${color}">${color.toUpperCase()}</span>`;
+            $('#info_card').children('.info').html(card);
+        } else
+            $('#card_title').removeClass("red").removeClass("yellow").removeClass("white").addClass(color).html(color.toUpperCase());
     }
 }
 
@@ -506,8 +511,10 @@ function showRemarks() {
         </div>`);
     let card = $('#card_title').html();
     let old_remarks = getRemarksFromStr($('#info_remarks').children('.info_piece').children('.info').html(), _federation);
-    if (!isValidCard(card, _federation))
+    if (!isValidCard(card, _federation)) {
+        $('#remarks_input').html('<span class="error">Error: Card not set</span>');
         return;
+    }
     let remarks = getRemarksForCard(card, _federation);
     let div = $('#remarks_input');
     div.empty();
@@ -611,7 +618,7 @@ function showAthleteMenu(lane_list) {
         <tr>
             <th>OT</th>
             <th>Name</th>
-            <th>AP</th>
+            <th>${_federation == "cmas" ? "PB" : "AP"}</th>
             <th>Dis</th>
         </tr>`;
     for (let i = 0; i < lane_list.length; i++) {
@@ -619,7 +626,7 @@ function showAthleteMenu(lane_list) {
             <tr id="athlete_${lane_list[i].s_id}" class="athlete_menu">
                 <td>${lane_list[i].OT}</td>
                 <td>${lane_list[i].Name}</td>
-                <td>${lane_list[i].AP}</td>
+                <td>${_federation == "cmas" ? lane_list[i].PB : lane_list[i].AP}</td>
                 <td>${lane_list[i].Dis}</td>
             </tr>`;
     }
@@ -651,6 +658,10 @@ function switchBackToContent(next_action) {
         next_action();
 }
 
+function cleanNull(str) {
+    return (str == "null" || str == undefined || str == null) ? "" : str;
+}
+
 function showResultEntryMask(data) {
     _menu.edited = false;
     let iCur = _lane_list.findIndex(function(a){ return a['s_id']==_menu.s_id; });
@@ -669,6 +680,14 @@ function showResultEntryMask(data) {
     let card = "";
     if ('Card' in data && isValidCard(data.Card, _federation))
         card = `<span id="card_title" class="card ${data.Card.toLowerCase()}">${data.Card}</span>`;
+    let ap = "";
+    if (_federation != "cmas" || data.Dis == "STA") {
+        ap = `
+            <div id="info_AP" class="info_piece">
+                <span class="info_head">AP</span><br>
+                <span class="info">${data.AP}</span>
+            </div>`;
+    }
     let content = `
         <button id="result_back" type="button">Back</button><br>
         ${prev_athlete_btn}
@@ -687,10 +706,7 @@ function showResultEntryMask(data) {
             </div>
         </div>
         <div class="info_all">
-            <div id="info_AP" class="info_piece">
-                <span class="info_head">AP</span><br>
-                <span class="info">${data.AP}</span>
-            </div>
+            ${ap}
             <div id="info_dis" class="info_piece">
                 <span class="info_head">Dis.</span><br>
                 <span class="info">${data.Dis}</span>
@@ -716,19 +732,19 @@ function showResultEntryMask(data) {
                 </div>
                 <div id="info_penalty" class="info_piece nav">
                     <span class="info_head">Penalty</span><br>
-                    <span class="info">${data.Penalty}</span>
+                    <span class="info">${cleanNull(data.Penalty)}</span>
                 </div>
             </div>
             <div id="info_remarks" class="info_all nav">
                 <div class="info_piece">
                     <span class="info_head">Remarks</span><br>
-                    <span class="info">${data.Remarks}</span>
+                    <span class="info">${cleanNull(data.Remarks)}</span>
                 </div>
             </div>
             <div id="info_judge_remarks" class="info_all nav">
                 <div class="info_piece">
                     <span class="info_head">Judge Remarks</span><br>
-                    <span class="info">${data.JudgeRemarks}</span>
+                    <span class="info">${cleanNull(data.JudgeRemarks)}</span>
                 </div>
             </div>
             <button id="edit_button" type="button" class="nav">Edit</button>
