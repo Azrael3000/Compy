@@ -30,6 +30,7 @@
     <title>Compy {{version}}</title>
     <script src="{{ url_for('static', filename='jquery-3.7.1.js') }}"></script>
     <script src="{{ url_for('static', filename='compy.js') }}"></script>
+    <script src="{{ url_for('static', filename='results.js') }}"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='compy.css') }}" type="text/css"/>
 </head>
 
@@ -167,6 +168,7 @@
                 <td><button id="add_athlete" type="button">Add</button></td>
             </tr>
         </table>
+        <div id="total_athletes"></div>
     </div>
     <div id="special_ranking" style="display:none">
         <table id="special_ranking_table">

@@ -487,7 +487,11 @@ class CompyData:
             self.sponsor_img_ = {"data": comp_data[7], "aspect_ratio": 1} # TODO
             self.selected_country_ = comp_data[8]
             self.special_ranking_name_ = comp_data[9]
-            self.disciplines_ = comp_data[10]
+            dis = self.db_.execute('SELECT disciplines FROM block WHERE competition_id==?', (self.id_))
+            self.disciplines_ = 0
+            if dis is not None:
+                for d in dis:
+                    self.disciplines_ |= d[0]
             #self.getResultPDF('all', 'all', 'all', False, True)
             return self.name_
 
@@ -670,7 +674,7 @@ class CompyData:
                     ap = self.getMinFromTime(ap)
                     pb = self.getMinFromTime(pb)
                 lane = self.cleanNumber(self.laneStyleConverter(startlist[i]["Lane"], True)) # TODO min/max
-                if int(startlist[i]["Id"]) < 0: # new s["art
+                if int(startlist[i]["Id"]) < 0: # new start
                     self.db_.execute(
                         '''INSERT INTO start
                            (competition_athlete_id, discipline, block, lane, day, OT, AP, PB)
@@ -690,11 +694,7 @@ class CompyData:
         if dis == "STA":
             m = math.floor(int(val)/60)
             s = int(val) - m*60
-            out = str(int(m)) + ":"
-            if self.comp_type == "aida":
-                out += str(int(s)).zfill(2)
-            else:
-                out += "%05.2f" % round(s, 2)
+            out = str(int(m)) + ":" + str(int(s)).zfill(2)
             return out
         else:
             return str(val)
@@ -722,10 +722,21 @@ class CompyData:
             return fname
         start_df = pd.DataFrame(self.getStartList(day, block))
         start_df.drop("Id", axis=1, inplace=True)
-        start_df.drop("PB", axis=1, inplace=True)
+        blocks = self.getBlocks()
+        block_disciplines = blocks[day][int(block)]['dis_s']
+        if self.comp_type == "aida":
+            start_df.drop("PB", axis=1, inplace=True)
+        else:
+            if block_disciplines != "STA":
+                start_df.drop("AP", axis=1, inplace=True)
+            else:
+                start_df["AP"] = start_df.apply(lambda row: row["AP"] if row['Discipline'] == "STA" else "", axis=1)
+        if block_disciplines.find(",") == -1:
+            start_df.drop("Discipline", axis=1, inplace=True)
         html_string = start_df.to_html(index=False, justify="left", classes="df_table")
         day_obj = datetime.strptime(day, "%Y-%m-%d")
         human_day = day_obj.strftime("%d. %m. %Y")
+        today = datetime.now().strftime("%d.%m.%Y")
         dis = self.db_.execute('SELECT disciplines FROM block WHERE competition_id==? AND id==?', (self.id_, block))
         if dis is None:
             return None
@@ -822,10 +833,20 @@ class CompyData:
                       'RP': self.convertPerformance(r[10], r[9]),
                       'Card': r[11],
                       'Remarks': r[12],
-                      'NR': self.convertPerformance(self.nr.get(self.NR(self.comp_type, r[4], "", r[5], r[9])), r[9])}
+                      'NR': self.getNr(r[4], "", r[5], r[9], True)}
                        for r in db_out]
         lane_list.sort(key=lambda r: self.getMinFromTime(r['OT']))
         return lane_list
+
+    def getNr(self, country, cls, gender, discipline, convert=False):
+        nr = self.NR(self.comp_type, country, cls, gender, discipline)
+        if self.nr is not None and nr in self.nr:
+            if convert:
+                return self.convertPerformance(self.nr.get(nr), discipline)
+            else:
+                self.nr.get(nr)
+        else:
+            return ""
 
     def getLaneListPDF(self, safety=False, day="all", block="all", lane="all", in_memory=False):
         if day=="all" and block=="all":
@@ -859,6 +880,8 @@ class CompyData:
         has_multiple_dis = ',' in block_str
 
         if not has_multiple_dis:
+            if self.comp_type == "cmas" and block_str != "STA":
+                lane_df.drop("AP", axis=1, inplace=True)
             lane_df.drop("Dis", axis=1, inplace=True)
         if not safety:
             lane_df["RP"] = ""
@@ -866,350 +889,180 @@ class CompyData:
             lane_df["Remarks"] = ""
         cols = lane_df.columns.tolist()
         if not safety:
-            if has_multiple_dis:
-                cols = cols[0:5] + cols[7:] + cols[5:7]
+            if self.comp_type == "aida":
+                if has_multiple_dis:
+                    cols = cols[0:5] + cols[7:] + cols[5:7]
+                else:
+                    cols = cols[0:4] + cols[6:] + cols[4:6]
             else:
-                cols = cols[0:4] + cols[6:] + cols[4:6]
+                if block_str == "STA":
+                    cols = ['OT', 'Name', 'Nat', 'AP', 'PB', 'RP', 'Card', 'Remarks', 'NR']
+                elif has_multiple_dis:
+                    cols = ['OT', 'Dis', 'Name', 'Nat', 'PB', 'RP', 'Card', 'Remarks', 'NR']
+                else:
+                    cols = ['OT', 'Name', 'Nat', 'PB', 'RP', 'Card', 'Remarks', 'NR']
         lane_df = lane_df[cols]
-        html_string = lane_df.to_html(index=False, justify="left", classes="df_table")
+        df_html = lane_df.to_html(index=False, justify="left", classes="df_table")
         day_obj = datetime.strptime(day, "%Y-%m-%d")
         human_day = day_obj.strftime("%d. %m. %Y")
+        html_string = """
+            <html>
+            <head>
+            <style>
+            table {
+                width: 100%;
+            }
+            tr th:first-child {
+                padding-left:0px;
+            }
+            tr td:first-child {
+                padding-left:0px;
+            }"""
         if safety:
-            if has_multiple_dis:
-                html_string = """
-                    <html>
-                    <head>
-                    <style>
-                    table {{
-                        width: 100%;
-                    }}
-                    h2 {{
-                        font-size: 4mm;
-                    }}
-                    tr th:first-child {{
-                        padding-left:0px;
-                    }}
-                    tr td:first-child {{
-                        padding-left:0px;
-                    }}
-                    th, td {{
-                        padding:1mm 0mm 1mm 1mm;
-                        text-align: center;
-                        font-size: 4mm;
-                        border-bottom: 1px solid #ddd;
-                    }}
-                    table th:nth-child(1) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(2) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(3) {{
-                        width: 21%;
-                        text-align: left;
-                    }}
-                    table td:nth-child(3) {{
-                        text-align: left;
-                    }}
-                    table th:nth-child(4) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(5) {{
-                        width: 4%;
-                    }}
-                    @page {{
-                        margin: 1.5cm 0.5cm 0.5cm 0.5cm;
-                        size: A5 portrait;
-                        @top-right {{
-                            content: counter(page) "/" counter(pages);
-                        }}
-                    }}
-                    header, footer {{
-                        position: fixed;
-                        left: 0;
-                        right: 0;
-                    }}
-                    header {{
-                        /* subtract @page margin */
-                        top: -1.5cm;
-                        height: 1.5cm;
-                        text-align: center;
-                        vertical-align: center;
-                    }}
-                    footer {{
-                        /* subtract @page margin */
-                        bottom: -0.5cm;
-                        height: 0.5cm;
-                        text-align: left;
-                        vertical-align: center;
-                    }}
-                    </style>
-                    </head>
-                    <body>
-                    <header>
-                        <h2>Safety lane list {} - lane {} - {}</h2>
-                    </header>
-                    {}
-                    <footer></footer>
-                    </body>
-                    </html>
-                    """.format(block_str, lane, human_day, html_string)
-            else:
-                html_string = """
-                    <html>
-                    <head>
-                    <style>
-                    table {{
-                        width: 100%;
-                    }}
-                    h2 {{
-                        font-size: 4mm;
-                    }}
-                    tr th:first-child {{
-                        padding-left:0px;
-                    }}
-                    tr td:first-child {{
-                        padding-left:0px;
-                    }}
-                    th, td {{
-                        padding:1mm 0mm 1mm 1mm;
-                        text-align: center;
-                        font-size: 4mm;
-                        border-bottom: 1px solid #ddd;
-                    }}
-                    table th:nth-child(1) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(2) {{
-                        width: 21%;
-                        text-align: left;
-                    }}
-                    table td:nth-child(2) {{
-                        text-align: left;
-                    }}
-                    table th:nth-child(3) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(4) {{
-                        width: 4%;
-                    }}
-                    @page {{
-                        margin: 1.5cm 0.5cm 0.5cm 0.5cm;
-                        size: A5 portrait;
-                        @top-right {{
-                            content: counter(page) "/" counter(pages);
-                        }}
-                    }}
-                    header, footer {{
-                        position: fixed;
-                        left: 0;
-                        right: 0;
-                    }}
-                    header {{
-                        /* subtract @page margin */
-                        top: -1.5cm;
-                        height: 1.5cm;
-                        text-align: center;
-                        vertical-align: center;
-                    }}
-                    footer {{
-                        /* subtract @page margin */
-                        bottom: -0.5cm;
-                        height: 0.5cm;
-                        text-align: left;
-                        vertical-align: center;
-                    }}
-                    </style>
-                    </head>
-                    <body>
-                    <header>
-                        <h2>Safety lane list {} - lane {} - {}</h2>
-                    </header>
-                    {}
-                    <footer></footer>
-                    </body>
-                    </html>
-                    """.format(block_str, lane, human_day, html_string)
+            html_string += """
+                h2 {
+                    font-size: 4mm;
+                }
+                th, td {
+                    padding:1mm 0mm 1mm 1mm;
+                    text-align: center;
+                    font-size: 4mm;
+                    border-bottom: 1px solid #ddd;
+                }"""
         else:
-            if has_multiple_dis:
-                html_string = """
-                    <html>
-                    <head>
-                    <style>
-                    table {{
-                        width: 100%;
+            html_string += """
+                th, td {
+                    padding:10px 0px 10px 20px;
+                    text-align: center;
+                    border-bottom: 1px solid #ddd;
+                }"""
+        html_string += """
+            table th:nth-child(1) {
+                width: 4%;
+            }"""
+        i = 2
+        if has_multiple_dis:
+            html_string += """
+                table th:nth-child({}) {{
+                    width: 4%;
+                }}""".format(str(i))
+            i += 1
+        html_string += """
+            table th:nth-child({}) {{
+                width: 21%;
+                text-align: left;
+            }}
+            table td:nth-child({}) {{
+                text-align: left;
+            }}
+            table th:nth-child({}) {{
+                width: 4%;
+            }}
+            table th:nth-child({}) {{
+                width: 4%;
+            }}
+            """.format(str(i), str(i), str(i+1), str(i+2))
+        i += 3
+        if self.comp_type == "cmas" and block_str == "STA":
+            html_string += """
+                table th:nth-child({}) {{
+                    width: 4%;
+                }}
+                """.format(str(i))
+            i += 1
+        if not safety:
+            html_string += """
+                table th:nth-child({}) {{
+                    width: 10%;
+                }}
+                table th:nth-child({}) {{
+                    width: 10%;
+                }}
+                table th:nth-child({}) {{
+                    width: 39%;
+                }}
+                table th:nth-child({}) {{
+                    width: 4%;
+                }}
+                table th:nth-child({}) {{
+                    width: 4%;
+                }}""".format(str(i), str(i+1), str(i+2), str(i+3), str(i+4))
+            i += 5
+        html_string += """
+            header, footer {
+                position: fixed;
+                left: 0;
+                right: 0;
+            }"""
+        if safety:
+            html_string += """
+                @page {{
+                    margin: 1.5cm 0.5cm 0.5cm 0.5cm;
+                    size: A5 portrait;
+                    @top-right {{
+                        content: counter(page) "/" counter(pages);
                     }}
-                    tr th:first-child {{
-                        padding-left:0px;
+                }}
+                header {{
+                    /* subtract @page margin */
+                    top: -1.5cm;
+                    height: 1.5cm;
+                    text-align: center;
+                    vertical-align: center;
+                }}
+                footer {{
+                    /* subtract @page margin */
+                    bottom: -0.5cm;
+                    height: 0.5cm;
+                    text-align: left;
+                    vertical-align: center;
+                }}
+                </style>
+                </head>
+                <body>
+                <header>
+                    <h2>Safety lane list {} - lane {} - {}</h2>
+                </header>
+                {}
+                <footer></footer>
+                </body>
+                </html>
+                """.format(block_str, lane, human_day, df_html)
+        else:
+            html_string += """
+                @page {{
+                    margin: 4cm 1cm 1.5cm 2.5cm;
+                    size: A4 landscape;
+                    @top-right {{
+                        counter(page) "/" counter(pages);
                     }}
-                    tr td:first-child {{
-                        padding-left:0px;
-                    }}
-                    th, td {{
-                        padding:10px 0px 10px 20px;
-                        text-align: center;
-                        border-bottom: 1px solid #ddd;
-                    }}
-                    table th:nth-child(1) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(2) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(3) {{
-                        width: 21%;
-                        text-align: left;
-                    }}
-                    table td:nth-child(3) {{
-                        text-align: left;
-                    }}
-                    table th:nth-child(4) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(5) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(6) {{
-                        width: 10%;
-                    }}
-                    table th:nth-child(7) {{
-                        width: 10%;
-                    }}
-                    table th:nth-child(8) {{
-                        width: 39%;
-                    }}
-                    table th:nth-child(9) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(10) {{
-                        width: 4%;
-                    }}
-                    @page {{
-                        margin: 4cm 1cm 1.5cm 2.5cm;
-                        size: A4 landscape;
-                        @top-right {{
-                            content: counter(page) "/" counter(pages);
-                        }}
-                    }}
-                    header, footer {{
-                        position: fixed;
-                        left: 0;
-                        right: 0;
-                    }}
-                    header {{
-                        /* subtract @page margin */
-                        top: -4cm;
-                        height: 4cm;
-                        text-align: center;
-                        vertical-align: center;
-                    }}
-                    footer {{
-                        /* subtract @page margin */
-                        bottom: -1.5cm;
-                        height: 1.5cm;
-                        text-align: left;
-                        vertical-align: center;
-                    }}
-                    </style>
-                    </head>
-                    <body>
-                    <header>
-                        <h1>{}</h1>
-                        <h2>Lane list {} - lane {} - {}</h2>
-                    </header>
-                    {}
-                    <footer><span style="margin-left:3mm">Judge Name:</span><span style="margin-left:8cm">Signature:</span></footer>
-                    </body>
-                    </html>
-                    """.format(self.name, block_str, lane, human_day, html_string)
-            else:
-                html_string = """
-                    <html>
-                    <head>
-                    <style>
-                    table {{
-                        width: 100%;
-                    }}
-                    tr th:first-child {{
-                        padding-left:0px;
-                    }}
-                    tr td:first-child {{
-                        padding-left:0px;
-                    }}
-                    th, td {{
-                        padding:10px 0px 10px 20px;
-                        text-align: center;
-                        border-bottom: 1px solid #ddd;
-                    }}
-                    table th:nth-child(1) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(2) {{
-                        width: 21%;
-                        text-align: left;
-                    }}
-                    table td:nth-child(2) {{
-                        text-align: left;
-                    }}
-                    table th:nth-child(3) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(4) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(5) {{
-                        width: 10%;
-                    }}
-                    table th:nth-child(6) {{
-                        width: 10%;
-                    }}
-                    table th:nth-child(7) {{
-                        width: 39%;
-                    }}
-                    table th:nth-child(8) {{
-                        width: 4%;
-                    }}
-                    table th:nth-child(9) {{
-                        width: 4%;
-                    }}
-                    @page {{
-                        margin: 4cm 1cm 1.5cm 2.5cm;
-                        size: A4 landscape;
-                        @top-right {{
-                            content: counter(page) "/" counter(pages);
-                        }}
-                    }}
-                    header, footer {{
-                        position: fixed;
-                        left: 0;
-                        right: 0;
-                    }}
-                    header {{
-                        /* subtract @page margin */
-                        top: -4cm;
-                        height: 4cm;
-                        text-align: center;
-                        vertical-align: center;
-                    }}
-                    footer {{
-                        /* subtract @page margin */
-                        bottom: -1.5cm;
-                        height: 1.5cm;
-                        text-align: left;
-                        vertical-align: center;
-                    }}
-                    </style>
-                    </head>
-                    <body>
-                    <header>
-                        <h1>{}</h1>
-                        <h2>Lane list {} - lane {} - {}</h2>
-                    </header>
-                    {}
-                    <footer><span style="margin-left:3mm">Judge Name:</span><span style="margin-left:8cm">Signature:</span></footer>
-                    </body>
-                    </html>
-                    """.format(self.name, block_str, lane, human_day, html_string)
+                }}
+                header {{
+                    /* subtract @page margin */
+                    top: -4cm;
+                    height: 4cm;
+                    text-align: center;
+                    vertical-align: center;
+                }}
+                footer {{
+                    /* subtract @page margin */
+                    bottom: -1.5cm;
+                    height: 1.5cm;
+                    text-align: left;
+                    vertical-align: center;
+                }}
+                </style>
+                </head>
+                <body>
+                <header>
+                    <h1>{}</h1>
+                    <h2>Lane list {} - lane {} - {}</h2>
+                </header>
+                {}
+                <footer><span style="margin-left:3mm">Judge Name:</span><span style="margin-left:8cm">Signature:</span></footer>
+                </body>
+                </html>
+                """.format(self.name, block_str, lane, human_day, df_html)
         html = wp.HTML(string=html_string, base_url="/")
         fname = os.path.join(self.config.download_folder, "test.html")
         with open(fname, "w") as f:
@@ -1305,7 +1158,7 @@ class CompyData:
             def check_nr(country, gender, rp, card):
                 if rp is None or card != "WHITE":
                     return ""
-                this_nr = self.nr.get(self.NR(self.comp_type, country, "", gender, discipline))
+                this_nr = self.getNr(country, "", gender, discipline)
                 return ", <b>NR</b>" if  this_nr is not None and this_nr < rp else ""
 
             if self.comp_type == "aida":
@@ -1856,7 +1709,7 @@ class CompyData:
                 (first_name, last_name, salt, self.id_))
             return 0
 
-    def getJudgeQrCode(self, judge_id):
+    def getJudgeQrCode(self, judge_id, url_root):
         db_out = self.db_.execute(
             "SELECT first_name, last_name, salt FROM judge WHERE competition_id==? AND id==?",
             (self.id_, judge_id))
@@ -1865,7 +1718,7 @@ class CompyData:
         else:
             jhash = self.getJudgeQrCodeHash(db_out[0][0], db_out[0][1], db_out[0][2], judge_id)
             # TODO make configurable
-            url = "http://127.0.0.1:5000/judge/" + str(self.id_) + "/" + str(judge_id)+"?hash=" + jhash
+            url = url_root + "judge/" + str(self.id_) + "/" + str(judge_id)+"?hash=" + jhash
             qr_code = qrcode.make(url)
             ba = BytesIO()
             qr_code.save(ba, format='PNG')
@@ -1930,10 +1783,7 @@ class CompyData:
                 'JudgeRemarks': db_out[0][10],
                 'Id': s_id,
                 'OT': u.convTime(db_out[0][8]),
-                'NR': self.convertPerformance( \
-                    self.nr.get( \
-                        self.NR(self.comp_type, db_out[0][2], "", db_out[0][9], discipline) \
-                    ), discipline),
+                'NR': self.getNr(db_out[0][2], "", db_out[0][9], discipline, True),
                 'Gender': db_out[0][9]}
 
     def cleanFederation(self, federation):

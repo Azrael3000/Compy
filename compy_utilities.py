@@ -19,8 +19,8 @@ def convTime(time):
         time = time%100
         return str(hour).zfill(2) + ":" + str(time).zfill(2)
     except ValueError:
-        if '-' in time:
-            time = time.split('-')
+        if ':' in time:
+            time = time.split(':')
             if len(time) == 2:
                 return int(time[0])*100 + int(time[1])
     return None

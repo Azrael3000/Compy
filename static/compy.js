@@ -1564,8 +1564,8 @@ function populateAthletes(data) {
         for (let i = 0; i < athletes.length; i++) {
             $('#athletes_table').append(`
                 <tr>
-                    <td>${athletes[i].last_name}</td>
                     <td>${athletes[i].first_name}</td>
+                    <td>${athletes[i].last_name}</td>
                     <td>${athletes[i].gender}</td>
                     <td>${athletes[i].country}</td>
                     <td>${athletes[i].club}</td>
@@ -1574,6 +1574,7 @@ function populateAthletes(data) {
                 </tr>
             `);
         }
+        $('#total_athletes').html("<b>Total athletes: " + athletes.length + "</b>");
     }
 }
 
@@ -1617,7 +1618,6 @@ function setOTs(data)
         if (_audioTimeout)
             clearTimeout(_audioTimeout);
         schedulePlay();
-        console.log(_ots)
 }
 
 function initSubmenus(data, reset=false)

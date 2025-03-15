@@ -580,7 +580,7 @@ class CompyFlask:
         data = {}
         judge_id = self.data_.isJudgeInCompetition(judge_id)
         if judge_id is not None:
-            qr_data = self.data_.getJudgeQrCode(judge_id)
+            qr_data = self.data_.getJudgeQrCode(judge_id, request.url_root)
             if qr_data is None:
                 logging.info('Could not get qr code for judge with id ' + str(judge_id))
                 return {}, 400
