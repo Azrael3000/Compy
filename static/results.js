@@ -26,7 +26,7 @@ function penaltyUnderAP(rp, ap, card, federation, discipline) {
         penalty_not_reached_ap = delta*factor;
     }
     if (penalty_not_reached_ap > 0)
-        return penalty_not_reached_ap;
+        return Math.round(penalty_not_reached_ap*100)/100.;
     return null;
 }
 

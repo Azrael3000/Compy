@@ -351,7 +351,7 @@ $(document).ready(function() {
         else if ((is_next && card_on) ||
                  (is_prev && remarks_on) ||
                   this.id=="info_penalty") {
-            showPenalty();
+            showPenalty(is_next);
         }
         else if ((is_next && penalty_on) ||
                  (is_prev && judge_remarks_on) ||
@@ -456,7 +456,7 @@ function showCard() {
         return;
     $('.card.selector').removeClass("highlight");
     if (_federation == "aida") {
-        if (getJudgePenaltyUnder() != null) {
+        if (getJudgePenaltyUnder(false) != null) {
             $('#card_white').hide();
             if (card == "WHITE")
                 card = "YELLOW";
@@ -466,25 +466,34 @@ function showCard() {
     $('#card_' + card.toLowerCase()).addClass('highlight');
 }
 
-function savePenalty() {
-    let pen = Math.max(Number($('#penalty_input').val()) + getJudgePenaltyUnder(), 0);
+function savePenalty(pen = null) {
+    if (pen == null)
+        pen = Math.max(Number($('#penalty_input').val()) + getJudgePenaltyUnder(true), 0);
     $('#info_penalty').children('.info').html(pen);
 }
 
-function showPenalty() {
+function showPenalty(is_next) {
+    let card = $('#card_title').html();
+    if (isValidCard(card, _federation) && card != 'YELLOW') {
+        savePenalty(0)
+        if (is_next)
+            showRemarks();
+        else
+            showCard();
+        return;
+    }
     $('#result_input').html(`
         <div id="penalty_entry" class="info_piece">
             <span class="info_head">Penalty</span><br>
             <input type="number" id="penalty_input"/><span id="under_ap_penalty"></span>
         </div>`);
-    let card = $('#card_title').html();
     let penalty = $('#info_penalty').children('.info').html();
     if (card != "YELLOW") {
         penalty = "";
         $('#penalty_input').prop('disabled', true);
         $('#penalty_input').val("");
     } else {
-        let pen_under = getJudgePenaltyUnder();
+        let pen_under = getJudgePenaltyUnder(true);
         if (pen_under != null) {
             penalty -= pen_under;
             penalty = Math.max(penalty, 0);
@@ -522,7 +531,7 @@ function showRemarks() {
         let highlight = "";
         if (remarks.length == 1 ||
             old_remarks.includes(remarks[i]) ||
-            (getJudgePenaltyUnder() != null && remarks[i] == "UNDER AP"))
+            (getJudgePenaltyUnder(false) != null && remarks[i] == "UNDER AP"))
             highlight = "highlight";
         div.append(`<span class='remark selector ${highlight}'>${remarks[i]}</span`);
     }
@@ -542,11 +551,11 @@ function showJudgeRemarks() {
     $('#next').hide();
 }
 
-function getJudgePenaltyUnder() {
+function getJudgePenaltyUnder(use_real_card) {
     let rp = $('#info_RP').children('.info').html();
     let ap = $('#info_AP').children('.info').html();
     let dis = $('#info_dis').children('.info').html();
-    let card = $('#card_title').html();
+    let card = use_real_card ? $('#card_title').html() : 'YELLOW';
     return penaltyUnderAP(rp, ap, card, _federation, dis);
 }
 
