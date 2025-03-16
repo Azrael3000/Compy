@@ -25,7 +25,7 @@
 #  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 import logging
-from flask import Flask, render_template, request, send_file, Response, make_response
+from flask import Flask, render_template, request, send_file, Response, make_response, current_app
 from os import path, mkdir
 from werkzeug.utils import secure_filename
 try:
@@ -44,15 +44,8 @@ class CompyFlask:
         app.config['UPLOAD_FOLDER'] = self.data_.config.upload_folder
 
         @app.route('/admin', methods=['GET'])
-        def main():
-            all_countries = country_converter.CountryConverter().data["IOC"].dropna().to_list()
-            first_records = None #foo.get_records(Federation.AIDA, all_countries[0], Gender.FEMALE)
-            content = {"version": self.data_.version,
-                       "competitions": self.data_.getSavedCompetitions(),
-                       "comp_name": self.data_.name,
-                       "all_countries": all_countries,
-                       "record_sta": None}
-            return render_template('template.html', **content)
+        def admin():
+            return self.admin()
 
         @app.route('/upload_file', methods=['POST'])
         def uploadFile():
@@ -817,3 +810,17 @@ class CompyFlask:
             return render_template('clock.html', **content)
         else:
             return {}, 400
+
+    def admin(self):
+        auth = request.args.get('auth')
+        if auth != current_app.config["SECRET_KEY"][:6]:
+            content = {"version": self.data_.version}
+            return make_response(render_template('404.html', **content), 404)
+        all_countries = country_converter.CountryConverter().data["IOC"].dropna().to_list()
+        first_records = None #foo.get_records(Federation.AIDA, all_countries[0], Gender.FEMALE)
+        content = {"version": self.data_.version,
+                   "competitions": self.data_.getSavedCompetitions(),
+                   "comp_name": self.data_.name,
+                   "all_countries": all_countries,
+                   "record_sta": None}
+        return render_template('template.html', **content)

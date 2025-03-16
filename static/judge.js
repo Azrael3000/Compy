@@ -324,6 +324,7 @@ $(document).ready(function() {
         //$('#remarks_entry').hide();
         //$('#judge_remarks_entry').hide();
         $('#next').show();
+        $('#next').removeClass('shift50');
         $('#cancel').show();
         $('#prev').show();
         $('#save').hide();
@@ -415,6 +416,7 @@ function saveRP() {
 
 function showRP() {
     $('#prev').hide();
+    $('#next').addClass('shift50');
     $('#result_input').html(`
         <div id="rp_entry" class="info_piece">
             <span class="info_head">Realized Performance</span><br>
@@ -760,10 +762,12 @@ function showResultEntryMask(data) {
         </div>
 
         <div id="result_entry" style="display:__EDIT_DISPLAY__">
-            <button id="prev" class="nav">Previous</button>
             <div class="info_all" id="result_input">
             </div>
-            <button id="next" class="nav">Next</button>
+            <div class="grouper">
+                <button id="prev" class="nav width50">Previous</button>
+                <button id="next" class="nav width50">Next</button>
+            </div>
             <button id="ok" class="nav">Ok</button>
         </div>
 

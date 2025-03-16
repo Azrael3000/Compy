@@ -102,7 +102,7 @@ th:last-child, td:last-child {
     padding: 3vw;
 }
 
-.info_all:after {
+.info_all:after, .grouper:after {
     content: "";
     clear: both;
     display: table;
@@ -198,4 +198,22 @@ input {
 
 #under_ap_penalty {
     margin-left: 2vw;
+}
+
+.width50 {
+    width: 44vw;
+    float: left;
+    margin-right: 2vw;
+}
+
+.shift50 {
+    margin-left: 46vw;
+}
+
+.grouper button:last-child {
+    margin-right: 0;
+}
+
+#result_input {
+    min-height: 9.2vh;
 }
