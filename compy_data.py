@@ -313,7 +313,7 @@ class CompyData:
 
         if sr_ids is not None:
             for sr in sr_ids:
-                self.setSpecialRanking(sr[0], True, False)
+                self.setRegistration(sr[0], True, False, "specialranking")
 
         self.save()
 
@@ -402,20 +402,23 @@ class CompyData:
         logging.debug("-----------------")
         return nrs
 
-    def setSpecialRanking(self, athlete_id, special_ranking, warn=True):
+    def setRegistration(self, athlete_id, special_ranking, change_type, warn=True):
         found = False
         if self.number_of_athletes == 0:
-            logging.warning("Data not initialized yet in setSpecialRanking")
+            logging.warning("Data not initialized yet in setRegistration")
             return 1
         try:
+            type_map = {'specialranking': 'special_ranking', 'paid': 'paid', 'medicalchecked': 'medical_checked', 'registered': 'registered'}
+            if not change_type in type_map:
+                return 0
             self.db_.execute(
-                '''UPDATE competition_athlete SET special_ranking=?
-                   WHERE competition_id==? AND athlete_id==?''',
+                '''UPDATE competition_athlete SET {}=?
+                   WHERE competition_id==? AND athlete_id==?'''.format(type_map[change_type]),
                 (special_ranking, self.id_, athlete_id))
             return 0
         except sqlite3.Error as e:
             if warn:
-                logging.warning("Tried setting special_ranking (" + str(special_ranking) + ") to athlete with id '" + athlete_id + "' but this id could not be found")
+                logging.warning("Tried setting " + change_type + " (" + str(special_ranking) + ") to athlete with id '" + athlete_id + "' but this id could not be found")
             return 1
 
     def getSavedCompetitions(self):
@@ -442,6 +445,8 @@ class CompyData:
             return [0, self.name_]
 
     def save(self):
+        # force version update
+        self.version_ = None
         if self.id_ is None:
             self.db_.execute('''INSERT INTO competition
                                 (name, save_date, version, lane_style, comp_type, comp_file, start_date,
@@ -1498,7 +1503,7 @@ class CompyData:
         data["athletes"] = []
         athletes = self.db_.execute(
             '''SELECT a.id, a.first_name, a.last_name, a.gender, a.country, a.aida_id, a.club,
-                      ca.special_ranking
+                      ca.special_ranking, ca.paid, ca.medical_checked, ca.registered
                FROM athlete a
                INNER JOIN competition_athlete ca ON ca.athlete_id == a.id
                WHERE ca.competition_id == ?''',
@@ -1509,7 +1514,8 @@ class CompyData:
             data["athletes"].append(
                 {"last_name": a[2], "first_name": a[1], "gender": a[3],
                  "country": a[4], "id": a[0], "aida_id": a[5],
-                 "club": a[6], "special_ranking": a[7]})
+                 "club": a[6], "special_ranking": a[7], "paid": a[8],
+                 "medical_checked": a[9], "registered": a[10]})
 
     def addAthlete(self, first_name, last_name, gender, country, club, aida_id):
         a_id = self.db_.execute(

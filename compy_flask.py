@@ -63,9 +63,9 @@ class CompyFlask:
         def changeSpecialRankingName():
             return self.changeSpecialRankingName()
 
-        @app.route('/change_special_ranking', methods=['POST'])
-        def changeSpecialRanking():
-            return self.changeSpecialRanking()
+        @app.route('/change_registration', methods=['POST'])
+        def changeRegistration():
+            return self.changeRegistration()
 
         @app.route('/load_comp', methods=['POST'])
         def loadComp():
@@ -236,14 +236,15 @@ class CompyFlask:
         data["status_msg"] = status_msg
         return data, 200
 
-    def changeSpecialRanking(self):
+    def changeRegistration(self):
         content = request.json
-        if "id" not in content and "checked" not in content:
-            logging.debug("Post request to change_special_ranking without id and checked")
+        if "id" not in content and "checked" not in content and "type" not in content:
+            logging.debug("Post request to change_special_ranking without id, type and checked")
             return {}, 400
         athlete_id = content["id"]
         is_special_ranking = content["checked"]
-        if self.data_.setSpecialRanking(athlete_id, is_special_ranking) == 0:
+        change_type = content["type"]
+        if self.data_.setRegistration(athlete_id, is_special_ranking, change_type) == 0:
             data = {"status": "success", "status_msg": "Successfully updated athlete with id '" + athlete_id + "' to value '" + str(is_special_ranking) + "'"}
         else:
             data = {"status": "success", "status_msg": "Failed to update athlete with id '" + athlete_id + "' to value '" + str(is_special_ranking) + "'"}

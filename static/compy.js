@@ -426,7 +426,6 @@ $(document).ready(function() {
             dataType: "json",
             success: function(data) {
                 console.log(data.status_msg);
-                $('#special_ranking_button').children().text(name);
                 initSubmenus(data, true);
             }
         })
@@ -468,12 +467,14 @@ $(document).ready(function() {
         let overwrite_div = document.getElementById("overwrite");
         overwrite_div.style.display = "none";
     });
-    $("#special_ranking").delegate(".special_ranking_checkbox", "change", function() {
-        let athlete_id = this.id.substring(6); // checkbox id is equal to "nc_cb_" + athlete_id
-        let data = {id: athlete_id, checked: this.checked};
+    $("#registration").delegate(".registration_checkbox", "change", function() {
+        let id = this.id.split('_'); // checkbox id is equal to type + "_cb_" + athlete_id
+        let type = id[0];
+        let athlete_id = id[2];
+        let data = {id: athlete_id, checked: this.checked, type: type};
         $.ajax({
             type: "POST",
-            url: "/change_special_ranking",
+            url: "/change_registration",
             data: JSON.stringify(data),
             contentType: "application/json",
             dataType: "json",
@@ -1490,7 +1491,7 @@ function getPDF(type, params = {type: "all"})
 }
 
 function switchTo(id) {
-    let tab_ids = ['settings', 'judges', 'athletes', 'special_ranking', 'breaks', 'start_lists', 'lane_lists', 'results']
+    let tab_ids = ['settings', 'judges', 'athletes', 'registration', 'breaks', 'start_lists', 'lane_lists', 'results']
     for (let i = 0; i < tab_ids.length; i++) {
         let element = document.getElementById(tab_ids[i]);
         let button = document.getElementById(tab_ids[i] + "_button");
@@ -1580,33 +1581,40 @@ function populateAthletes(data) {
 
 function populateSpecialRanking(data) {
     // show special_ranking header always
-    let special_ranking_table = document.getElementById('special_ranking_table');
-    special_ranking_table.innerHTML = `
+    let special_ranking_name = $('#special_ranking_name').val();
+    let registration_table = `
         <tr>
             <td>Last name</td>
             <td>First name</td>
             <td>Gender</td>
             <td>Country</td>
-            <td>Active</td>
+            <td>${special_ranking_name}</td>
+            <td>Paid</td>
+            <td>Medical</td>
+            <td>Registered</td>
         </tr>
     `;
     if (data.hasOwnProperty("athletes")) {
         let athletes = data.athletes;
         for (let i = 0; i < athletes.length; i++) {
-            let chkd_str = "";
-            if (athletes[i].hasOwnProperty("special_ranking") && athletes[i].special_ranking)
-                chkd_str = "checked";
-            special_ranking_table.innerHTML += `
+            let checked = ['special_ranking', 'paid', 'medical_checked', 'registered'];
+            registration_table += `
                 <tr>
                     <td>${athletes[i].last_name}</td>
                     <td>${athletes[i].first_name}</td>
                     <td>${athletes[i].gender}</td>
-                    <td>${athletes[i].country}</td>
-                    <td><input type="checkbox" id="nc_cb_${athletes[i].id}" name="${athletes[i].id}" value="true" class="special_ranking_checkbox" ${chkd_str}/></td>
-                </tr>
-            `;
+                    <td>${athletes[i].country}</td>`;
+            for (let j = 0; j < checked.length; j++) {
+                let c = "";
+                if (athletes[i].hasOwnProperty(checked[j]) && athletes[i][checked[j]])
+                    c = "checked";
+                registration_table += `
+                    <td><input type="checkbox" id="${checked[j].replace('_', '')}_cb_${athletes[i].id}" name="${athletes[i].id}" value="true" class="registration_checkbox" ${c}/></td>`;
+            }
+            registration_table += "</tr>";
         }
     }
+    $('#registration_table').html(registration_table);
 }
 
 function setOTs(data)
@@ -1903,6 +1911,10 @@ function loadCompetition(comp_id) {
             console.log(data.status_msg);
             // Update clock link
             $('#clock_button').children()[0].href = "clock/" + comp_id + "/0";
+            if ('special_ranking_name' in data)
+            {
+                $('#special_ranking_name').val(data.special_ranking_name);
+            }
             populateSpecialRanking(data);
             populateAthletes(data);
             populateJudges(data);
@@ -1914,11 +1926,6 @@ function loadCompetition(comp_id) {
                 if ($('#country_select option:contains(' + data.selected_country + ')').length) {
                     $('#country_select').val(data.selected_country);
                 }
-            }
-            if ('special_ranking_name' in data)
-            {
-                $('#special_ranking_name').val(data.special_ranking_name);
-                $('#special_ranking_button').children().text(data.special_ranking_name);
             }
             if ("lane_style" in data && data.lane_style == "alphabetic") {
                 $('#alphabetic_radio').prop('checked', true);
