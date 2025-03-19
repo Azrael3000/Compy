@@ -248,6 +248,60 @@ function init(judge_hash, judge_id, comp_id, blocks, federation) {
 
 $(document).ready(function() {
 
+    $('body').keydown(function(e) {
+        if (_menu.s_id == null)
+            return true;
+        // tab
+        if (e.which == 9) {
+            if ($('#result_info').is(':visible')) {
+                navAction("edit_button");
+                return false;
+            }
+            if ($('#prev').is(':visible') && e.shiftKey) {
+                navAction("prev");
+                return false;
+            }
+            if ($('#next').is(':visible')) {
+                navAction("next");
+                return false;
+            }
+        }
+        // ctrl + enter
+        if (e.which == 13 && e.ctrlKey) {
+            if ($('#ok').is(':visible')) {
+                navAction("ok");
+                return false;
+            }
+            if ($('#save').is(':visible')) {
+                doSave();
+                return false;
+            }
+        }
+        // cards: w y r keys
+        if ($('#card_entry').is(':visible')) {
+            if (e.which == 87 || e.which == 89 || e.which == 82) {
+                keyCard = {87: 'white', 89: 'yellow', 82: 'red'};
+                let card = '#card_' + keyCard[e.which];
+                $('.card.selector').removeClass("highlight");
+                $(card).addClass('highlight');
+                _menu.edited = true;
+                return false;
+            }
+        }
+        if ($('#result_info').is(':visible')) {
+            // k for previous
+            if ($('#prev_athlete_btn').is(':visible') && e.which == 75) {
+                $('#prev_athlete_btn')[0].onclick();
+                return false;
+            }
+            // j for next
+            if ($('#next_athlete_btn').is(':visible') && e.which == 74) {
+                $('#next_athlete_btn')[0].onclick();
+                return false;
+            }
+        }
+    });
+
     $('#content').on("click", '.day_menu', function() {
         _menu.day = this.id.split('_')[1];
         showBlockMenu(_menu.day);
@@ -289,7 +343,7 @@ $(document).ready(function() {
         showLaneMenu(_menu.day, _menu.block, _menu.lane);
     });
     $('#content').on("click", '#result_back', function() {
-        saveContinue(function() { showAthleteMenu(_lane_list); });
+        safeContinue(function() { showAthleteMenu(_lane_list); });
     });
     $('#content').on('change', 'input', function() { _menu.edited = true; });
     $('#content').on("click", '#cancel', function() {
@@ -308,92 +362,10 @@ $(document).ready(function() {
         }
     });
     $('#content').on("click", '.nav', function() {
-        let rp_on = $('#rp_entry').is(':visible');
-        let card_on = $('#card_entry').is(':visible');
-        let penalty_on = $('#penalty_entry').is(':visible');
-        let remarks_on = $('#remarks_entry').is(':visible');
-        let judge_remarks_on = $('#judge_remarks_entry').is(':visible');
-        let is_next = this.id == "next";
-        let is_prev = this.id == "prev";
-        let is_ok = this.id == "ok";
-        $('#result_entry').show();
-        $('#result_info').hide();
-        //$('#rp_entry').hide();
-        //$('#card_entry').hide();
-        //$('#penalty_entry').hide();
-        //$('#remarks_entry').hide();
-        //$('#judge_remarks_entry').hide();
-        $('#next').show();
-        $('#next').removeClass('shift50');
-        $('#cancel').show();
-        $('#prev').show();
-        $('#save').hide();
-        if (rp_on)
-            saveRP();
-        if (card_on)
-            saveCard();
-        if (penalty_on)
-            savePenalty();
-        if (remarks_on)
-            saveRemarks();
-        if (judge_remarks_on)
-            saveJudgeRemarks();
-        $('#result_input').empty();
-        if ((is_prev && card_on) ||
-            this.id == "edit_button" ||
-            this.id == "info_RP") {
-            showRP();
-        }
-        else if ((is_next && rp_on) ||
-                 (is_prev && penalty_on) ||
-                  this.id == "info_card") {
-            showCard();
-        }
-        else if ((is_next && card_on) ||
-                 (is_prev && remarks_on) ||
-                  this.id=="info_penalty") {
-            showPenalty(is_next);
-        }
-        else if ((is_next && penalty_on) ||
-                 (is_prev && judge_remarks_on) ||
-                  this.id == "info_remarks") {
-            showRemarks();
-        }
-        else if ((is_next && remarks_on) ||
-                 (is_prev && penalty_on) ||
-                  this.id == "info_judge_remarks") {
-            showJudgeRemarks();
-        } else if (is_ok) {
-            $('#result_info').show();
-            $('#result_entry').hide();
-            if (_menu.edited) {
-                $('#cancel').show();
-                $('#save').show();
-            } else {
-                $('#cancel').hide();
-                $('#save').hide();
-            }
-        }
+        navAction(this.id);
     });
     $('#content').on("click", "#save", function() {
-        data = {id: _menu.s_id,
-                rp: $('#info_RP').children('.info').html(),
-                penalty: $('#info_penalty').children('.info').html(),
-                card: $('#card_title').html(),
-                remarks: $('#info_remarks').children('.info_piece').children('.info').html(),
-                judge_remarks: $('#info_judge_remarks').children('.info_piece').children('.info').html()};
-        $.ajax({
-            type: "PUT",
-            url: "/result",
-            data: JSON.stringify(data),
-            contentType: "application/json",
-            dataType: "json",
-            success: function(data) {
-                console.log(data.status_msg);
-                if ('Name' in data)
-                    showResultEntryMask(data);
-            }
-        });
+        doSave();
     });
     $('#content').on("click", ".card.selector", function() {
         $('.card.selector').removeClass("highlight");
@@ -410,7 +382,93 @@ $(document).ready(function() {
     });
 });
 
+function navAction(id) {
+    let rp_on = $('#rp_entry').is(':visible');
+    let card_on = $('#card_entry').is(':visible');
+    let penalty_on = $('#penalty_entry').is(':visible');
+    let remarks_on = $('#remarks_entry').is(':visible');
+    let judge_remarks_on = $('#judge_remarks_entry').is(':visible');
+    let is_next = id == "next";
+    let is_prev = id == "prev";
+    let is_ok = id == "ok";
+    $('#result_entry').show();
+    $('#result_info').hide();
+    $('#next').show();
+    $('#next').removeClass('shift50');
+    $('#cancel').show();
+    $('#prev').show();
+    $('#save').hide();
+    if (rp_on)
+        saveRP();
+    if (card_on)
+        saveCard();
+    if (penalty_on)
+        savePenalty();
+    if (remarks_on)
+        saveRemarks();
+    if (judge_remarks_on)
+        saveJudgeRemarks();
+    $('#result_input').empty();
+    if ((is_prev && card_on) ||
+        id == "edit_button" ||
+        id == "info_RP") {
+        showRP();
+    }
+    else if ((is_next && rp_on) ||
+             (is_prev && penalty_on) ||
+              id == "info_card") {
+        showCard();
+    }
+    else if ((is_next && card_on) ||
+             (is_prev && remarks_on) ||
+              id=="info_penalty") {
+        showPenalty(is_next);
+    }
+    else if ((is_next && penalty_on) ||
+             (is_prev && judge_remarks_on) ||
+              id == "info_remarks") {
+        showRemarks();
+    }
+    else if ((is_next && remarks_on) ||
+             (is_prev && penalty_on) ||
+              id == "info_judge_remarks") {
+        showJudgeRemarks();
+    } else if (is_ok) {
+        $('#result_info').show();
+        $('#result_entry').hide();
+        if (_menu.edited) {
+            $('#cancel').show();
+            $('#save').show();
+        } else {
+            $('#cancel').hide();
+            $('#save').hide();
+        }
+    }
+}
+
+function doSave() {
+    data = {id: _menu.s_id,
+            rp: $('#info_RP').children('.info').html(),
+            penalty: $('#info_penalty').children('.info').html(),
+            card: $('#card_title').html(),
+            remarks: $('#info_remarks').children('.info_piece').children('.info').html(),
+            judge_remarks: $('#info_judge_remarks').children('.info_piece').children('.info').html()};
+    $.ajax({
+        type: "PUT",
+        url: "/result",
+        data: JSON.stringify(data),
+        contentType: "application/json",
+        dataType: "json",
+        success: function(data) {
+            console.log(data.status_msg);
+            if ('Name' in data)
+                showResultEntryMask(data);
+        }
+    });
+}
+
 function saveRP() {
+    $('#rp_input').blur();
     $('#info_RP').children('.info').html($('#rp_input').val());
 }
 
@@ -429,7 +487,8 @@ function showRP() {
     let old_rp = $('#info_RP').children('.info').html();
     if (dis == "STA")
         old_rp = old_rp.padStart(5, "0");
-    $('#rp_input').val(old_rp);
+    $('#rp_input').attr("value", old_rp);
+    $('#rp_input').focus();
 }
 
 function saveCard() {
@@ -505,6 +564,7 @@ function showPenalty(is_next) {
             $('#under_ap_penalty').empty();
         $('#penalty_input').prop('disabled', false);
         $('#penalty_input').val(penalty);
+        $('#penalty_input').focus();
     }
 }
 
@@ -550,6 +610,7 @@ function showJudgeRemarks() {
             <span class="info_head">Judge Remarks</span><br>
             <input type="text" id="judge_remarks_input" value="${jr}"/>
         </div>`);
+    $('#judge_remarks_input').focus();
     $('#next').hide();
 }
 
@@ -645,7 +706,7 @@ function showAthleteMenu(lane_list) {
     $('#content').html(menu);
 }
 
-function saveContinue(next_action) {
+function safeContinue(next_action) {
     if (_menu.edited) {
         $('#content').hide();
         $('#continue').show();
@@ -683,10 +744,10 @@ function showResultEntryMask(data) {
     let prev_athlete_btn = "";
     let next_athlete_btn = "";
     if (iCur > 0) {
-        prev_athlete_btn = `<button onclick="saveContinue(function() { showAthlete(${_lane_list[iCur-1]['s_id']}); })" type="button">Previous athlete</button><br>`;
+        prev_athlete_btn = `<button id="prev_athlete_btn" onclick="safeContinue(function() { showAthlete(${_lane_list[iCur-1]['s_id']}); })" type="button">Previous athlete</button><br>`;
     }
     if (iCur < _lane_list.length-1) {
-        next_athlete_btn = `<button onclick="saveContinue(function() { showAthlete(${_lane_list[iCur+1]['s_id']}); })" type="button">Next athlete</button>`;
+        next_athlete_btn = `<button id="next_athlete_btn" onclick="safeContinue(function() { showAthlete(${_lane_list[iCur+1]['s_id']}); })" type="button">Next athlete</button>`;
     }
     let card = "";
     if ('Card' in data && isValidCard(data.Card, _federation))
