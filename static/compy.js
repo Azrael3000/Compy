@@ -291,6 +291,42 @@ function changeTime() {
     schedulePlay();
 }
 
+function testAutoPlay() {
+    // Attempt to play the audio immediately
+    if (!_autoplay_enabled)
+    {
+        // TODO This function does not work in chrome as on the second call it suceeds, even though it still cannot play
+        //      Maybe try by spawning a worker thread
+        //      Similarly the setTimeouts might not be called in an accurate manner if the tab is in the background
+        //      which might kill the OT timing
+        _audioElement.play().then(function() {
+                _autoplay_enabled = true;
+                // Add a button to stop the audio
+                $('#stop_countdown_div').html('<button id="stop_countdown_btn">Stop Countdown</button>');
+                $('#test_countdown_div').html('<button id="test_countdown_btn">Test Countdown</button>');
+                $('#stop_countdown_btn').prop("disabled", true);
+                $('#stop_countdown_btn').click(function() {
+                    stopAudio();
+                });
+                $('#test_countdown_btn').click(function() {
+                    testCountdown();
+                });
+            }).catch(function(error) {
+                _autoplay_enabled = false;
+                // If playback fails because of autoplay restrictions, show a prompt to the user
+                if (error.name === 'NotAllowedError') {
+                    // Prompt the user to enable audio
+                    $('#stop_countdown_div').html('<b>Audio autoplay is disabled. Countdown will not be played!</b><button onclick="testAutoPlay()">Try again</button>');
+                } else {
+                    // Handle other errors
+                    console.error('An error occurred while attempting to play audio:', error);
+                }
+            });
+        _audioElement.pause();
+        _audioElement.currentTime =  0;
+    }
+}
+
 $(document).ready(function() {
 
     // Start scheduling the plays
@@ -303,39 +339,6 @@ $(document).ready(function() {
     };
 
     updateTime();
-
-    function testAutoPlay() {
-        // Attempt to play the audio immediately
-        if (!_autoplay_enabled)
-        {
-            _audioElement.play().then(function() {
-                    _autoplay_enabled = true;
-                    // Add a button to stop the audio
-                    $('#stop_countdown_div').html('<button id="stop_countdown_btn">Stop Countdown</button>');
-                    $('#test_countdown_div').html('<button id="test_countdown_btn">Test Countdown</button>');
-                    $('#stop_countdown_btn').prop("disabled", true);
-                    $('#stop_countdown_btn').click(function() {
-                        stopAudio();
-                    });
-                    $('#test_countdown_btn').click(function() {
-                        testCountdown();
-                    });
-                }).catch(function(error) {
-                    _autoplay_enabled = false;
-                    // If playback fails because of autoplay restrictions, show a prompt to the user
-                    if (error.name === 'NotAllowedError') {
-                        // Prompt the user to enable audio
-                        $('#stop_countdown_div').html('<b>Audio autoplay is disabled. Countdown will not be played!</b>');
-                    } else {
-                        // Handle other errors
-                        console.error('An error occurred while attempting to play audio:', error);
-                    }
-                    setTimeout(testAutoPlay(), 1000);
-                });
-            _audioElement.pause();
-            _audioElement.currentTime =  0;
-        }
-    }
 
     testAutoPlay();
 
