@@ -119,7 +119,8 @@ class CompyData:
     @property
     def version(self):
         if self.version_ is None:
-            with open('VERSION', 'r') as f:
+            base_path = os.path.dirname(os.path.realpath(__file__))
+            with open(os.path.join(base_path, 'VERSION'), 'r') as f:
                 self.version_ = str(f.read().strip())
         return self.version_
 
