@@ -7,7 +7,7 @@ var REMARKS = {
     'cmas': {
         'WHITE': ['-'],
         'YELLOW': ['-'],
-        'RED': ['DQ early start', 'DQOTHER', 'DQ SP', 'DQ SP out', 'DQ surface BO', 'DQ underwater BO']
+        'RED': ['DQ early start', 'DQOTHER', 'DQ SP', 'DQ SP out', 'DQ surface BO', 'DQ underwater BO', 'DNS']
     }
 };
 
