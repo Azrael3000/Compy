@@ -319,12 +319,12 @@ class CompyData:
         self.save()
 
         ap_lambda = lambda x, y, d, self: None if math.isnan(x) else (int(x)*60+float(y) if d=="STA" else float(x))
+        self.db_.execute('''DELETE FROM block WHERE competition_id == ?''',
+                         self.id_)
         for day in self.getDaysExcel(self.start_date, self.end_date):
             df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
             blocks = {}
             day_db = day.replace('-', '')
-            self.db_.execute('''DELETE FROM block WHERE day == ? AND competition_id == ?''',
-                             (day_db, self.id_))
             for i,r in df.iterrows():
                 dis = r['Discipline']
                 if not dis in blocks.keys():
