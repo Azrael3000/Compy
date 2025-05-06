@@ -319,8 +319,20 @@ class CompyData:
         self.save()
 
         ap_lambda = lambda x, y, d, self: None if math.isnan(x) else (int(x)*60+float(y) if d=="STA" else float(x))
-        for day in self.getDays():
+        for day in self.getDaysExcel(self.start_date, self.end_date):
             df = pd.read_excel(self.comp_file_, sheet_name=day, skiprows=1)
+            blocks = {}
+            day_db = day.replace('-', '')
+            self.db_.execute('''DELETE FROM block WHERE day == ? AND competition_id == ?''',
+                             (day_db, self.id_))
+            for i,r in df.iterrows():
+                dis = r['Discipline']
+                if not dis in blocks.keys():
+                    self.db_.execute('''INSERT INTO block
+                                        (competition_id, day, disciplines)
+                                        VALUES (?, ?, ?)''',
+                                     (self.id_, day_db, self.disciplineListToInt([dis])))
+                    blocks[dis] = self.db_.last_index
             for i,r in df.iterrows():
                 aida_id = r['Diver Id']
                 ca_id = self.db_.execute('''SELECT competition_athlete.id FROM competition_athlete
@@ -341,17 +353,19 @@ class CompyData:
                     rp = float('nan')
                     card = "nan"
                     penalty = "nan"
+                block = blocks[dis]
+                print(block, dis, blocks)
                 if rp is not None:
                     self.db_.execute('''INSERT INTO start
                                         (competition_athlete_id, discipline, lane, OT, AP, day,
-                                         rp, card, penalty, remarks)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                                     (ca_id[0][0], dis, lane, u.convTime(ot), ap, u.convDay(day), rp, card, penalty, remarks))
+                                         rp, card, penalty, remarks, block)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                     (ca_id[0][0], dis, lane, u.convTime(ot), ap, u.convDay(day), rp, card, penalty, remarks, block))
                 else:
                     self.db_.execute('''INSERT INTO start
-                                        (competition_athlete_id, discipline, lane, OT, AP, day)
-                                        VALUES (?, ?, ?, ?, ?, ?)''',
-                                     (ca_id[0][0], dis, lane, u.convTime(ot), ap, u.convDay(day)))
+                                        (competition_athlete_id, discipline, lane, OT, AP, day, block)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                                     (ca_id[0][0], dis, lane, u.convTime(ot), ap, u.convDay(day), block))
 
     def getNationalRecordsAida(self):
         empty_req = requests.post('https://www.aidainternational.org/public_pages/all_national_records.php', data={})
@@ -500,6 +514,16 @@ class CompyData:
                     self.disciplines_ |= d[0]
             #self.getResultPDF('all', 'all', 'all', False, True)
             return self.name_
+
+    def getDaysExcel(self, start_date, end_date):
+        if start_date is None:
+            return
+        days = []
+        d0 = datetime.strptime(start_date, '%Y-%m-%d')
+        d1 = datetime.strptime(end_date, '%Y-%m-%d')
+        delta = d1 - d0
+        for i in range(delta.days + 1):
+            yield (d0 + timedelta(days=i)).strftime('%Y-%m-%d')
 
     def getDays(self):
         days = self.db_.execute('''SELECT day FROM block WHERE competition_id==?''', self.id_)
@@ -1237,7 +1261,10 @@ class CompyData:
             if discipline == "STA":
                 return int(rp)*0.2 - penalty
             elif discipline in ["DNF", "DYNB", "DYN"]:
-                return int(rp)*0.5 - penalty
+                if self.comp_type == "aida":
+                    return int(rp)*0.5 - penalty
+                else:
+                    return int(rp*2.)*0.25 - penalty
             else:
                 return int(rp) - penalty
 
@@ -1293,8 +1320,8 @@ class CompyData:
                 result_df.drop("AP_float", axis=1, inplace=True)
             if "OT" in result_df.columns.tolist():
                 result_df.drop("OT", axis=1, inplace=True)
-            if "JudgeRemarks" in result_df.columns.tolist():
-                result_df.drop("JudgeRemarks", axis=1, inplace=True)
+            if "Judge Remarks" in result_df.columns.tolist():
+                result_df.drop("Judge Remarks", axis=1, inplace=True)
             if top3:
                 gender_str = "Female" if g == "F" else "Male"
                 html_string += "<h3>" + gender_str + "</h3>\n"

@@ -38,7 +38,7 @@ var _sl_edited = false;
 var _sl_athletes = null;
 var _ots = []; // date in YYYY:MM:DD:HH:MM:SS
 var _autoplay_enabled = false;
-let _audioElement = new Audio('static/countdown_aida.wav'); // Set the path to your audio file
+let _audioElement = null;
 let _audioTimeout = null;
 
 $(window).on('load', function() {
@@ -59,7 +59,7 @@ $(window).on('load', function() {
     $('#country_chooser').hide();
     $('#overlay_blur').hide();
     initSubmenus({}, true);
-    loadCompetition(1);
+    loadCompetition(1, true)
 });
 
 function generateStartList(startlist) {
@@ -291,40 +291,53 @@ function changeTime() {
     schedulePlay();
 }
 
+function playAudio(event) {
+    // TODO This function does not work in chrome as on the second call it suceeds, even though it still cannot play
+    //      Maybe try by spawning a worker thread
+    //      Similarly the setTimeouts might not be called in an accurate manner if the tab is in the background
+    //      which might kill the OT timing
+    _audioElement.play().then(function() {
+            _autoplay_enabled = true;
+            // Add a button to stop the audio
+            $('#stop_countdown_div').html('<button id="stop_countdown_btn">Stop Countdown</button>');
+            $('#test_countdown_div').html('<button id="test_countdown_btn">Test Countdown</button>');
+            $('#stop_countdown_btn').prop("disabled", true);
+            $('#stop_countdown_btn').click(function() {
+                stopAudio();
+            });
+            $('#test_countdown_btn').click(function() {
+                testCountdown();
+            });
+        }).catch(function(error) {
+            _autoplay_enabled = false;
+            // If playback fails because of autoplay restrictions, show a prompt to the user
+            if (error.name === 'NotAllowedError') {
+                // Prompt the user to enable audio
+                $('#stop_countdown_div').html('<b>Audio autoplay is disabled. Countdown will not be played!</b><button onclick="testAutoPlay()">Try again</button>');
+            } else {
+                // Handle other errors
+                console.error('An error occurred while attempting to play audio:', error);
+            }
+        });
+    _audioElement.pause();
+    _audioElement.currentTime =  0;
+    _audioElement.removeEventListener("canplaythrough", playAudio);
+}
+
 function testAutoPlay() {
     // Attempt to play the audio immediately
-    if (!_autoplay_enabled)
+    if (!_autoplay_enabled && _audioElement != null)
     {
-        // TODO This function does not work in chrome as on the second call it suceeds, even though it still cannot play
-        //      Maybe try by spawning a worker thread
-        //      Similarly the setTimeouts might not be called in an accurate manner if the tab is in the background
-        //      which might kill the OT timing
-        _audioElement.play().then(function() {
-                _autoplay_enabled = true;
-                // Add a button to stop the audio
-                $('#stop_countdown_div').html('<button id="stop_countdown_btn">Stop Countdown</button>');
-                $('#test_countdown_div').html('<button id="test_countdown_btn">Test Countdown</button>');
-                $('#stop_countdown_btn').prop("disabled", true);
-                $('#stop_countdown_btn').click(function() {
-                    stopAudio();
-                });
-                $('#test_countdown_btn').click(function() {
-                    testCountdown();
-                });
-            }).catch(function(error) {
-                _autoplay_enabled = false;
-                // If playback fails because of autoplay restrictions, show a prompt to the user
-                if (error.name === 'NotAllowedError') {
-                    // Prompt the user to enable audio
-                    $('#stop_countdown_div').html('<b>Audio autoplay is disabled. Countdown will not be played!</b><button onclick="testAutoPlay()">Try again</button>');
-                } else {
-                    // Handle other errors
-                    console.error('An error occurred while attempting to play audio:', error);
-                }
-            });
-        _audioElement.pause();
-        _audioElement.currentTime =  0;
+        _audioElement.addEventListener("canplaythrough", playAudio);
     }
+}
+
+// Function to stop the audio and reset the playhead
+function stopAudio() {
+    $('#stop_countdown_btn').prop("disabled", true);
+    _audioElement.pause();
+    _audioElement.currentTime =  0;
+    schedulePlay();
 }
 
 $(document).ready(function() {
@@ -339,16 +352,6 @@ $(document).ready(function() {
     };
 
     updateTime();
-
-    testAutoPlay();
-
-    // Function to stop the audio and reset the playhead
-    function stopAudio() {
-        $('#stop_countdown_btn').prop("disabled", true);
-        _audioElement.pause();
-        _audioElement.currentTime =  0;
-        schedulePlay();
-    }
 
     $('input[name=seconds_adjust]').change(function() { changeTime(); });
     $('input[name=deciseconds_adjust]').change(function() { changeTime(); });
@@ -597,7 +600,7 @@ $(document).ready(function() {
     });
     $("#competition_list").delegate(".load_comp_button", "click", function() {
         let comp_id = this.id.substring(5); // button id is equal to "load_" + comp id
-        loadCompetition(comp_id);
+        loadCompetition(comp_id, false);
     });
     $("#sl_discipline_menu").on("click", "a", function() {
         let id_arr = this.id.split('_'); // button id is equal to "sl_" + day + "_" + block
@@ -1901,7 +1904,7 @@ function fillOtsForDebuggin() {
     //_ots.push(formatTime(c2, false, true));
 }
 
-function loadCompetition(comp_id) {
+function loadCompetition(comp_id, testAutoPlayExecute) {
     let data = {comp_id: comp_id};
     $.ajax({
         type: "POST",
@@ -1936,7 +1939,8 @@ function loadCompetition(comp_id) {
                 $('#numeric_radio').prop('checked', true);
             }
             if ("comp_type" in data) {
-                _audioElement.remove();
+                if (_audioElement != null)
+                    _audioElement.remove();
                 if (data.comp_type == "aida") {
                     $('#aida_radio').prop('checked', true);
                     _audioElement = new Audio('static/countdown_aida.wav');
@@ -1944,6 +1948,8 @@ function loadCompetition(comp_id) {
                     $('#cmas_radio').prop('checked', true);
                     _audioElement = new Audio('static/countdown_cmas.wav');
                 }
+                if (testAutoPlayExecute)
+                    testAutoPlay();
             }
             setOTs(data);
         }
