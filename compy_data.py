@@ -1549,6 +1549,9 @@ class CompyData:
                  "medical_checked": a[9], "registered": a[10]})
 
     def addAthlete(self, first_name, last_name, gender, country, club, aida_id):
+        country = self.cleanCountry(country)
+        if country is None:
+            return -1
         a_id = self.db_.execute(
             "SELECT id FROM athlete WHERE first_name == ? AND last_name == ? AND country == ?",
             (first_name, last_name, country))
@@ -1591,6 +1594,13 @@ class CompyData:
                 if dis_in_block is None or (dis_in_block[0][0] & 1<<dis_i) == 0:
                     return None
             return dis
+
+    def cleanCountry(self, country):
+        country = regex.compile('[A-Z][A-Z][A-Z]$').match(str(country).strip())
+        if country is None:
+            return None
+        else:
+            return country[0]
 
     def cleanTime(self, time):
         ctime = regex.compile('[0-5]?\\d:[0-5]\\d$').match(str(time))
@@ -1901,7 +1911,8 @@ class CompyData:
                     LIMIT 1)
                  ORDER BY s.lane
                  LIMIT 4'''.format(comp, order, order)
-        now = datetime.now() + timedelta(minutes=2)
+        min_shift = 3 if self.comp_type == "cmas" else 2
+        now = datetime.now() + timedelta(minutes=min_shift)
         today = now.year*10000 + now.month*100 + now.day
         time = now.hour*100 + now.minute
         db_out = self.db_.execute(cmd, (self.id_, today*10000 + time))

@@ -659,6 +659,9 @@ class CompyFlask:
         elif status == 1:
             data = {"status": "error", "status_msg": "Athlete already exists"}
             return data, 200
+        else:
+            logging.info("Could not add athlete due to invalid arguments")
+            return {}, 400
 
     def getAthletes(self):
         data = {"status": "success", "status_msg": "Successfully received athlete data"}
