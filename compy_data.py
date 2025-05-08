@@ -1178,8 +1178,11 @@ class CompyData:
                 cmd += " AND a.country = ?"
                 args += (country, )
             if self.comp_type == "cmas" and country == self.special_ranking_name:
-                cmd += " AND a.country = ? AND ca.special_ranking"
-                args += (self.selected_country, )
+                if self.selected_country == "none":
+                    cmd += " AND ca.special_ranking"
+                else:
+                    cmd += " AND a.country = ? AND ca.special_ranking"
+                    args += (self.selected_country, )
             db_out = self.db_.execute(cmd, args)
 
             if db_out is None:
