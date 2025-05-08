@@ -513,6 +513,8 @@ function showCard() {
             <span id="card_red" class="card red selector">RED</span><br>
         </div>`);
     let card = $('#card_title').html();
+    if (card == undefined)
+        card = "WHITE";
     if (!isValidCard(card, _federation))
         return;
     $('.card.selector').removeClass("highlight");
