@@ -1193,6 +1193,8 @@ $(document).ready(function() {
         let rcw_checked = card == "WHITE" ? "checked" : "";
         let rcy_checked = card == "YELLOW" ? "checked" : "";
         let rcr_checked = card == "RED" ? "checked" : "";
+        if (_cur_menu.discipline == "STA")
+            rp = timeToMinutes(rp);
         let content = generateResultContent("Edit", name, rp, penalty, penalty_not_reached_ap_str, rcw_checked, rcy_checked, rcr_checked, judge_remark);
         _sl_athletes = id;
         showOverlayBox(400, 800, content);

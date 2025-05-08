@@ -485,6 +485,8 @@ function showRP() {
     $('#rp_input').get(0).type = input['type'];
     $('#rp_input').get(0).step = input['step'];
     let old_rp = $('#info_RP').children('.info').html();
+    if (old_rp == "")
+        old_rp = $('#info_AP').children('.info').html();
     if (dis == "STA")
         old_rp = old_rp.padStart(5, "0");
     $('#rp_input').attr("value", old_rp);
