@@ -1659,13 +1659,19 @@ class CompyData:
             return card
         return None
 
+    def cleanPenalty(self, penalty):
+        try:
+            return float(penalty)
+        except:
+            return 0.
+
     def getMinFromTime(self, time_str):
         h_m = time_str.split(':')
         return int(h_m[0])*60 + int(h_m[1])
 
     def updateResult(self, s_id, rp, penalty, card, remarks, judge_remarks):
         s_id = int(s_id)
-        penalty = float(penalty)
+        penalty = self.cleanPenalty(penalty)
         card = self.cleanCard(card)
         if card is None:
             return 1
