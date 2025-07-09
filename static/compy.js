@@ -818,6 +818,21 @@ $(document).ready(function() {
             }
         });
     });
+    $('#publish_results').change(function() {
+        let data = {
+            publish_results: $('#publish_results').prop('checked')
+        };
+        $.ajax({
+            url: '/publish_results',
+            data: JSON.stringify(data),
+            contentType: 'application/json',
+            dataType: 'json',
+            type: 'UPDATE',
+            success: function(data) {
+                console.log(data.status_msg);
+            }
+        });
+    });
     $('#country_select').change(function() {
         selected_country = $(this).find("option:selected").attr('value');
         let data = {
@@ -1952,6 +1967,11 @@ function loadCompetition(comp_id, testAutoPlayExecute) {
                 }
                 if (testAutoPlayExecute)
                     testAutoPlay();
+            }
+            if ("publish_results" in data && data["publish_results"]) {
+                $('#publish_results').prop('checked', true);
+            } else {
+                $('#publish_results').prop('checked', false);
             }
             setOTs(data);
         }

@@ -13,5 +13,6 @@ CREATE TABLE competition (
   sponsor_img TEXT,
   selected_country TEXT,
   disciplines INTEGER NOT NULL,
-  special_ranking_name TEXT
+  special_ranking_name TEXT,
+  publish_result INTEGER NOT NULL DEFAULT 0
 );

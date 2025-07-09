@@ -102,6 +102,7 @@ class CompyData:
         self.sponsor_img_ = None
         self.disciplines_ = 0
         self.selected_country_ = None
+        self.publish_results_ = False
 
         self.NR = namedtuple("NR", ["federation", "country", "cls", "gender", "discipline"])
 
@@ -131,6 +132,10 @@ class CompyData:
     @property
     def special_ranking_name(self):
         return self.special_ranking_name_
+
+    @property
+    def publish_results(self):
+        return self.publish_results_
 
     @property
     def config(self):
@@ -488,7 +493,7 @@ class CompyData:
         #TODO on load find self.id_ if not, reset to None
         load_data = self.db_.execute('''SELECT name, version, lane_style, comp_type, comp_file,
                                         start_date, end_date, sponsor_img, selected_country,
-                                        special_ranking_name, disciplines
+                                        special_ranking_name, publish_results
                                         FROM competition WHERE id=?''',
                                      comp_id)
         if load_data is None:
@@ -507,6 +512,7 @@ class CompyData:
             self.sponsor_img_ = {"data": comp_data[7], "aspect_ratio": 1} # TODO
             self.selected_country_ = comp_data[8]
             self.special_ranking_name_ = comp_data[9]
+            self.publish_results_ = comp_data[10]
             dis = self.db_.execute('SELECT disciplines FROM block WHERE competition_id==?', (self.id_))
             self.disciplines_ = 0
             if dis is not None:
@@ -1931,3 +1937,10 @@ class CompyData:
                      'lane': self.laneStyleConverter(d[4]),
                      'dns': d[5] == "DNS"}
                      for d in db_out]
+
+    def updatePublishResults(self, publish_results):
+        # clean received data
+        publish_results = 1 if publish_results == True else 0
+        self.db_.execute("UPDATE competition SET publish_results=?  WHERE id==?", (publish_results, self.id_))
+        self.publish_results_ = publish_results == 1
+        return 0

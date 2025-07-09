@@ -181,6 +181,10 @@ class CompyFlask:
         def clock(comp_id, current):
             return self.getClock(comp_id, current)
 
+        @app.route('/publish_results', methods=['UPDATE'])
+        def publish_results():
+            return self.updatePublishResults()
+
         if start_flask:
             app.run()
 
@@ -283,6 +287,7 @@ class CompyFlask:
         data["lane_style"] = self.data_.lane_style
         data["comp_type"] = self.data_.comp_type
         data["selected_country"] = self.data_.selected_country
+        data["publish_results"] = self.data_.publish_results
         data["status"] = "success"
         data["status_msg"] = "Loaded competition with name " + comp_name
         logging.debug("Loaded comp " + comp_name + " with " + str(self.data_.number_of_athletes) + " athletes")
@@ -828,3 +833,20 @@ class CompyFlask:
                    "all_countries": all_countries,
                    "record_sta": None}
         return render_template('template.html', **content)
+
+    def updatePublishResults(self):
+        content = request.json
+        if False in [key in content for key in ['publish_results']]:
+            logging.info("Could not update publish_results due to missing data")
+            return {}, 400
+        publish_results = content['publish_results']
+        if publish_results is None:
+            logging.info("Could not update publish_results with incomplete information")
+            return {}, 400
+        ret = self.data_.updatePublishResults(publish_results)
+        data = None
+        if ret == 0:
+            data = {"status": "success", "status_msg": "Successfully updated publish_results"}
+            return data, 200
+        elif ret == 1:
+            return {}, 500
