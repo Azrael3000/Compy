@@ -1,0 +1,120 @@
+:root {
+    --dark: #002F6C;
+    --medium: #005B96;
+    --light: #00A4CC;
+    --highlight: #AEECEF;
+    --white: #F0F8FF;
+    --card-yellow: #ECDE41;
+    --card-red: #F83741;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background-image: linear-gradient(var(--medium), var(--dark));
+    height: 100%;
+    font-family: "sans";
+    background-attachment: fixed;
+    color: var(--medium);
+}
+
+#compy_title {
+    width: 95vw;
+    font-size: 2vh;
+    color: var(--medium);
+    background: var(--dark);
+    padding-left: 5vw;
+}
+
+#header {
+    padding: 0vw 5vw;
+}
+
+#continue {
+    display: none;
+}
+
+#header #discipline, #header #gender, #header #country {
+    float: left;
+    width: 33%;
+}
+
+#header div, button {
+    border: 0.1vh solid var(--light);
+    background-color: var(--white);
+    color: var(--medium);
+    font-size: 3vh;
+    min-height: 5vh;
+    text-align: center;
+    line-height: 4vh;
+}
+
+#header div {
+    padding: 0 2%;
+}
+
+button {
+    width: 100%;
+    border-radius: 1.5vh;
+    margin-bottom: 3vh;
+}
+
+#header div:last-child {
+    border-radius: 0 0 1.5vh 1.5vh;
+    display: flex;
+}
+
+#header div div {
+    border: 0;
+    background: none;
+    word-break: break-word;
+    border-right: 0.1vh solid var(--light);
+}
+
+#header div div:last-child {
+    border-radius: 0;
+    border-right: 0;
+}
+
+#content {
+    padding: 3vw 5vw 3vw 5vw;
+}
+
+table {
+    width: 90vw;
+    border-spacing: 0 2vh;
+    margin-top: -2vh;
+    color: var(--dark);
+    font-size: 3vh;
+    line-height: 3.5vh;
+}
+
+th, td {
+    text-align: left;
+    padding: 2vw;
+    border: 0.1vh solid var(--light);
+    background-color: var(--white);
+}
+
+th:first-child, td:first-child {
+    border-top-left-radius: 1vh;
+    border-bottom-left-radius: 1vh;
+}
+
+th:last-child, td:last-child {
+    border-top-right-radius: 1vh;
+    border-bottom-right-radius: 1vh;
+}
+
+.error {
+    background-color: var(--white);
+    color: var(--card-red);
+}
+
+.YELLOW {
+    background-color: var(--card-yellow);
+}
+
+.RED {
+    background-color: var(--card-red);
+}

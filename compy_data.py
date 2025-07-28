@@ -1944,3 +1944,54 @@ class CompyData:
         self.db_.execute("UPDATE competition SET publish_results=?  WHERE id==?", (publish_results, self.id_))
         self.publish_results_ = publish_results == 1
         return 0
+
+    def getResultContent(self, comp_id):
+        content = {"version": self.version}
+        comp_id, comp_name = self.cleanCompIdPublished(comp_id)
+        # if no comp id is set get a list of all competitions
+        if comp_id is None:
+            db_out = self.db_.execute("SELECT id, name FROM competition WHERE publish_results==1")
+            if db_out is not None:
+                content['data'] = {'comp_list': [{'id': d[0], 'name': d[1]} for d in db_out]}
+        # if a comp id is set then get all disciplines and countries
+        else:
+            self.load(comp_id)
+            data = {}
+            data['disciplines'] = self.getDisciplines()
+            data['countries'] = self.getCountries(True)
+            data['comp_name'] = comp_name
+            data['comp_id'] = comp_id
+            content['data'] = data
+
+        return content
+
+    def cleanCompIdPublished(self, comp_id):
+        try:
+            comp_id = int(comp_id)
+            db_out = self.db_.execute("SELECT name FROM competition WHERE publish_results==1 AND id==?", comp_id)
+            if db_out is None:
+                return None, None
+            return comp_id, db_out[0][0]
+        except:
+            return None, None
+
+    def getResultList(self, comp_id, discipline_id, gender, country_id):
+        comp_id, comp_name = self.cleanCompIdPublished(comp_id)
+        try:
+            self.load(comp_id)
+            discipline_id = int(discipline_id)
+            country_id = int(country_id)
+            discipline = self.getDisciplines()[discipline_id]
+            country = self.getCountries(True)[country_id]
+            if not (gender == "Female" or gender == "Male"):
+                return None
+            gender = "F" if gender == "Female" else "M"
+            results, keys = self.getResult(discipline, gender, country)
+            value_key = 'RP' if 'RP' in keys else 'Points'
+            return {'results': [{'rank': r['Rank'],
+                                 'name': r['Name'],
+                                 'value': "DNS" if 'Remarks' in keys and r['Remarks'] == "DNS" else r[value_key],
+                                 'card': r['Card'] if 'Card' in keys else None
+                                } for r in results]}
+        except:
+            return None

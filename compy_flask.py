@@ -185,6 +185,14 @@ class CompyFlask:
         def publish_results():
             return self.updatePublishResults()
 
+        @app.route('/results', methods=['GET'])
+        def results():
+            return self.results()
+
+        @app.route('/results_list', methods=['GET'])
+        def resultsList():
+            return self.resultsList()
+
         if start_flask:
             app.run()
 
@@ -834,6 +842,11 @@ class CompyFlask:
                    "record_sta": None}
         return render_template('template.html', **content)
 
+    def results(self):
+        comp_id = request.args.get('comp_id')
+        content = self.data_.getResultContent(comp_id)
+        return render_template('results.html', **content)
+
     def updatePublishResults(self):
         content = request.json
         if False in [key in content for key in ['publish_results']]:
@@ -850,3 +863,15 @@ class CompyFlask:
             return data, 200
         elif ret == 1:
             return {}, 500
+
+    def resultsList(self):
+        comp_id = request.args.get('comp_id')
+        discipline = request.args.get('discipline')
+        gender = request.args.get('gender')
+        country = request.args.get('country')
+        data = self.data_.getResultList(comp_id, discipline, gender, country)
+        if data is not None:
+            data["status"] = "success"
+            return data, 200
+        else:
+            return {}, 401

@@ -27,7 +27,7 @@
 
 var dbg = false;
 
-class Menu {
+class JudgeMenu {
     contructor() {
         this.day = null;
         this.block = null;
@@ -62,7 +62,7 @@ function init(judge_hash, judge_id, comp_id, blocks, federation) {
     _comp_id = comp_id;
     _blocks = blocks;
     _federation = federation;
-    _menu = new Menu();
+    _menu = new JudgeMenu();
     showDayMenu();
     if (dbg) {
         _menu.day = '2025-02-22';
