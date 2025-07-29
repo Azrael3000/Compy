@@ -36,8 +36,13 @@
 
 <body>
     <h1>Compy {{version}}</h1>
-    <div>
-        Time: <span id="time"></span> | Countdown to next OT: <span id="countdown_ot"></span> | <span id="stop_countdown_div"></span> | <span id="test_countdown_div"></span>
+    <div id="timers">
+        Time: <span id="time"></span>
+        |
+        <span id="countdown">Loading countdown
+            <span class="loader">
+            </span>
+        </span>
     </div>
     <table>
         <tr>

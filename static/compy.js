@@ -37,9 +37,9 @@ var _sl_remove = [];
 var _sl_edited = false;
 var _sl_athletes = null;
 var _ots = []; // date in YYYY:MM:DD:HH:MM:SS
-var _autoplay_enabled = false;
-let _audioElement = null;
-let _audioTimeout = null;
+let _audioContext = null;
+let _audioSource = null;
+let _audioBuffer = null;
 
 $(window).on('load', function() {
     $('#comp_name').val("undefined");
@@ -255,96 +255,43 @@ function getNextPlayTime(ot = false) {
 
 // Schedule the audio to play at the next play time
 function schedulePlay() {
+    if (_audioBuffer == null)
+        return;
     let delay = getNextPlayTime();
 
     if (delay >= 0) {
         hour = Math.floor(delay/3600/1000);
         min = Math.floor((delay - hour*3600*1000)/60/1000);
         sec = (delay - (hour*3600 + min*60)*1000)/1000;
-        console.log("Next play in:", hour, "h", min, "min", sec, "s");
-        _audioTimeout = setTimeout(function() {
-            //console.log("Starting play at", new Date().toISOString());
-            _audioElement.play();
-            setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, getCountdownDuration()*60*1000);
-            setTimeout(function() { $('#stop_countdown_btn').prop("disabled", true); }, (getCountdownDuration()*60 + 30)*1000);
-            // Reschedule the next play after the current one finishes
-            _audioElement.addEventListener('ended', schedulePlay, { once: true });
-        }, delay);
+        console.log("Next play in:", hour, "h", min, "min", sec, "s | ", _audioContext.currentTime + delay/1000.0);
+        playAudio(_audioContext.currentTime + delay/1000.0);
+        setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, getCountdownDuration()*60*1000 + delay);
+        setTimeout(function() {
+            $('#stop_countdown_btn').prop("disabled", true);
+            schedulePlay();
+        }, (getCountdownDuration()*60 + 30)*1000 + delay);
     }
-}
-
-function testCountdown() {
-    if (_audioTimeout)
-        clearTimeout(_audioTimeout);
-    _audioElement.currentTime = (getCountdownDuration()-1)*60 + 55;
-    _audioElement.play();
-    setTimeout(function() {
-        _audioElement.pause();
-        _audioElement.currentTime = 0;
-        schedulePlay();
-    }, 6000);
 }
 
 function changeTime() {
-    if (_audioTimeout)
-        clearTimeout(_audioTimeout);
+    stopAudio();
     schedulePlay();
 }
 
-function playAudio(event) {
-    // TODO This function does not work in chrome as on the second call it suceeds, even though it still cannot play
-    //      Maybe try by spawning a worker thread
-    //      Similarly the setTimeouts might not be called in an accurate manner if the tab is in the background
-    //      which might kill the OT timing
-    _audioElement.play().then(function() {
-            _autoplay_enabled = true;
-            // Add a button to stop the audio
-            $('#stop_countdown_div').html('<button id="stop_countdown_btn">Stop Countdown</button>');
-            $('#test_countdown_div').html('<button id="test_countdown_btn">Test Countdown</button>');
-            $('#stop_countdown_btn').prop("disabled", true);
-            $('#stop_countdown_btn').click(function() {
-                stopAudio();
-            });
-            $('#test_countdown_btn').click(function() {
-                testCountdown();
-            });
-        }).catch(function(error) {
-            _autoplay_enabled = false;
-            // If playback fails because of autoplay restrictions, show a prompt to the user
-            if (error.name === 'NotAllowedError') {
-                // Prompt the user to enable audio
-                $('#stop_countdown_div').html('<b>Audio autoplay is disabled. Countdown will not be played!</b><button onclick="testAutoPlay()">Try again</button>');
-            } else {
-                // Handle other errors
-                console.error('An error occurred while attempting to play audio:', error);
-            }
-        });
-    _audioElement.pause();
-    _audioElement.currentTime =  0;
-    _audioElement.removeEventListener("canplaythrough", playAudio);
-}
-
 function testAutoPlay() {
-    // Attempt to play the audio immediately
-    if (!_autoplay_enabled && _audioElement != null)
-    {
-        _audioElement.addEventListener("canplaythrough", playAudio);
-    }
 }
 
 // Function to stop the audio and reset the playhead
 function stopAudio() {
     $('#stop_countdown_btn').prop("disabled", true);
-    _audioElement.pause();
-    _audioElement.currentTime =  0;
+    if (_audioSource != null)
+        _audioSource.stop();
     schedulePlay();
 }
 
 $(document).ready(function() {
 
     // Start scheduling the plays
-    schedulePlay();
-
     function updateTime() {
         $('#time').text(formatTime(getDateNow()), false);
         $('#countdown_ot').text(formatTime(getNextPlayTime(true), true));
@@ -809,11 +756,7 @@ $(document).ready(function() {
             type: 'POST',
             success: function(data) {
                 initSubmenus(data);
-                _audioElement.remove();
-                if (selectedOption == "aida")
-                    _audioElement = new Audio('static/countdown_aida.wav');
-                else
-                    _audioElement = new Audio('static/countdown_cmas.wav');
+                initAudio();
                 console.log(data.status_msg);
             }
         });
@@ -1646,8 +1589,6 @@ function setOTs(data)
         _ots = data.ots
         // debug for ots
         //fillOtsForDebuggin();
-        if (_audioTimeout)
-            clearTimeout(_audioTimeout);
         schedulePlay();
 }
 
@@ -1956,17 +1897,8 @@ function loadCompetition(comp_id, testAutoPlayExecute) {
                 $('#numeric_radio').prop('checked', true);
             }
             if ("comp_type" in data) {
-                if (_audioElement != null)
-                    _audioElement.remove();
-                if (data.comp_type == "aida") {
-                    $('#aida_radio').prop('checked', true);
-                    _audioElement = new Audio('static/countdown_aida.wav');
-                } else {
-                    $('#cmas_radio').prop('checked', true);
-                    _audioElement = new Audio('static/countdown_cmas.wav');
-                }
-                if (testAutoPlayExecute)
-                    testAutoPlay();
+                $(`#${data.comp_type}_radio`).prop('checked', true);
+                initAudio();
             }
             if ("publish_results" in data && data["publish_results"]) {
                 $('#publish_results').prop('checked', true);
@@ -1976,6 +1908,76 @@ function loadCompetition(comp_id, testAutoPlayExecute) {
             setOTs(data);
         }
     })
+}
+
+function initAudio() {
+    if (_audioContext != null)
+        _audioContext.close();
+    _audioContext = new AudioContext();
+    _audioBuffer = null;
+    _audioSource = null;
+
+    // Load audio data.
+    $('#countdown').html('Loading countdown <span class="loader"></span>');
+    let selectedOption = $("input[name='comp_type']:checked").val();
+    const file = `static/countdown_${selectedOption}.wav`;
+    const request = new XMLHttpRequest();
+    request.open('GET', file, true);
+    request.responseType = 'arraybuffer';
+    request.onload = function() {
+        _audioContext.decodeAudioData(request.response,
+            (buffer) => {
+                console.log("Loaded audio");
+                _audioBuffer = buffer;
+
+                // Check if audio can be played.
+                if (_audioContext.state == "suspended") {
+                    // If playback fails because of autoplay restrictions, show a prompt to the user to enable audio
+                    $('#countdown').html('<b>Audio autoplay is disabled. Countdown will not be played!</b> <button onclick="initAudio()">Try again</button>');
+                    return;
+                }
+
+                // Controls for audio replay.
+                $('#countdown').html(`
+                    Countdown to next OT:
+                    <span id="countdown_ot">
+                    </span>
+                    |
+                    <span id="stop_countdown_div">
+                        <button id="stop_countdown_btn">Stop Countdown</button>
+                    </span>
+                    |
+                    <span id="test_countdown_div">
+                        <button id="test_countdown_btn">Test Countdown</button>
+                    </span>`);
+                $('#stop_countdown_btn').prop("disabled", true);
+                $('#stop_countdown_btn').click(function() {
+                    stopAudio();
+                });
+                $('#test_countdown_btn').click(function() {
+                    playAudio(0, (getCountdownDuration()-1)*60 + 55, 10);
+                });
+
+                schedulePlay();
+            },
+            (error) => { console.error("Error decode audio") });
+    };
+    request.onerror = function() { console.error('Error loading audio', request.statusText); };
+    request.send();
+}
+
+function playAudio(time = 0, offset = 0, duration = null) {
+    if (_audioBuffer == null) {
+        console.error("Audio buffer not ready");
+        return;
+    }
+    _audioSource = _audioContext.createBufferSource();
+    _audioSource.buffer = _audioBuffer;
+    _audioSource.connect(_audioContext.destination);
+    if (duration != null)
+        _audioSource.start(time, offset, duration);
+    else
+        _audioSource.start(time, offset);
 }
 
 function convertNumericLaneToAcutal(ilane) {
