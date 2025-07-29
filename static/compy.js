@@ -255,6 +255,8 @@ function getNextPlayTime(ot = false) {
 
 // Schedule the audio to play at the next play time
 function schedulePlay() {
+    if (_audioSource != null)
+        _audioSource.stop();
     if (_audioBuffer == null)
         return;
     let delay = getNextPlayTime();
@@ -286,7 +288,6 @@ function stopAudio() {
     $('#stop_countdown_btn').prop("disabled", true);
     if (_audioSource != null)
         _audioSource.stop();
-    schedulePlay();
 }
 
 $(document).ready(function() {
