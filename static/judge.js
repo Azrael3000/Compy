@@ -447,12 +447,13 @@ function navAction(id) {
 }
 
 function doSave() {
-    data = {id: _menu.s_id,
-            rp: $('#info_RP').children('.info').html(),
-            penalty: $('#info_penalty').children('.info').html(),
-            card: $('#card_title').html(),
-            remarks: $('#info_remarks').children('.info_piece').children('.info').html(),
-            judge_remarks: $('#info_judge_remarks').children('.info_piece').children('.info').html()};
+    saveData = {id: _menu.s_id,
+                rp: $('#info_RP').children('.info').html(),
+                penalty: $('#info_penalty').children('.info').html(),
+                card: $('#card_title').html(),
+                remarks: $('#info_remarks').children('.info_piece').children('.info').html(),
+                judge_remarks: $('#info_judge_remarks').children('.info_piece').children('.info').html()};
+    data = Object.assign({}, saveData, getBaseDict())
     $.ajax({
         type: "PUT",
         url: "/result",

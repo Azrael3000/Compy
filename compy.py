@@ -68,7 +68,7 @@ def compy(start_flask, init_db = False):
 
     data = compy_data.CompyData(db, app)
 
-    compy_flask.CompyFlask(app, data, start_flask)
+    compy_flask.CompyFlask(app, data, db, start_flask)
 
 start_flask = __name__ == '__main__'
 compy(start_flask)

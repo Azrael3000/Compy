@@ -85,14 +85,15 @@ FEDERATIONS=["aida", "cmas"]
 
 class CompyData:
 
-    def __init__(self, db, app):
+    version_ = None
+
+    def __init__(self, db, app, comp_id = -1):
         self.id_ = None
         self.db_ = db
         self.app_ = app
         self.name_ = "undefined"
         self.special_ranking_name_ = "Newcomer"
         self.config_ = CompyConfig()
-        self.version_ = None
         self.lane_style_ = "numeric"
         self.comp_type_ = FEDERATIONS[0]
         self.comp_file_ = ''
@@ -111,13 +112,18 @@ class CompyData:
         with self.app_.app_context():
             #self.updateNationalRecords();
             # try and find it first
-            c_id = self.db_.execute("SELECT id FROM competition WHERE name=?", self.name_)
-            if c_id is not None:
-                self.load(c_id[0][0])
-            else:
-                self.save()
+            if comp_id == -1:
+                c_id = self.db_.execute("SELECT id FROM competition WHERE name=?", self.name_)
+                if c_id is not None:
+                    self.load(c_id[0][0])
+                else:
+                    self.save()
+            elif comp_id is not None:
+                self.id_, self.name_ = self.cleanCompIdPublished(comp_id)
+                self.load(comp_id)
 
     @property
+    @staticmethod
     def version(self):
         if self.version_ is None:
             base_path = os.path.dirname(os.path.realpath(__file__))
@@ -128,6 +134,10 @@ class CompyData:
     @property
     def name(self):
         return self.name_
+
+    @property
+    def isValid(self):
+        return self.id_ is not None
 
     @property
     def special_ranking_name(self):
@@ -497,7 +507,8 @@ class CompyData:
                                         FROM competition WHERE id=?''',
                                      comp_id)
         if load_data is None:
-            logging.error("Could not find save file with id '" + id + "'")
+            logging.error("Could not find competition with id '" + id + "'")
+            self.id_ = None
             return None
         else:
             self.id_ = comp_id
@@ -857,7 +868,7 @@ class CompyData:
                                   ''',
                                   (block, lane_db, u.convDay(day), self.id_))
         if db_out is None:
-            return None
+            return -1, None
         lane_list = [{'id': r[6],
                       's_id': r[7],
                       'OT': u.convTime(r[3]),
@@ -872,7 +883,7 @@ class CompyData:
                       'NR': self.getNr(r[4], "", r[5], r[9], True)}
                        for r in db_out]
         lane_list.sort(key=lambda r: self.getMinFromTime(r['OT']))
-        return lane_list
+        return 0, {'lane_list': lane_list}
 
     def getNr(self, country, cls, gender, discipline, convert=False):
         nr = self.NR(self.comp_type, country, cls, gender, discipline)
@@ -1110,9 +1121,9 @@ class CompyData:
             html.write_pdf(fname)
             return fname
 
-    def getResult(self, discipline, gender, country, with_empty=False):
+    def getResult(self, discipline, gender, country, with_empty=True):
         if self.comp_file is None:
-            return None, None
+            return -1, None
         result = []
         result_keys = ['Rank', 'Name', 'Country']
         if self.comp_type == "cmas":
@@ -1120,7 +1131,7 @@ class CompyData:
         if discipline == "Overall" or discipline == self.special_ranking_name:
             if self.comp_type == "cmas":
                 logging.error("Attempted to get " + discipline + " ranking for cmas competition")
-                return None, None
+                return -1, None
             cmd = '''SELECT ca.id, a.first_name, a.last_name, a.country, a.club,
                             s.rp, s.penalty, s.card, s.remarks, s.discipline
                      FROM start s
@@ -1137,7 +1148,7 @@ class CompyData:
 
             db_out = self.db_.execute(cmd, args)
             if db_out is None:
-                return None, None
+                return -1, None
 
             res = {}
             for r in db_out:
@@ -1169,7 +1180,7 @@ class CompyData:
                     res_list[i+1]['Rank'] = ""
 
             result_keys += self.disciplines + ["Points"]
-            return res_list, result_keys
+            return 0, {'results': res_list, 'keys': result_keys}
         else:
             cmd = '''SELECT a.first_name, a.last_name, a.country, a.club,
                             s.AP, s.RP, s.penalty, s.card, s.remarks, s.id, s.OT, a.gender, s.judge_remarks
@@ -1192,7 +1203,7 @@ class CompyData:
             db_out = self.db_.execute(cmd, args)
 
             if db_out is None:
-                return [], []
+                return 0, {'results': [], 'keys': []}
 
             def check_nr(country, gender, rp, card):
                 if rp is None or card != "WHITE":
@@ -1248,7 +1259,7 @@ class CompyData:
                     if self.comp_type == "aida":
                         cur_ap = result[i]["AP"]
                     result[i]["Rank"] = i+1
-            return result, result_keys
+            return 0, {'results': result, 'keys': result_keys}
 
     def sortResultsWeightsAida(self, r):
         w0 = -float(r['Points'])
@@ -1317,7 +1328,9 @@ class CompyData:
             </header>
             """
         for g in gender_list:
-            result, result_keys = self.getResult(discipline, g, country)
+            ret, content = self.getResult(discipline, g, country, False)
+            result = content['result']
+            result_keys = content['keys']
             result_df = pd.DataFrame(result)
             if len(result_df.index) == 0:
                 return None
@@ -1680,7 +1693,7 @@ class CompyData:
         penalty = self.cleanPenalty(penalty)
         card = self.cleanCard(card)
         if card is None:
-            return 1
+            return 1, None
         # TODO sanity checks for card and remarks and discipline
         ap_dis = self.db_.execute(
                 '''SELECT s.ap, s.discipline
@@ -1697,8 +1710,8 @@ class CompyData:
             self.db_.execute(
                 '''UPDATE start SET rp = ?, penalty = ?, card = ?, remarks = ?, judge_remarks = ? WHERE id == ?''',
                 (rp, under_ap_penalty + penalty, card, remarks, judge_remarks, s_id))
-            return 0
-        return 1
+            return 0, None
+        return 1, None
 
     def getUnderApPenalty(self, ap, rp, discipline, card):
         if card != "YELLOW":
@@ -1795,27 +1808,30 @@ class CompyData:
             judge_id = int(judge_id)
             assert(judge_hash.isalnum())
         except:
-            return None
+            return -1, None
         db_out = self.db_.execute(
             "SELECT first_name, last_name, salt FROM judge WHERE competition_id==? AND id==?",
             (self.id_, judge_id))
         db_out2 = self.db_.execute("SELECT name, comp_type FROM competition WHERE id==?", self.id_)
         if db_out is None or db_out2 is None:
-            return None
+            return -1, None
 
         first_name = db_out[0][0]
         last_name = db_out[0][1]
         judge_hash_db = self.getJudgeQrCodeHash(first_name, last_name, db_out[0][2], judge_id)
         if judge_hash_db != judge_hash:
-            return None
+            return -1, None
 
-        return (db_out2[0][0], first_name, last_name, db_out2[0][1])
+        return 0, {'comp_name': db_out2[0][0],
+                   'first_name': first_name,
+                   'last_name': last_name,
+                   'federation': db_out2[0][1]}
 
     def getAthleteResult(self, s_id):
         try:
             s_id = int(s_id)
         except:
-            return None
+            return -1, None
 
         db_out = self.db_.execute(
             '''SELECT a.first_name, a.last_name, a.country, s.AP, s.RP, s.penalty, s.card,
@@ -1827,23 +1843,23 @@ class CompyData:
             (self.id_, s_id))
 
         if db_out is None:
-            return None
+            return -1, None
 
         discipline = db_out[0][11]
-        return {'Name': db_out[0][0] + " " + db_out[0][1],
-                'Country': db_out[0][2],
-                'AP': self.convertPerformance(db_out[0][3], discipline),
-                'Dis': discipline,
-                'PB': self.convertPerformance(db_out[0][12], discipline),
-                'RP': self.convertPerformance(db_out[0][4], discipline),
-                'Penalty': db_out[0][5],
-                'Card': db_out[0][6],
-                'Remarks': db_out[0][7],
-                'JudgeRemarks': db_out[0][10],
-                'Id': s_id,
-                'OT': u.convTime(db_out[0][8]),
-                'NR': self.getNr(db_out[0][2], "", db_out[0][9], discipline, True),
-                'Gender': db_out[0][9]}
+        return 0, {'Name': db_out[0][0] + " " + db_out[0][1],
+                   'Country': db_out[0][2],
+                   'AP': self.convertPerformance(db_out[0][3], discipline),
+                   'Dis': discipline,
+                   'PB': self.convertPerformance(db_out[0][12], discipline),
+                   'RP': self.convertPerformance(db_out[0][4], discipline),
+                   'Penalty': db_out[0][5],
+                   'Card': db_out[0][6],
+                   'Remarks': db_out[0][7],
+                   'JudgeRemarks': db_out[0][10],
+                   'Id': s_id,
+                   'OT': u.convTime(db_out[0][8]),
+                   'NR': self.getNr(db_out[0][2], "", db_out[0][9], discipline, True),
+                   'Gender': db_out[0][9]}
 
     def cleanFederation(self, federation):
         if not federation in FEDERATIONS:
@@ -1939,31 +1955,31 @@ class CompyData:
                      for d in db_out]
 
     def updatePublishResults(self, publish_results):
+        if self.id_ is None:
+            return 1, None
         # clean received data
         publish_results = 1 if publish_results == True else 0
         self.db_.execute("UPDATE competition SET publish_results=?  WHERE id==?", (publish_results, self.id_))
         self.publish_results_ = publish_results == 1
-        return 0
+        return 0, None
 
-    def getResultContent(self, comp_id):
+    def getResultContent(self):
         content = {"version": self.version}
-        comp_id, comp_name = self.cleanCompIdPublished(comp_id)
         # if no comp id is set get a list of all competitions
-        if comp_id is None:
+        if self.id_ is None:
             db_out = self.db_.execute("SELECT id, name FROM competition WHERE publish_results==1")
             if db_out is not None:
                 content['data'] = {'comp_list': [{'id': d[0], 'name': d[1]} for d in db_out]}
         # if a comp id is set then get all disciplines and countries
         else:
-            self.load(comp_id)
             data = {}
             data['disciplines'] = self.getDisciplines()
             data['countries'] = self.getCountries(True)
-            data['comp_name'] = comp_name
-            data['comp_id'] = comp_id
+            data['comp_name'] = self.name
+            data['comp_id'] = self.id_
             content['data'] = data
 
-        return content
+        return 0, content
 
     def cleanCompIdPublished(self, comp_id):
         try:
@@ -1975,23 +1991,26 @@ class CompyData:
         except:
             return None, None
 
-    def getResultList(self, comp_id, discipline_id, gender, country_id):
-        comp_id, comp_name = self.cleanCompIdPublished(comp_id)
+    def getResultList(self, discipline_id, gender, country_id):
+        if self.id_ is None:
+            return -1, None
         try:
-            self.load(comp_id)
             discipline_id = int(discipline_id)
             country_id = int(country_id)
             discipline = self.getDisciplines()[discipline_id]
             country = self.getCountries(True)[country_id]
             if not (gender == "Female" or gender == "Male"):
-                return None
+                return -1, None
             gender = "F" if gender == "Female" else "M"
-            results, keys = self.getResult(discipline, gender, country)
+            ret, content = self.getResult(discipline, gender, country, False)
+            keys = content['keys']
+            results = content['results']
             value_key = 'RP' if 'RP' in keys else 'Points'
-            return {'results': [{'rank': r['Rank'],
-                                 'name': r['Name'],
-                                 'value': "DNS" if 'Remarks' in keys and r['Remarks'] == "DNS" else r[value_key],
-                                 'card': r['Card'] if 'Card' in keys else None
-                                } for r in results]}
+            return 0, {'results': [{'rank': r['Rank'],
+                                    'name': r['Name'],
+                                    'value': "DNS" if 'Remarks' in keys and r['Remarks'] == "DNS" else r[value_key],
+                                    'card': r['Card'] if 'Card' in keys else None,
+                                    'remarks': r['Remarks'] if 'Remarks' in keys else None
+                                   } for r in results]}
         except:
-            return None
+            return -1, None

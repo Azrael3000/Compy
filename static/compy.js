@@ -27,6 +27,7 @@
 
 var _global_prev_name = "";
 var _days_with_disciplines_lanes = null;
+var _comp_id = null;
 var _blocks = null;
 var _disciplines = null;
 var _countries = null;
@@ -764,7 +765,8 @@ $(document).ready(function() {
     });
     $('#publish_results').change(function() {
         let data = {
-            publish_results: $('#publish_results').prop('checked')
+            publish_results: $('#publish_results').prop('checked'),
+            comp_id: _comp_id
         };
         $.ajax({
             url: '/publish_results',
@@ -1907,6 +1909,7 @@ function loadCompetition(comp_id, testAutoPlayExecute) {
                 $('#publish_results').prop('checked', false);
             }
             setOTs(data);
+            _comp_id = comp_id;
         }
     })
 }
