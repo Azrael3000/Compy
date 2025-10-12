@@ -821,7 +821,7 @@ class CompyData:
             if convert:
                 return self.convertPerformance(self.nr.get(nr), discipline)
             else:
-                self.nr.get(nr)
+                return self.nr.get(nr)
         else:
             return ""
 
