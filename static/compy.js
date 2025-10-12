@@ -1592,7 +1592,7 @@ function setOTs(data)
     if ('ots' in data)
         _ots = data.ots
         // debug for ots
-        fillOtsForDebuggin();
+        //fillOtsForDebuggin();
         schedulePlay();
 }
 
