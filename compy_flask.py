@@ -504,7 +504,7 @@ class CompyFlask:
         else:
             # TODO: Remove me once this is refactored
             self.cache_[request_id] = self.data_
-            return self.getResultDiscipline(discipline, gender, country, request_id)
+            return self.getResultDiscipline(request, request_id)
         logging.debug("Could not get result for " + discipline + "/" + gender + " country: " + country)
         return {}, 400
 
@@ -664,11 +664,7 @@ class CompyFlask:
         return data, 200
 
     def nationalRecords(self):
-        status = self.data_.updateNationalRecords()
-        if status == 0:
-            return {"status": "success", "status_msg": "Successfully updated national records"}, 200
-        else:
-            return {"status": "error", "status_msg": "Error while updating national records"}, 500
+        return self.handleRequest(request, None, CompyData.updateNationalRecords);
 
     def getJudgeComp(self, comp_id, judge_id, return_json = False):
         judge_hash = request.args.get('hash')
@@ -824,41 +820,46 @@ class CompyFlask:
         data = self.cache_[request_id] if request_id in self.cache_.keys() else self.getData(request)
         if data is None:
             self.cleanCache(request_id, clean_cache)
-            return self.badRequest("Faild to load competition")
+            return self.badRequest("Failed to load competition to call " + func.__name__)
 
         if request_id is not None:
             self.cache_[request_id] = data
 
-        try:
-            args_val = [self.parse(request, arg) for arg in args]
-        except RuntimeError as re:
-            self.cleanCache(request_id, clean_cache)
-            return self.badRequest(re)
-        except:
-            self.cleanCache(request_id, clean_cache)
-            return {}, 400
-        ret, content = func(data, *args_val)
+        if args is not None:
+            try:
+                args_val = [self.parse(request, arg) for arg in args]
+            except RuntimeError as re:
+                self.cleanCache(request_id, clean_cache)
+                return self.badRequest(re)
+            except:
+                self.cleanCache(request_id, clean_cache)
+                return {}, 400
+            ret, content = func(data, *args_val)
+        else:
+            ret, content = func(data)
         if ret == 0:
             if content is None:
-                content = {"status": "success", "status_msg": "Successfully updated publish_results"}
+                content = {"status": "success", "status_msg": "Successfully called " + func.__name__}
             else:
-                content |= {"status": "success", "status_msg": "Successfully updated publish_results"}
+                content |= {"status": "success", "status_msg": "Successfully called " + func.__name__}
             self.cleanCache(request_id, clean_cache)
             return content, 200
         else:
             self.cleanCache(request_id, clean_cache)
-            return {}, 400
+            return self.badRequest("Failed to call " + func.__name__)
 
     def cleanCache(self, request_id, clean_cache):
         if request_id is not None and clean_cache and request_id in self.cache_.keys():
             self.cache_.pop(request_id)
 
     def badRequest(self, msg):
-        return {"error_msg": msg}, 400
+        return {"status": "error", "error_msg": msg}, 400
 
     def getData(self, request):
         try:
             comp_id = self.parse(request, 'comp_id', True)
+            if comp_id == "":
+                comp_id = None
         except Exception as e:
             logging.debug(e)
             return None

@@ -30,12 +30,6 @@ except ImportError:
     print("Could not find pandas. Install with 'pip3 install pandas'")
     exit(-1)
 import logging
-from collections import Counter, namedtuple
-try:
-    import requests
-except ImportError:
-    print("Could not find requests. Install with 'pip3 install requests'")
-    exit(-1)
 try:
     import qrcode
 except ImportError:
@@ -44,17 +38,6 @@ except ImportError:
 import hashlib
 import math
 import random
-import re
-from packaging.version import Version
-try:
-    import country_converter
-    assert Version(country_converter.version.__version__) >= Version("1.2")
-except ImportError:
-    print("Could not find country_converter. Install with 'pip3 install country_converter'")
-    exit(-1)
-except AssertionError:
-    print("country_converter found with version", country_converter.version.__version__, "but version >= 1.2 required, please update it.")
-    exit(-1)
 import os
 import json
 import glob
@@ -104,8 +87,6 @@ class CompyData:
         self.disciplines_ = 0
         self.selected_country_ = None
         self.publish_results_ = False
-
-        self.NR = namedtuple("NR", ["federation", "country", "cls", "gender", "discipline"])
 
         self.name_ = "undefined"
 
@@ -263,14 +244,12 @@ class CompyData:
     def nr(self):
         if self.nrs_ is None:
             nrs = self.db_.execute('''SELECT country, class, gender, discipline, value
-                                      FROM records
-                                      WHERE federation=?''',
-                                   self.comp_type)
+                                      FROM records''')
             if nrs is None:
                 return None
             self.nrs_ = {}
             for nr in nrs:
-                self.nrs_[self.NR(self.comp_type, nr[0], nr[1], nr[2], nr[3])] = nr[4]
+                self.nrs_[u.NR(self.comp_type, nr[0], nr[1], nr[2], nr[3])] = nr[4]
         return self.nrs_
 
     def changeSponsorImage(self, img_content):
@@ -382,55 +361,6 @@ class CompyData:
                                         VALUES (?, ?, ?, ?, ?, ?, ?)''',
                                      (ca_id[0][0], dis, lane, u.convTime(ot), ap, u.convDay(day), block))
 
-    def getNationalRecordsAida(self):
-        empty_req = requests.post('https://www.aidainternational.org/public_pages/all_national_records.php', data={})
-        html = empty_req.text
-        start = html.find('id="nationality"')
-        start = html.find('<option', start)
-        end = html.find('</select>', start)
-        nationalities = str.splitlines(html[start:end])
-        p = re.compile("<option.*value=\"([0-9]+)\">(.*)</option>")
-        country_value_map = {}
-        cc = country_converter.CountryConverter()
-        for n in nationalities:
-            result = p.search(n)
-            if result:
-                country_value_map[cc.convert(result.group(2), to = 'IOC')] = result.group(1)
-        nrs = {}
-        for c_ioc, c_str in country_value_map.items():
-            data = {
-                'nationality': str(c_str),
-                'discipline': '',
-                'gender': '',
-                'apply': ''
-            }
-            req = requests.post('https://www.aidainternational.org/public_pages/all_national_records.php', data=data)
-            html = req.text
-            start = html.find('<tbody>')
-            start = html.find('<tr>', start)
-            end = html.find('</tbody>', start)
-            entries = str.splitlines(html[start:end])[:-1]
-            p = re.compile("<td>(.*)</td>")
-            for i in range(int(len(entries)/10)):
-                gender = p.search(entries[i*10 + 2]).group(1)
-                dis = p.search(entries[i*10 + 3]).group(1)
-                res_str = p.search(entries[i*10 + 4]).group(1)
-                result = 0.
-                if dis == "STA":
-                    p_dis = re.compile("([0-9]+):([0-9][0-9])")
-                    res_re = p_dis.search(res_str)
-                    result = float(res_re.group(1))*60.0 + float(res_re.group(2))
-                else:
-                    p_dis = re.compile("[0-9]+")
-                    result = float(p_dis.search(res_str).group(0))
-                points = float(p.search(entries[i*10 + 6]).group(1))
-                nrs[self.NR(federation="aida", country=c_ioc, cls="", gender=gender, discipline=dis)] = result
-        logging.debug("National records:")
-        logging.debug("Country | Gender | Discipline | Result | Points")
-        for key, val in nrs.items():
-            logging.debug("%s | %s | %s | %s | %d", key.country, key.gender, key.discipline, val)
-        logging.debug("-----------------")
-        return nrs
 
     def setRegistration(self, athlete_id, special_ranking, change_type, warn=True):
         found = False
@@ -886,7 +816,7 @@ class CompyData:
         return 0, {'lane_list': lane_list}
 
     def getNr(self, country, cls, gender, discipline, convert=False):
-        nr = self.NR(self.comp_type, country, cls, gender, discipline)
+        nr = u.NR(self.comp_type, country, cls, gender, discipline)
         if self.nr is not None and nr in self.nr:
             if convert:
                 return self.convertPerformance(self.nr.get(nr), discipline)
@@ -911,7 +841,8 @@ class CompyData:
             fname = os.path.join(self.config.download_folder, self.name + "_lane_lists.pdf")
             merged_pdf.write_pdf(fname)
             return fname
-        lane_df = pd.DataFrame(self.getLaneList(day, block, lane))
+        ret, content = self.getLaneList(day, block, lane)
+        lane_df = pd.DataFrame(content['lane_list'])
         lane_df.drop("id", axis=1, inplace=True)
         lane_df.drop("s_id", axis=1, inplace=True)
         lane_df.drop("RP", axis=1, inplace=True)
@@ -1209,7 +1140,7 @@ class CompyData:
                 if rp is None or card != "WHITE":
                     return ""
                 this_nr = self.getNr(country, "", gender, discipline)
-                return ", <b>NR</b>" if  this_nr is not None and this_nr < rp else ""
+                return ", <b>NR</b>" if this_nr != "" and this_nr < rp else ""
 
             if self.comp_type == "aida":
                 result = [{'Rank': i,
@@ -1730,7 +1661,7 @@ class CompyData:
     def updateNationalRecords(self):
         # Do check if country converter is >= 1.2
         try:
-            self.nrs_ = self.getNationalRecordsAida()
+            self.nrs_ = u.getNationalRecordsAida()
             self.db_.execute("DELETE FROM records WHERE federation='aida'")
             for nr_key, nr_val in self.nrs_.items():
                 self.db_.execute('''INSERT INTO records
@@ -1740,8 +1671,8 @@ class CompyData:
                                  nr_key.discipline, nr_val))
         except Exception as e:
             logging.debug("Error", e)
-            return 1
-        return 0
+            return 1, None
+        return 0, None
 
     def isJudgeInCompetition(self, judge_id):
         db_out = self.db_.execute(

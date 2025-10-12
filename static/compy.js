@@ -314,9 +314,10 @@ $(document).ready(function() {
     $('#refresh_nrs').click(function() {
         showStatus("Update of national records started.");
         $('#refresh_nrs').prop("disabled", true);
+        let params = {comp_id: null};
         $.ajax({
             type: 'GET',
-            url: '/national_records',
+            url: '/national_records?' + $.param(params),
             success: function(data) {
                 showStatus("Update of national records completed.");
             },
@@ -1186,7 +1187,7 @@ $(document).ready(function() {
             success: function(data) {
                 console.log(data.status_msg);
                 hideOverlayBox();
-                showResults(data.result, data.result_keys);
+                showResults(data.results, data.keys);
             }
         });
     });
@@ -1591,7 +1592,7 @@ function setOTs(data)
     if ('ots' in data)
         _ots = data.ots
         // debug for ots
-        //fillOtsForDebuggin();
+        fillOtsForDebuggin();
         schedulePlay();
 }
 
@@ -1767,7 +1768,7 @@ function getResult(discipline, gender, country)
         url: "/result?" + $.param(_cur_menu),
         success: function(data) {
             console.log(data.status_msg);
-            showResults(data.result, data.result_keys);
+            showResults(data.results, data.keys);
         }
     });
 }
@@ -1859,10 +1860,10 @@ function fillOtsForDebuggin() {
     c1.setSeconds(c1.getSeconds() + 10);
     _ots.push(formatTime(c1, false, true));
     // countdown 2 = now + 4:50
-    //let c2 = getDateNow(false);
-    //c2.setMinutes(c2.getMinutes() + 4);
-    //c2.setSeconds(c2.getSeconds() + 50);
-    //_ots.push(formatTime(c2, false, true));
+    let c2 = getDateNow(false);
+    c2.setMinutes(c2.getMinutes() + 4);
+    c2.setSeconds(c2.getSeconds() + 50);
+    _ots.push(formatTime(c2, false, true));
 }
 
 function loadCompetition(comp_id, testAutoPlayExecute) {
