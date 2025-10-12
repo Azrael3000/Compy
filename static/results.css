@@ -40,7 +40,7 @@ html, body {
 }
 
 #header div, button {
-    border: 0.1vh solid var(--light);
+    /* border: 0.1vh solid var(--light); */
     background-color: var(--white);
     color: var(--medium);
     font-size: 3vh;
@@ -82,7 +82,6 @@ button {
 
 table {
     width: 90vw;
-    border-spacing: 0 2vh;
     margin-top: -2vh;
     color: var(--dark);
     font-size: 3vh;
@@ -96,13 +95,19 @@ th, td {
     background-color: var(--white);
 }
 
-th:first-child, td:first-child {
+th:first-child, tr.first > td:first-child {
     border-top-left-radius: 1vh;
+}
+
+th:first-child, tr.last > td:first-child {
     border-bottom-left-radius: 1vh;
 }
 
-th:last-child, td:last-child {
+th:last-child, tr.first > td:last-child {
     border-top-right-radius: 1vh;
+}
+
+th:last-child, tr.last > td:last-child {
     border-bottom-right-radius: 1vh;
 }
 
@@ -117,4 +122,22 @@ th:last-child, td:last-child {
 
 .RED {
     background-color: var(--card-red);
+}
+
+.sub {
+    display: none;
+}
+
+.sub > td:has(> .head) {
+    padding-top: 0;
+}
+
+.head {
+    font-size: 2vh;
+    color: var(--light);
+    line-height: 2.5vh;
+}
+
+.spacer {
+    height: 2vh;
 }

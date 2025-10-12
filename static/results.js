@@ -103,11 +103,58 @@ function showResult() {
                     card_class = data.results[i].card;
                 }
                 table += `
-                    <tr>
+                    <tr class="spacer"/>
+                    <tr class="toggle first last" id="main_${i}">
                         <td>${data.results[i].rank}</td>
                         <td>${data.results[i].name}</td>
                         <td class="${card_class}">${data.results[i].value}</td>
                     </tr>`;
+                if (_menu.discipline != 0) {
+                    table += `
+                        <tr class="toggle sub sub_${i}" id="sub1_${i}">
+                            <td>
+                                <span class="head">Nat.</span><br>
+                                ${data.results[i].country}
+                            </td>
+                            <td class="${card_class}">
+                                <span class="head">Card</span><br>
+                                ${data.results[i].card}
+                            </td>
+                            <td>
+                                <span class="head">AP</span><br>
+                                ${data.results[i].ap}
+                            </td>
+                        </tr>
+                        <tr class="toggle sub sub_${i} last" id="sub2_${i}">
+                            <td>
+                                <span class="head">Penalty</span><br>
+                                ${data.results[i].penalty}
+                            </td>
+                            <td>
+                                <span class="head">Remarks</span><br>
+                                ${data.results[i].remarks}
+                            </td>
+                            <td>
+                                <span class="head">Points</span><br>
+                                ${data.results[i].points}
+                            </td>
+                        </tr>`;
+                }
+                else {
+                    for (let j = 0; j < data.results[i].individual_results.length; j++) {
+                        let last = j == data.results[i].individual_results-1 ? "last" : "";
+                        table += `
+                            <tr class="toggle sub sub_${i} ${last}" id="sub${j}_${i}">
+                                <td />
+                                <td>
+                                    ${data.results[i].individual_results[j].dis}
+                                </td>
+                                <td>
+                                    ${data.results[i].individual_results[j].rp}
+                                </td>
+                            </tr>`;
+                    }
+                }
             }
             table += "</table>";
             $('#content').html(table);
@@ -131,6 +178,16 @@ $(document).ready(function() {
             _menu.country = list_id;
         }
         showResult();
+    });
+    $('#content').on('click', '.toggle', function () {
+        let result_id = this.id.split('_')[1];
+        if ($('#main_' + result_id).hasClass('last')) {
+            $('#main_' + result_id).removeClass('last');
+            $('.sub_' + result_id).show();
+        } else {
+            $('#main_' + result_id).addClass('last');
+            $('.sub_' + result_id).hide();
+        }
     });
     $('#header').on('click', '#title', function () {
         location.assign('results');

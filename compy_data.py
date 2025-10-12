@@ -1260,7 +1260,9 @@ class CompyData:
             """
         for g in gender_list:
             ret, content = self.getResult(discipline, g, country, False)
-            result = content['result']
+            if content is None:
+                return None
+            result = content['results']
             result_keys = content['keys']
             result_df = pd.DataFrame(result)
             if len(result_df.index) == 0:
@@ -1273,8 +1275,8 @@ class CompyData:
                 result_df.drop("AP_float", axis=1, inplace=True)
             if "OT" in result_df.columns.tolist():
                 result_df.drop("OT", axis=1, inplace=True)
-            if "Judge Remarks" in result_df.columns.tolist():
-                result_df.drop("Judge Remarks", axis=1, inplace=True)
+            if "JudgeRemarks" in result_df.columns.tolist():
+                result_df.drop("JudgeRemarks", axis=1, inplace=True)
             if top3:
                 gender_str = "Female" if g == "F" else "Male"
                 html_string += "<h3>" + gender_str + "</h3>\n"
@@ -1937,11 +1939,30 @@ class CompyData:
             keys = content['keys']
             results = content['results']
             value_key = 'RP' if 'RP' in keys else 'Points'
-            return 0, {'results': [{'rank': r['Rank'],
-                                    'name': r['Name'],
-                                    'value': "DNS" if 'Remarks' in keys and r['Remarks'] == "DNS" else r[value_key],
-                                    'card': r['Card'] if 'Card' in keys else None,
-                                    'remarks': r['Remarks'] if 'Remarks' in keys else None
-                                   } for r in results]}
-        except:
+            if discipline_id == 0:
+                def getIndividualResults(r):
+                    indiv_results = []
+                    for d in DISCIPLINES:
+                        if d in keys and r[d] != "":
+                            indiv_results.append({'dis': d, 'rp': r[d]})
+                    return indiv_results
+
+                return 0, {'results': [{'rank': r['Rank'],
+                                        'name': r['Name'],
+                                        'value': "DNS" if 'Remarks' in keys and r['Remarks'] == "DNS" else r[value_key],
+                                        'individual_results': getIndividualResults(r)
+                                       } for r in results]}
+            else:
+                return 0, {'results': [{'rank': r['Rank'],
+                                        'name': r['Name'],
+                                        'value': "DNS" if 'Remarks' in keys and r['Remarks'] == "DNS" else r[value_key],
+                                        'country': r['Country'],
+                                        'card': r['Card'] if 'Card' in keys else None,
+                                        'ap': r['AP'],
+                                        'penalty': r['Penalty'],
+                                        'remarks': r['Remarks'] if 'Remarks' in keys else None,
+                                        'points': r['Points'] if 'Points' in keys else None
+                                       } for r in results]}
+        except Exception as e:
+            print(e.msg)
             return -1, None
