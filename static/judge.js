@@ -447,9 +447,10 @@ function navAction(id) {
 }
 
 function doSave() {
+    let pen_under = getJudgePenaltyUnder(true);
     saveData = {id: _menu.s_id,
                 rp: $('#info_RP').children('.info').html(),
-                penalty: $('#info_penalty').children('.info').html(),
+                penalty: $('#info_penalty').children('.info').html() - pen_under,
                 card: $('#card_title').html(),
                 remarks: $('#info_remarks').children('.info_piece').children('.info').html(),
                 judge_remarks: $('#info_judge_remarks').children('.info_piece').children('.info').html()};

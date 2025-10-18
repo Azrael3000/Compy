@@ -1149,9 +1149,9 @@ class CompyData:
                            'AP_float': r[4],
                            'AP': self.convertPerformance(r[4], discipline),
                            'RP': self.convertPerformance(r[5], discipline) if r[8] != "DNS" else 0.,
-                           'Penalty': r[6] if r[8] != "DNS" and r[5] is not None else "",
+                           'Penalty': round(r[6], 1) if r[8] != "DNS" and r[5] is not None else "",
                            'Card': r[7] if r[8] != "DNS" and r[5] is not None else "",
-                           'Remarks': (r[8] + check_nr(r[2], r[11], r[5], r[7])) if r[5] is not None or r[8] == "DNS" else "",
+                           'Remarks': (("" if r[8] is None else r[8]) + check_nr(r[2], r[11], r[5], r[7])) if r[5] is not None or r[8] == "DNS" else "",
                            'JudgeRemarks': r[12],
                            'Points': ("%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline)),
                            'Id': r[9],
@@ -1207,17 +1207,17 @@ class CompyData:
         if card == "RED" or remarks == "DNS" or rp is None:
             return 0.
         if self.comp_type == "CMAS":
-            return rp - penalty
+            return max(rp - penalty, 0.0)
         else:
             if discipline == "STA":
-                return int(rp)*0.2 - penalty
+                return max(int(rp)*0.2 - penalty, 0.0)
             elif discipline in ["DNF", "DYNB", "DYN"]:
                 if self.comp_type == "aida":
-                    return int(rp)*0.5 - penalty
+                    return max(int(rp)*0.5 - penalty, 0.0)
                 else:
-                    return int(rp*2.)*0.25 - penalty
+                    return max(int(rp*2.)*0.25 - penalty, 0.0)
             else:
-                return int(rp) - penalty
+                return max(int(rp) - penalty, 0.0)
 
     def getResultPDF(self, discipline="all", gender="all", country="all", in_memory=False, top3=False):
         if discipline=="all" and gender=="all":
@@ -1656,7 +1656,7 @@ class CompyData:
             factor = 0.5
         rp = float(rp)
         if rp < ap:
-            return (ap - rp)*factor
+            return round((ap - rp)*factor, 1)
         else:
             return 0.
 
