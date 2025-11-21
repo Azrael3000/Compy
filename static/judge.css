@@ -179,6 +179,7 @@ th:last-child, td:last-child {
 
 .card.highlight, .remark.highlight {
     border: 0.5vw solid var(--dark);
+    font-weight: bold;
 }
 
 .remark {

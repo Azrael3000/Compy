@@ -25,8 +25,6 @@
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 */
 
-var dbg = false;
-
 class JudgeMenu {
     contructor() {
         this.day = null;
@@ -64,186 +62,6 @@ function init(judge_hash, judge_id, comp_id, blocks, federation) {
     _federation = federation;
     _menu = new JudgeMenu();
     showDayMenu();
-    if (dbg) {
-        _menu.day = '2025-02-22';
-        _menu.block = 12;
-        _menu.lane = 'A';
-        _lane_list = [
-          {
-            "AP": "0:01",
-            "Card": "WHITE",
-            "Dis": "STA",
-            "NR": "10:23",
-            "Name": "Andrej Ropret",
-            "Nat": "SLO",
-            "OT": "10:00",
-            "PB": "10:23",
-            "RP": "7:43",
-            "Remarks": "OK",
-            "id": 45,
-            "s_id": 2069
-          },
-          {
-            "AP": "0:01",
-            "Card": "WHITE",
-            "Dis": "STA",
-            "NR": "7:59",
-            "Name": "Nikola Kofentová",
-            "Nat": "CZE",
-            "OT": "10:14",
-            "PB": "5:31",
-            "RP": "5:36",
-            "Remarks": "OK",
-            "id": 31,
-            "s_id": 2059
-          },
-          {
-            "AP": "0:15",
-            "Card": "WHITE",
-            "Dis": "STA",
-            "NR": "9:07",
-            "Name": "Ludmilla Eimer",
-            "Nat": "GER",
-            "OT": "10:26",
-            "PB": "5:30",
-            "RP": "5:12",
-            "Remarks": "OK",
-            "id": 65,
-            "s_id": 2066
-          },
-          {
-            "AP": "0:35",
-            "Card": "RED",
-            "Dis": "STA",
-            "NR": "8:30",
-            "Name": "Atena Zalbeik-Dormayer",
-            "Nat": "AUT",
-            "OT": "10:38",
-            "PB": "3:50",
-            "RP": "3:55",
-            "Remarks": "DQSP",
-            "id": 59,
-            "s_id": 2072
-          },
-          {
-            "AP": "1:00",
-            "Card": "WHITE",
-            "Dis": "STA",
-            "NR": "5:36",
-            "Name": "Kitti Tárnok",
-            "Nat": "HUN",
-            "OT": "10:50",
-            "PB": "4:00",
-            "RP": "4:17",
-            "Remarks": "OK",
-            "id": 83,
-            "s_id": 2076
-          },
-          {
-            "AP": "2:00",
-            "Card": "WHITE",
-            "Dis": "STA",
-            "NR": "9:04",
-            "Name": "Markus Sorger",
-            "Nat": "AUT",
-            "OT": "11:20",
-            "PB": "4:45",
-            "RP": "4:48",
-            "Remarks": "OK",
-            "id": 81,
-            "s_id": 2078
-          },
-          {
-            "AP": "3:00",
-            "Card": "WHITE",
-            "Dis": "STA",
-            "NR": "10:12",
-            "Name": "Jan Pittner",
-            "Nat": "SVK",
-            "OT": "11:32",
-            "PB": "6:00",
-            "RP": "4:32",
-            "Remarks": "OK",
-            "id": 77,
-            "s_id": 2082
-          },
-          {
-            "AP": "3:00",
-            "Card": "WHITE",
-            "Dis": "STA",
-            "NR": "7:16",
-            "Name": "Mayer András",
-            "Nat": "HUN",
-            "OT": "11:44",
-            "PB": "6:16",
-            "RP": "6:13",
-            "Remarks": "OK",
-            "id": 17,
-            "s_id": 2087
-          },
-          {
-            "AP": "3:10",
-            "Card": "RED",
-            "Dis": "STA",
-            "NR": "8:01",
-            "Name": "Pia Imbar",
-            "Nat": "FRA",
-            "OT": "11:56",
-            "PB": "5:08",
-            "RP": "5:43",
-            "Remarks": "DQSP",
-            "id": 70,
-            "s_id": 2089
-          },
-          {
-            "AP": "3:40",
-            "Card": "WHITE",
-            "Dis": "STA",
-            "NR": "8:58",
-            "Name": "Klaus Kasten",
-            "Nat": "GER",
-            "OT": "12:08",
-            "PB": "7:15",
-            "RP": "0:00",
-            "Remarks": "DNS",
-            "id": 71,
-            "s_id": 2055
-          },
-          {
-            "AP": "4:15",
-            "Card": "WHITE",
-            "Dis": "STA",
-            "NR": "9:04",
-            "Name": "Franz Pehn",
-            "Nat": "AUT",
-            "OT": "12:20",
-            "PB": "4:40",
-            "RP": "5:05",
-            "Remarks": "OK",
-            "id": 75,
-            "s_id": 2092
-          },
-          {
-            "AP": "5:00",
-            "Card": "WHITE",
-            "Dis": "STA",
-            "NR": "9:04",
-            "Name": "Michael Nix",
-            "Nat": "AUT",
-            "OT": "12:32",
-            "PB": "6:42",
-            "RP": "6:46",
-            "Remarks": "OK",
-            "id": 41,
-            "s_id": 2065
-          }
-        ];
-        jQuery('<div>', {
-        id: 'athlete_2069',
-        class: 'athlete_menu',
-        title: 'foo'
-        }).appendTo('#content').ready(function() { $('#athlete_2069').trigger('click'); });
-    }
 }
 
 $(document).ready(function() {
@@ -353,13 +171,7 @@ $(document).ready(function() {
         }
         $('#result_info').show();
         $('#result_entry').hide();
-        if (_menu.edited) {
-            $('#cancel').show();
-            $('#save').show();
-        } else {
-            $('#cancel').hide();
-            $('#save').hide();
-        }
+        toggleSaveCancel();
     });
     $('#content').on("click", '.nav', function() {
         navAction(this.id);
@@ -436,23 +248,58 @@ function navAction(id) {
     } else if (is_ok) {
         $('#result_info').show();
         $('#result_entry').hide();
-        if (_menu.edited) {
-            $('#cancel').show();
-            $('#save').show();
-        } else {
-            $('#cancel').hide();
-            $('#save').hide();
+        let remark = $('#info_remarks').children('.info_piece').children('.info').html();
+        let card = $('#card_title').html();
+        if (isValidCard(card, _federation) && card != 'YELLOW') {
+            savePenalty(0);
         }
+        if (remark == "" || card == 'WHITE') {
+            $('#info_remarks').children('.info_piece').children('.info').html(getDefaultRemark(card, _federation));
+        }
+        toggleSaveCancel();
     }
+    if (!is_ok)
+        hideResultNav();
+}
+
+function toggleSaveCancel() {
+    if (_menu.edited) {
+        $('#cancel').show();
+        $('#save').show();
+        hideResultNav();
+    } else {
+        $('#cancel').hide();
+        $('#save').hide();
+        if ($('#prev_athlete_btn').length)
+            $('#prev_athlete_btn').show();
+        if ($('#next_athlete_btn').length)
+            $('#next_athlete_btn').show();
+        $('#result_back').show();
+    }
+}
+
+function hideResultNav() {
+    if ($('#prev_athlete_btn').length)
+        $('#prev_athlete_btn').hide();
+    if ($('#next_athlete_btn').length)
+        $('#next_athlete_btn').hide();
+    $('#result_back').hide();
 }
 
 function doSave() {
     let pen_under = getJudgePenaltyUnder(true);
+    let card = $('#card_title').html();
+    let remark = $('#info_remarks').children('.info_piece').children('.info').html();
+    if (isValidCard(card, _federation) && card != 'YELLOW') {
+        savePenalty(0);
+    }
+    if (remark == "" || card == 'WHITE')
+        remark = getDefaultRemark(card, _federation);
     saveData = {id: _menu.s_id,
                 rp: $('#info_RP').children('.info').html(),
                 penalty: $('#info_penalty').children('.info').html() - pen_under,
-                card: $('#card_title').html(),
-                remarks: $('#info_remarks').children('.info_piece').children('.info').html(),
+                card: card,
+                remarks: remark,
                 judge_remarks: $('#info_judge_remarks').children('.info_piece').children('.info').html()};
     data = Object.assign({}, saveData, getBaseDict())
     $.ajax({
@@ -750,7 +597,7 @@ function showResultEntryMask(data) {
     let prev_athlete_btn = "";
     let next_athlete_btn = "";
     if (iCur > 0) {
-        prev_athlete_btn = `<button id="prev_athlete_btn" onclick="safeContinue(function() { showAthlete(${_lane_list[iCur-1]['s_id']}); })" type="button">Previous athlete</button><br>`;
+        prev_athlete_btn = `<button id="prev_athlete_btn" onclick="safeContinue(function() { showAthlete(${_lane_list[iCur-1]['s_id']}); })" type="button">Previous athlete</button>`;
     }
     if (iCur < _lane_list.length-1) {
         next_athlete_btn = `<button id="next_athlete_btn" onclick="safeContinue(function() { showAthlete(${_lane_list[iCur+1]['s_id']}); })" type="button">Next athlete</button>`;
@@ -767,7 +614,7 @@ function showResultEntryMask(data) {
             </div>`;
     }
     let content = `
-        <button id="result_back" type="button">Back</button><br>
+        <button id="result_back" type="button">Back</button>
         ${prev_athlete_btn}
         <div class="info_all">
             <div id="info_ot" class="info_piece">

@@ -1416,6 +1416,14 @@ class CompyData:
                 this_break["OT1"] = u.convTime(db_out[i][0])
                 this_break["OT2"] = u.convTime(db_out[i+1][0])
                 time = self.getMinFromTime(this_break["OT2"]) - self.getMinFromTime(this_break["OT1"])
+                if time < 0:
+                    time = -time
+                    tmp = this_break["OT1"]
+                    this_break["OT1"] = this_break["OT2"]
+                    this_break["OT2"] = tmp
+                    tmp = this_break["Dis1"]
+                    this_break["Dis1"] = this_break["Dis2"]
+                    this_break["Dis2"] = tmp
                 min_break = min(min_break, time)
                 this_break["Break"] = str(int(time/60)).zfill(2) + ":" + str(time%60).zfill(2)
                 breaks_list.append(this_break)
@@ -1579,9 +1587,9 @@ class CompyData:
         if discipline == "STA":
             return self.cleanTime(perf)
         elif self.comp_type == "aida" or discipline in ['CWT', 'CWTB', 'FIM', 'CNF']:
-            return self.cleanNumber(perf, 0, 1)
+            return self.cleanNumber(perf, 0, 0)
         else: # cmas dynamic disciplines
-            return self.cleanNumber(perf, 1, 1)
+            return self.cleanNumber(perf, 1, 0)
 
     def cleanBlock(self, block):
         block = int(block)
@@ -1851,7 +1859,7 @@ class CompyData:
     def disciplineListToInt(self, dis):
         return sum([1<<DISCIPLINES.index(d) for d in dis])
 
-    def getFourStarts(self, current):
+    def getFourStarts(self, current, offset):
         comp = "<=" if current else ">"
         order = "DESC" if current else "ASC"
         cmd = '''SELECT a.first_name, a.last_name, a.country, s.OT, s.lane, s.remarks
@@ -1868,12 +1876,12 @@ class CompyData:
                     INNER JOIN athlete a
                     ON a.id = ca.athlete_id
                     WHERE ca.competition_id = ? AND s.day*10000+s.OT {} ?
-                    ORDER BY s.day {}, s.OT {}
+                    ORDER BY s.day {}, CAST(s.OT as INTEGER) {}
                     LIMIT 1)
                  ORDER BY s.lane
                  LIMIT 4'''.format(comp, order, order)
         min_shift = 3 if self.comp_type == "cmas" else 2
-        now = datetime.now() + timedelta(minutes=min_shift)
+        now = datetime.now() + timedelta(minutes=min_shift) + timedelta(milliseconds=offset)
         today = now.year*10000 + now.month*100 + now.day
         time = now.hour*100 + now.minute
         db_out = self.db_.execute(cmd, (self.id_, today*10000 + time))

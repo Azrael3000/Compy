@@ -38,9 +38,11 @@ var _sl_remove = [];
 var _sl_edited = false;
 var _sl_athletes = null;
 var _ots = []; // date in YYYY:MM:DD:HH:MM:SS
-let _audioContext = null;
-let _audioSource = null;
-let _audioBuffer = null;
+var _audioContext = null;
+var _audioSource = null;
+var _audioBuffer = null;
+var _stopBtnTimeout = null;
+var _schedulingPlay = false;
 
 $(window).on('load', function() {
     $('#comp_name').val("undefined");
@@ -220,11 +222,9 @@ function getDateNow(with_correction = true) {
     //now.setHours(now.getHours() + 1);
     //now.setMinutes(now.getMinutes() + 11);
     if (with_correction) {
-        seconds_adjust = parseInt($("#seconds_adjust").val(), 10);
-        deciseconds_adjust = parseInt($("#deciseconds_adjust").val(), 10);
-        //console.log(seconds_adjust, deciseconds_adjust*100);
-        now.setSeconds(now.getSeconds() + seconds_adjust);
-        now.setMilliseconds(now.getMilliseconds() + deciseconds_adjust*100);
+        ms_adjust = parseInt($("#deciseconds_adjust").val(), 10)*100 + parseInt($("#seconds_adjust").val(), 10)*1000;
+        now.setMilliseconds(now.getMilliseconds() + ms_adjust);
+        $('#clock_button').children()[0].href = "clock/" + _comp_id + "/0/" + ms_adjust;
     }
     return now;
 }
@@ -256,10 +256,16 @@ function getNextPlayTime(ot = false) {
 
 // Schedule the audio to play at the next play time
 function schedulePlay() {
-    if (_audioSource != null)
-        _audioSource.stop();
-    if (_audioBuffer == null)
+    if (_schedulingPlay) {
         return;
+    }
+    _schedulingPlay = true;
+    stopAudio();
+    if (_audioBuffer == null)
+    {
+        _schedulingPlay = false;
+        return;
+    }
     let delay = getNextPlayTime();
 
     if (delay >= 0) {
@@ -267,31 +273,29 @@ function schedulePlay() {
         min = Math.floor((delay - hour*3600*1000)/60/1000);
         sec = (delay - (hour*3600 + min*60)*1000)/1000;
         console.log("Next play in:", hour, "h", min, "min", sec, "s | ", _audioContext.currentTime + delay/1000.0);
-        playAudio(_audioContext.currentTime + delay/1000.0);
-        setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, getCountdownDuration()*60*1000 + delay);
-        setTimeout(function() {
-            $('#stop_countdown_btn').prop("disabled", true);
-            schedulePlay();
-        }, (getCountdownDuration()*60 + 30)*1000 + delay);
+        playAudio(delay/1000.0);
     }
-}
-
-function changeTime() {
-    stopAudio();
-    schedulePlay();
-}
-
-function testAutoPlay() {
+    _schedulingPlay = false;
 }
 
 // Function to stop the audio and reset the playhead
 function stopAudio() {
+    clearTimeout(_stopBtnTimeout);
     $('#stop_countdown_btn').prop("disabled", true);
-    if (_audioSource != null)
+    if (_audioSource != null) {
+        _audioSource.removeEventListener("ended", audioEnded);
         _audioSource.stop();
+    }
 }
 
 $(document).ready(function() {
+
+    $('body').keydown(function(e) {
+        // Stop countdown if 'o' is pressed
+        if (e.which == 79 && $('#publish_results').prop('checked') && !$('#stop_countdown_btn').prop("disabled")) {
+            schedulePlay();
+        }
+    });
 
     // Start scheduling the plays
     function updateTime() {
@@ -302,8 +306,8 @@ $(document).ready(function() {
 
     updateTime();
 
-    $('input[name=seconds_adjust]').change(function() { changeTime(); });
-    $('input[name=deciseconds_adjust]').change(function() { changeTime(); });
+    $('input[name=seconds_adjust]').change(function() { schedulePlay(); });
+    $('input[name=deciseconds_adjust]').change(function() { schedulePlay(); });
 
     function showStatus(msg) {
         let element = document.getElementById('file_upload_status');
@@ -1041,6 +1045,9 @@ $(document).ready(function() {
                     dis_chooser += `<input type="radio" name="sl_add_dis" value="${dis}" id="sl_add_dis_${dis}" ${checked}/>
                                     <label for="sl_add_dis_${dis}">${dis}</label><br>`;
                 }
+                let lane_input = '<input type="number" id="sl_add_lane" value="1"/>';
+                if (!laneStyleIsNumeric())
+                    lane_input = '<input type="text" id="sl_add_lane" value="A"/>';
                 content = `
                     Add athlete<br>
                     <table>
@@ -1069,7 +1076,7 @@ $(document).ready(function() {
                         </tr>
                         <tr>
                             <td>Lane</td>
-                            <td><input type="number" id="sl_add_lane" value="1"/></td>
+                            <td>${lane_input}</td>
                         </tr>
                         <tr>
                             <td><button id="overlay_cancel" type="button">Cancel</button></td>
@@ -1089,7 +1096,8 @@ $(document).ready(function() {
     $('#overlay_box').on('click', '#sl_add_save', function() {
         let i = Number($('#sl_add_athlete').find("option:selected").attr('value'));
         let dis = $("input[name='sl_add_dis']:checked").val();
-        if (!$('#sl_add_ap') || isNaN(i) || i < 0 || i >= _sl_athletes.length)
+        let lane = convertActualLaneToNumeric($('#sl_add_lane').val());
+        if (!$('#sl_add_ap') || isNaN(i) || i < 0 || i >= _sl_athletes.length || lane <= 0 || lane > 12)
             return;
         let new_entry = {Name: _sl_athletes[i].first_name + " " + _sl_athletes[i].last_name, AP: $('#sl_add_ap').val(), PB: $('#sl_add_pb').val(), Nationality: _sl_athletes[i].country, Warmup: "", OT: "", Lane: $('#sl_add_lane').val(), Id: -_sl_athletes[i].id, Discipline: dis};
         let ot = timeToMinutes($('#sl_add_ot').val());
@@ -1119,6 +1127,7 @@ $(document).ready(function() {
             success: function(data) {
                 console.log(data.status_msg);
                 generateStartList(data.start_list);
+                setOTs(data);
                 _sl = data.start_list;
                 _sl_remove = [];
                 _sl_edited = false;
@@ -1130,7 +1139,7 @@ $(document).ready(function() {
         let id = Number(this.id.split('_')[1]); // id is result_${id}
         let name = $(`#result_Name_${id}`).html();
         let rp = 0;
-        let content = generateResultContent("Add", name, rp, 0, "", "checked", "", "", "");
+        let content = generateResultContent("Add", name, rp, 0, "", "checked", "", "", "", "");
         _sl_athletes = id;
         showOverlayBox(400, 800, content);
     });
@@ -1143,7 +1152,7 @@ $(document).ready(function() {
         let ap = $(`#result_AP_${id}`).html();
         let card = $(`#result_Card_${id}`).html();
         let penalty = $(`#result_Penalty_${id}`).html();
-        let remark = $(`#result_Remarks_${id}`).html();
+        let remarks = $(`#result_Remarks_${id}`).html();
         let judge_remark = $(`#result_JudgeRemarks_${id}`).html();
         let federation = $("input[name='comp_type']:checked").val();
         let penalty_not_reached_ap = penaltyUnderAP(rp, ap, card, federation, _cur_menu.discipline);
@@ -1157,7 +1166,7 @@ $(document).ready(function() {
         let rcr_checked = card == "RED" ? "checked" : "";
         if (_cur_menu.discipline == "STA")
             rp = timeToMinutes(rp);
-        let content = generateResultContent("Edit", name, rp, penalty, penalty_not_reached_ap_str, rcw_checked, rcy_checked, rcr_checked, judge_remark);
+        let content = generateResultContent("Edit", name, rp, penalty, penalty_not_reached_ap_str, rcw_checked, rcy_checked, rcr_checked, judge_remark, remarks);
         _sl_athletes = id;
         showOverlayBox(400, 800, content);
     });
@@ -1274,7 +1283,7 @@ function blockModify(type, day = "", disciplines = [], block = -1)
     });
 }
 
-function generateResultContent(type_str, name, rp, penalty, penalty_not_reached_ap, rcw_checked, rcy_checked, rcr_checked, judge_remarks) {
+function generateResultContent(type_str, name, rp, penalty, penalty_not_reached_ap, rcw_checked, rcy_checked, rcr_checked, judge_remarks, remarks) {
     let is_sta = _cur_menu.discipline == "STA";
     let rp_input_type = is_sta ? "time" : "number"; // TODO does not work for STA, change rp
     if (is_sta)
@@ -1314,7 +1323,8 @@ function generateResultContent(type_str, name, rp, penalty, penalty_not_reached_
         let aida_remarks = ["OK", "OTHER", "SHORT", "LATESTART", "GRAB", "LANYARD", "PULL", "TURN", "EARLYSTART", "START", "NO TAG", "UNDER AP", "DQSP", "DQJUMP", "DQOTHER", "DQAIRWAYS", "DQTOUCH", "DQLATESTART", "DQCHECK-IN", "DQBO-UW", "DQBO-SURFACE", "DQPULL", "DQOTHER-LANE", "DNS"];
         for (let i = 0; i < aida_remarks.length; i++) {
             let remark = aida_remarks[i];
-            content += `<input type="checkbox" name="result_remark" value="${remark}" id="result_remark_${remark}"/>
+            let checked = remarks.split(",").indexOf(remark) > -1 ? "checked" : "";
+            content += `<input type="checkbox" name="result_remark" value="${remark}" id="result_remark_${remark}" ${checked}/>
                         <label for="result_remark_${remark}">${remark}</label><br>`;
         }
      }
@@ -1878,7 +1888,8 @@ function loadCompetition(comp_id, testAutoPlayExecute) {
         {
             console.log(data.status_msg);
             // Update clock link
-            $('#clock_button').children()[0].href = "clock/" + comp_id + "/0";
+            ms_adjust = parseInt($("#deciseconds_adjust").val(), 10)*100 + parseInt($("#seconds_adjust").val(), 10)*1000;
+            $('#clock_button').children()[0].href = "clock/" + comp_id + "/0/" + ms_adjust;
             if ('special_ranking_name' in data)
             {
                 $('#special_ranking_name').val(data.special_ranking_name);
@@ -1954,12 +1965,18 @@ function initAudio() {
                     |
                     <span id="test_countdown_div">
                         <button id="test_countdown_btn">Test Countdown</button>
+                    </span>
+                    |
+                    <span>
+                        <input type="checkbox" name="enable_remote" id="enable_remote"/>
+                        <label for="enable_remote">Enable Remote</label>
                     </span>`);
                 $('#stop_countdown_btn').prop("disabled", true);
                 $('#stop_countdown_btn').click(function() {
-                    stopAudio();
+                    schedulePlay();
                 });
                 $('#test_countdown_btn').click(function() {
+                    stopAudio();
                     playAudio(0, (getCountdownDuration()-1)*60 + 55, 10);
                 });
 
@@ -1979,18 +1996,31 @@ function playAudio(time = 0, offset = 0, duration = null) {
     _audioSource = _audioContext.createBufferSource();
     _audioSource.buffer = _audioBuffer;
     _audioSource.connect(_audioContext.destination);
-    if (duration != null)
-        _audioSource.start(time, offset, duration);
-    else
-        _audioSource.start(time, offset);
+    if (duration != null) {
+        _audioSource.start(_audioContext.currentTime + time, offset, duration);
+        _stopBtnTimeout = setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, duration*1000/2);
+    }
+    else {
+        _audioSource.start(_audioContext.currentTime + time, offset);
+        _stopBtnTimeout = setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, (time + getCountdownDuration()*60)*1000);
+    }
+    _audioSource.addEventListener("ended", audioEnded);
+}
+
+function audioEnded(e) {
+    _audioSource = null;
+    schedulePlay();
+}
+
+function laneStyleIsNumeric() {
+    let lane_style = $("input[name='lane_style']:checked").val();
+    return lane_style == "numeric";
 }
 
 function convertNumericLaneToAcutal(ilane) {
-    let lane_style = $("input[name='lane_style']:checked").val();
-    return lane_style == "numeric" ? ilane : String.fromCharCode(64+ilane);
+    return laneStyleIsNumeric() ? ilane : String.fromCharCode(64+ilane);
 }
 
 function convertActualLaneToNumeric(alane) {
-    let lane_style = $("input[name='lane_style']:checked").val();
-    return lane_style == "numeric" ? alane : alane.charCodeAt()-64;
+    return laneStyleIsNumeric() ? alane : alane.charCodeAt()-64;
 }

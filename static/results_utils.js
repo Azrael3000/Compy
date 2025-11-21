@@ -70,3 +70,10 @@ function timeToMinutes(time) {
     let m = Number(time.split(':')[1]);
     return h*60 + m;
 }
+
+function getDefaultRemark(card, federation) {
+    if (card == 'WHITE')
+        return REMARKS[federation][card][0];
+    else
+        return "";
+}

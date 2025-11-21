@@ -30,6 +30,7 @@ from flask import Flask, render_template, request, send_file, Response, make_res
 from os import path, mkdir
 import uuid
 from werkzeug.utils import secure_filename
+from werkzeug.routing import IntegerConverter
 try:
     import country_converter
 except ImportError:
@@ -37,6 +38,9 @@ except ImportError:
     exit(-1)
 
 class CompyFlask:
+
+    class SignedIntConverter(IntegerConverter):
+        regex = r'-?\d+'
 
     def __init__(self, app, data, db, start_flask):
 
@@ -46,6 +50,7 @@ class CompyFlask:
         self.cache_ = {}
 
         app.config['UPLOAD_FOLDER'] = self.data_.config.upload_folder
+        app.url_map.converters['signed_int'] = self.SignedIntConverter
 
         @app.route('/admin', methods=['GET'])
         def admin():
@@ -181,9 +186,9 @@ class CompyFlask:
             elif request.method == 'DELETE':
                 return self.deleteBlock()
 
-        @app.route('/clock/<int:comp_id>/<int:current>', methods=['GET'])
-        def clock(comp_id, current):
-            return self.getClock(comp_id, current)
+        @app.route('/clock/<int:comp_id>/<int:current>/<signed_int:offset>', methods=['GET'])
+        def clock(comp_id, current, offset):
+            return self.getClock(comp_id, current, offset)
 
         @app.route('/publish_results', methods=['UPDATE'])
         def publish_results():
@@ -335,6 +340,7 @@ class CompyFlask:
         start_list = self.data_.getStartList(day, block)
         if ret == 0 and not start_list is None:
             data = {"status": "success", "status_msg": "Successfully updated start list", "start_list": start_list}
+            self.data_.setOTs(data)
             return data, 200
         elif ret != 0 and not start_list is None:
             data = {"status": "success", "status_msg": "Failed database update", "start_list": start_list}
@@ -771,20 +777,22 @@ class CompyFlask:
         else:
             return {}, 400
 
-    def getClock(self, comp_id, current):
+    def getClock(self, comp_id, current, offset):
         current = (current+1) % 2
         comp_name = self.data_.load(comp_id)
-        alist = self.data_.getFourStarts(current == 0)
+        alist = self.data_.getFourStarts(current == 0, offset)
         if alist is None:
             current = (current+1) % 2
-            alist = self.data_.getFourStarts(current == 0)
+            alist = self.data_.getFourStarts(current == 0, offset)
         if comp_name != None:
-            refresh_url = request.base_url[:request.base_url.rfind('/')+1] + str(current)
+            url = request.base_url
+            refresh_url = url[:url.rfind('/', 0, url.rfind('/'))+1] + str(current) + "/" + str(offset)
             content = {"comp_name": comp_name,
                        "comp_id": comp_id,
                        "alist": alist,
                        "current": current,
-                       "refresh_url": refresh_url}
+                       "refresh_url": refresh_url,
+                       "offset": offset}
             return render_template('clock.html', **content)
         else:
             return {}, 400
