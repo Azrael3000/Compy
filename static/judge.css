@@ -77,7 +77,6 @@ table {
 th, td {
     text-align: left;
     padding: 2vw;
-    border: 0.1vh solid var(--light);
     background-color: var(--white);
 }
 
@@ -165,16 +164,24 @@ th:last-child, td:last-child {
     margin-bottom: 1vh;
 }
 
-.card.white {
+.athlete_menu .white, .card.white {
     background: var(--white);
 }
 
-.card.yellow {
+.athlete_menu .yellow, .card.yellow {
     background: var(--card-yellow);
 }
 
-.card.red {
+.athlete_menu .red, .card.red {
     background: var(--card-red);
+}
+
+.athlete_menu .unset {
+    background: var(--light);
+}
+
+.athlete_menu .dns {
+    text-decoration: line-through;
 }
 
 .card.highlight, .remark.highlight {

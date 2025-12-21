@@ -666,7 +666,7 @@ class CompyData:
         return 0
 
     def convertPerformance(self, val, dis):
-        if val is None:
+        if val is None or val == "":
             return ""
         if dis == "STA":
             m = math.floor(int(val)/60)

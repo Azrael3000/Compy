@@ -377,7 +377,11 @@ function showCard() {
         } else
             $('#card_white').show();
     }
-    $('#card_' + card.toLowerCase()).addClass('highlight');
+    $('#card_' + lowerCase(card)).addClass('highlight');
+}
+
+function lowerCase(str) {
+    return (str == null || str == "") ? "" : str.toLowerCase();
 }
 
 function savePenalty(pen = null) {
@@ -547,12 +551,17 @@ function showAthleteMenu(lane_list) {
             <th>Dis</th>
         </tr>`;
     for (let i = 0; i < lane_list.length; i++) {
+        let card = lowerCase(lane_list[i].Card);
+        let set_class = card != "" ? "" : "unset";
+        if (card == "red" && lane_list[i].Remarks == "DNS") {
+            set_class = "dns";
+        }
         menu += `
             <tr id="athlete_${lane_list[i].s_id}" class="athlete_menu">
-                <td>${lane_list[i].OT}</td>
-                <td>${lane_list[i].Name}</td>
-                <td>${_federation == "cmas" ? lane_list[i].PB : lane_list[i].AP}</td>
-                <td>${lane_list[i].Dis}</td>
+                <td class="${set_class}">${lane_list[i].OT}</td>
+                <td class="${set_class}">${lane_list[i].Name}</td>
+                <td class="${set_class} ${card}">${_federation == "cmas" ? lane_list[i].PB : lane_list[i].AP}</td>
+                <td class="${set_class}">${lane_list[i].Dis}</td>
             </tr>`;
     }
     menu += "</table>";
@@ -604,7 +613,7 @@ function showResultEntryMask(data) {
     }
     let card = "";
     if ('Card' in data && isValidCard(data.Card, _federation))
-        card = `<span id="card_title" class="card ${data.Card.toLowerCase()}">${data.Card}</span>`;
+        card = `<span id="card_title" class="card ${lowerCase(data.Card)}">${data.Card}</span>`;
     let ap = "";
     if (_federation != "cmas" || data.Dis == "STA") {
         ap = `
