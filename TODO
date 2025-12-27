@@ -24,8 +24,6 @@
  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 TODO:
-- Result editing in main view does not show correct values
-- When saving a new competition, update the competition_list <ul>
 - When refreshing file ask user whether he wants to delete all athletes or only update
 - NR/CR/WR database (CMAS/AIDA, former with links to record pages)
 - Marking CR/WRs in results
@@ -34,11 +32,9 @@ TODO:
 - Athlete adding, allow choosing from existing ones
 
 WISHLIST:
-- Direct result entry from mobile
 - Interface for registration
 - Interface for check in
 - Write results into excel
-- Result view for public, embeddable
 - Helper interface
 - User management
 - Capability for athletes to add divetime (should be on lane list)

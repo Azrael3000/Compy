@@ -393,8 +393,10 @@ class CompyData:
 
     def changeName(self, new_name, overwrite):
         comp_id = self.db_.execute("SELECT id FROM competition WHERE name=?", new_name)
+        file_exists = False
+        comps = []
         if not comp_id is None and not overwrite:
-            return [1, self.name_]
+            file_exists = True
         else:
             self.name_ = new_name
             if comp_id is None:
@@ -402,7 +404,8 @@ class CompyData:
             else:
                 self.id_ = comp_id[0][0]
             self.save()
-            return [0, self.name_]
+            comps = self.getSavedCompetitions()
+        return {'file_exists': file_exists, 'name': self.name_, 'competitions': comps}
 
     def save(self):
         # force version update
@@ -1974,3 +1977,43 @@ class CompyData:
         except Exception as e:
             print(e.msg)
             return -1, None
+
+    def deleteComp(self, comp_id):
+        try:
+            assert(comp_id is not None)
+            comp_id = int(comp_id)
+        except:
+            return 1, {'status': 'error', 'status_msg': 'Invalid id'}
+        valid_id = self.db_.execute("SELECT COUNT(*) FROM competition WHERE id=?", comp_id)
+        if valid_id is None:
+            return 1, {'status': 'error', 'status_msg': 'Competition id ' + str(comp_id) + ' does not exist'}
+        if comp_id == 1:
+            return 1, {'status': 'error', 'status_msg': 'Cannot delete competition with id 1'}
+        data = {}
+
+        self.db_.execute("DELETE FROM competition WHERE id=?", comp_id)
+        self.db_.execute("DELETE FROM judge WHERE competition_id=?", comp_id)
+        self.db_.execute("DELETE FROM block WHERE competition_id=?", comp_id)
+        self.db_.execute("DELETE FROM break WHERE competition_id=?", comp_id)
+
+        # Get all athletes from comp
+        db_out = self.db_.execute("SELECT id, athlete_id FROM competition_athlete WHERE competition_id=?", comp_id)
+
+        if db_out is not None:
+            for ca in db_out:
+                ca_id = ca[0]
+                self.db_.execute("DELETE FROM start WHERE competition_athlete_id=?", ca_id)
+
+                athlete_id = ca[1]
+                n_comp_athlete = self.db_.execute("SELECT COUNT(*) FROM competition_athlete WHERE athlete_id=?", athlete_id)
+
+                # Delete if athlete is only in one comp (i.e. the one being deleted)
+                if n_comp_athlete is not None and n_comp_athlete[0][0] == 1:
+                    self.db_.execute("DELETE FROM athlete WHERE id=?", athlete_id)
+
+            self.db_.execute("DELETE FROM competition_athlete WHERE competition_id=?", comp_id)
+
+        data['competitions'] = self.getSavedCompetitions()
+        data['status'] = 'success'
+        data['status_msg'] = 'Successfully deleted comp with id ' + str(comp_id)
+        return 0, data

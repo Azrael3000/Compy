@@ -64,9 +64,12 @@ class CompyFlask:
         def uploadSponsorImg():
             return self.uploadSponsorImg()
 
-        @app.route('/change_comp_name', methods=['POST'])
+        @app.route('/competition', methods=['POST', 'DELETE'])
         def changeCompName():
-            return self.changeCompName()
+            if request.method == 'POST':
+                return self.changeCompName()
+            elif request.method == 'DELETE':
+                return self.deleteComp()
 
         @app.route('/change_special_ranking_name', methods=['POST'])
         def changeSpecialRankingName():
@@ -279,12 +282,14 @@ class CompyFlask:
             return {}, 400
         comp_name = content["comp_name"]
         overwrite = content["overwrite"]
-        file_exists, name = self.data_.changeName(comp_name, overwrite)
-        data = {}
-        if file_exists == 0:
-            data = {"status": "success", "status_msg": "Successfully changed competition name to '" + comp_name + "'", "file_exists": False, "prev_name": ""}
+        data = self.data_.changeName(comp_name, overwrite)
+        data['status'] = 'success'
+        if data['file_exists']:
+            data["status_msg"] = "File exists"
+            data["prev_name"] = name
         else:
-            data = {"status": "success", "status_msg": "File exists", "file_exists": True, "prev_name": name}
+            data["status_msg"] = "Successfully changed competition name to '" + comp_name + "'"
+            data["prev_name"] = ""
         return data, 200
 
     def loadComp(self):
@@ -887,3 +892,8 @@ class CompyFlask:
         if content is None and not allow_none:
             raise RuntimeError("Could key " + key + " from request object is not set")
         return content
+
+    def deleteComp(self):
+        comp_id = request.json.get('comp_id')
+        ret, data = self.data_.deleteComp(comp_id)
+        return data

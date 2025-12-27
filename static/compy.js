@@ -43,6 +43,7 @@ var _audioSource = null;
 var _audioBuffer = null;
 var _stopBtnTimeout = null;
 var _schedulingPlay = false;
+var _nAudioPlay = 0;
 
 $(window).on('load', function() {
     $('#comp_name').val("undefined");
@@ -272,7 +273,7 @@ function schedulePlay() {
         hour = Math.floor(delay/3600/1000);
         min = Math.floor((delay - hour*3600*1000)/60/1000);
         sec = (delay - (hour*3600 + min*60)*1000)/1000;
-        console.log("Next play in:", hour, "h", min, "min", sec, "s | ", _audioContext.currentTime + delay/1000.0);
+        console.log("Next play in:", hour, "h", min, "min", sec, "s | ", _audioContext.currentTime + delay/1000.0, " current nAudioPlay: ", _nAudioPlay);
         playAudio(delay/1000.0);
     }
     _schedulingPlay = false;
@@ -285,6 +286,7 @@ function stopAudio() {
     if (_audioSource != null) {
         _audioSource.removeEventListener("ended", audioEnded);
         _audioSource.stop();
+        _nAudioPlay--;
     }
 }
 
@@ -391,10 +393,14 @@ $(document).ready(function() {
         })
     });
     $('#comp_name').change(function() {
-        let data = {comp_name: this.value, overwrite: false};
+        $('#save_comp').show();
+    });
+    $('#save_comp').click(function() {
+        $('#save_comp').hide();
+        let data = {comp_name: $('#comp_name').val(), overwrite: false};
         $.ajax({
             type: "POST",
-            url: "/change_comp_name",
+            url: "/competition",
             data: JSON.stringify(data),
             contentType: "application/json",
             dataType: "json",
@@ -403,24 +409,27 @@ $(document).ready(function() {
                 if (data.file_exists) {
                     $('#overwrite').show();
                     _global_prev_name = data.prev_name;
+                } else {
+                    showCompList(data);
                 }
             }
-        })
+        });
     });
     $('#overwrite_yes').click(function() {
         let comp_name = document.getElementById("comp_name").value;
         let data = {comp_name: comp_name, overwrite: true};
         $.ajax({
             type: "POST",
-            url: "/change_comp_name",
+            url: "/competition",
             data: JSON.stringify(data),
             contentType: "application/json",
             dataType: "json",
             success: function(data) {
                 console.log(data.status_msg);
                 $('#overwrite').hide();
+                showCompList(data);
             }
-        })
+        });
     });
     $('#overwrite_no').click(function() {
         document.getElementById("comp_name").value = _global_prev_name;
@@ -555,6 +564,10 @@ $(document).ready(function() {
     $("#competition_list").delegate(".load_comp_button", "click", function() {
         let comp_id = this.id.substring(5); // button id is equal to "load_" + comp id
         loadCompetition(comp_id, false);
+    });
+    $("#competition_list").delegate(".delete_comp_button", "click", function() {
+        let comp_id = this.id.substring(7); // button id is equal to "delete_" + comp id
+        deleteCompetition(comp_id);
     });
     $("#sl_discipline_menu").on("click", "a", function() {
         let id_arr = this.id.split('_'); // button id is equal to "sl_" + day + "_" + block
@@ -1239,6 +1252,23 @@ $(document).ready(function() {
         })
     });
 });
+
+function showCompList(data) {
+    let content = "";
+    if (!"competitions" in data || data.competitions == null) {
+        content = "<li>No previous competition available</li>";
+    } else {
+        for (let i = 0; i < data.competitions.length; i++) {
+            let comp = data.competitions[i];
+            content += `<li>${comp.name} (last save: ${comp.save_date}) <button id="load_${comp.comp_id}" class="load_comp_button" type="button">Load</button>`;
+            if (comp.comp_id != 1) {
+                content += `<button id="delete_${comp.comp_id}" class="delete_comp_button" type="button">Delete</button>`;
+            }
+            content += "</li>";
+        }
+    }
+    $('#competition_list').html(content);
+}
 
 function blockModify(type, day = "", disciplines = [], block = -1)
 {
@@ -1998,10 +2028,12 @@ function playAudio(time = 0, offset = 0, duration = null) {
     _audioSource.connect(_audioContext.destination);
     if (duration != null) {
         _audioSource.start(_audioContext.currentTime + time, offset, duration);
+        _nAudioPlay++;
         _stopBtnTimeout = setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, duration*1000/2);
     }
     else {
         _audioSource.start(_audioContext.currentTime + time, offset);
+        _nAudioPlay++;
         _stopBtnTimeout = setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, (time + getCountdownDuration()*60)*1000);
     }
     _audioSource.addEventListener("ended", audioEnded);
@@ -2023,4 +2055,27 @@ function convertNumericLaneToAcutal(ilane) {
 
 function convertActualLaneToNumeric(alane) {
     return laneStyleIsNumeric() ? alane : alane.charCodeAt()-64;
+}
+
+function deleteCompetition(id) {
+    let data = {comp_id: id};
+    $.ajax({
+        type: "DELETE",
+        url: "/competition",
+        data: JSON.stringify(data),
+        contentType: "application/json",
+        dataType: "json",
+        success: function(data) {
+            console.log(data.status_msg);
+            showCompList(data);
+            if (id == _comp_id) {
+                loadCompetition(1, true);
+            }
+        },
+        error: function(data) {
+            if ('status_msg' in data) {
+                console.log(data.status_msg);
+            }
+        }
+    });
 }

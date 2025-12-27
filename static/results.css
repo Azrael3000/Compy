@@ -40,7 +40,7 @@ html, body {
 }
 
 #header div, button {
-    /* border: 0.1vh solid var(--light); */
+    border: 0.1vh solid var(--light);
     background-color: var(--white);
     color: var(--medium);
     font-size: 3vh;

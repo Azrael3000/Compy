@@ -64,6 +64,7 @@
                 <label for="comp_name">Competition name</label>
                 <br>
                 <input type="text" id="comp_name" value="{{ comp_name }}"/>
+                <button id="save_comp" type="button">Save</button>
                 <div id="overwrite" style="display:none">
                     <p>Overwrite?</p>
                     <button id="overwrite_yes" type="button">Yes</button>
@@ -129,7 +130,11 @@
                     <li>No previous competition available</li>
                 {% else %}
                     {% for comp in competitions %}
-                        <li>{{ comp.name }} (last save: {{ comp.save_date }}) <button id="load_{{ comp.comp_id}}" class="load_comp_button" type="button">Load</button></li>
+                        <li>{{ comp.name }} (last save: {{ comp.save_date }}) <button id="load_{{ comp.comp_id}}" class="load_comp_button" type="button">Load</button>
+                        {% if comp.comp_id != 1 %}
+                            <button id="delete_{{comp.comp_id}}" class="delete_comp_button" type="button">Delete</button>
+                        {% endif %}
+                        </li>
                     {% endfor %}
                 {% endif %}
             </ul>
