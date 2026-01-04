@@ -294,7 +294,7 @@ $(document).ready(function() {
 
     $('body').keydown(function(e) {
         // Stop countdown if 'o' is pressed
-        if (e.which == 79 && $('#publish_results').prop('checked') && !$('#stop_countdown_btn').prop("disabled")) {
+        if (e.which == 79 && $('#enable_remote').prop('checked') && !$('#stop_countdown_btn').prop("disabled")) {
             schedulePlay();
         }
     });
@@ -612,7 +612,7 @@ $(document).ready(function() {
                             <td>Name</td>
                             <td>1st Discipline (OT)</td>
                             <td>2nd Discipline (OT)</td>
-                            <td>Break</td>
+                            <td>Break (h:min)</td>
                         </tr>`;
                     for (let i = 0; i < data.breaks_list.length; i++) {
                         out += `
