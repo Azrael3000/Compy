@@ -212,9 +212,9 @@ function hideOverlayBox() {
 function getCountdownDuration() {
     let selectedOption = $("input[name='comp_type']:checked").val();
     if (selectedOption == "aida")
-        return 2;
+        return 2*60;
     else
-        return 3;
+        return 3*60;
 }
 
 function getDateNow(with_correction = true) {
@@ -230,8 +230,8 @@ function getDateNow(with_correction = true) {
     return now;
 }
 
-// Function to calculate the time until the next play
-function getNextPlayTime(ot = false) {
+// Function to calculate the time until the next OT
+function getTimeToNextOT() {
     let now = getDateNow();
     let nextPlayTime = null;
 
@@ -239,9 +239,6 @@ function getNextPlayTime(ot = false) {
         let timeParts = timeStr.split(':');
         // -1 for month as 0 = Jan
         let playTime = new Date(parseInt(timeParts[0]), parseInt(timeParts[1]-1), parseInt(timeParts[2]), parseInt(timeParts[3]), parseInt(timeParts[4]), parseInt(timeParts[5]));
-        // subtract getCountdownDuration() mins as play time starts that many mins before ot
-        if (!ot)
-            playTime.setMinutes(playTime.getMinutes() - getCountdownDuration());
 
         if (!nextPlayTime || (playTime >= now && (playTime < nextPlayTime || nextPlayTime < now))) {
             nextPlayTime = playTime;
@@ -267,14 +264,16 @@ function schedulePlay() {
         _schedulingPlay = false;
         return;
     }
-    let delay = getNextPlayTime();
+    let timeToNexOT = getTimeToNextOT();
 
-    if (delay >= 0) {
+    if (timeToNexOT >= 0) {
+        let delay = Math.max(0, timeToNexOT - getCountdownDuration()*1000);
+        let offset = Math.max(0, getCountdownDuration()*1000 - timeToNexOT)/1000.0;
         hour = Math.floor(delay/3600/1000);
         min = Math.floor((delay - hour*3600*1000)/60/1000);
         sec = (delay - (hour*3600 + min*60)*1000)/1000;
-        console.log("Next play in:", hour, "h", min, "min", sec, "s | ", _audioContext.currentTime + delay/1000.0, " current nAudioPlay: ", _nAudioPlay);
-        playAudio(delay/1000.0);
+        console.log("Next play in:", hour, "h", min, "min", sec, "s with offset ", offset, "s | ", _audioContext.currentTime + delay/1000.0, " current nAudioPlay: ", _nAudioPlay);
+        playAudio(delay/1000.0, offset);
     }
     _schedulingPlay = false;
 }
@@ -286,6 +285,7 @@ function stopAudio() {
     if (_audioSource != null) {
         _audioSource.removeEventListener("ended", audioEnded);
         _audioSource.stop();
+        _audioSource = null;
         _nAudioPlay--;
     }
 }
@@ -302,7 +302,7 @@ $(document).ready(function() {
     // Start scheduling the plays
     function updateTime() {
         $('#time').text(formatTime(getDateNow()), false);
-        $('#countdown_ot').text(formatTime(getNextPlayTime(true), true));
+        $('#countdown_ot').text(formatTime(getTimeToNextOT(), true));
         window.requestAnimationFrame(updateTime);
     };
 
@@ -2007,7 +2007,7 @@ function initAudio() {
                 });
                 $('#test_countdown_btn').click(function() {
                     stopAudio();
-                    playAudio(0, (getCountdownDuration()-1)*60 + 55, 10);
+                    playAudio(0, getCountdownDuration() - 5, 10);
                 });
 
                 schedulePlay();
@@ -2034,7 +2034,7 @@ function playAudio(time = 0, offset = 0, duration = null) {
     else {
         _audioSource.start(_audioContext.currentTime + time, offset);
         _nAudioPlay++;
-        _stopBtnTimeout = setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, (time + getCountdownDuration()*60)*1000);
+        _stopBtnTimeout = setTimeout(function() { $('#stop_countdown_btn').prop("disabled", false); }, (time + getCountdownDuration() - offset)*1000);
     }
     _audioSource.addEventListener("ended", audioEnded);
 }
