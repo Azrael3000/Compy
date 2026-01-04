@@ -312,6 +312,8 @@ function doSave() {
             console.log(data.status_msg);
             if ('Name' in data)
                 showResultEntryMask(data);
+            if ('lane_list' in data)
+                _lane_list = data['lane_list'];
         }
     });
 }

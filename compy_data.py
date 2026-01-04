@@ -1779,7 +1779,8 @@ class CompyData:
 
         db_out = self.db_.execute(
             '''SELECT a.first_name, a.last_name, a.country, s.AP, s.RP, s.penalty, s.card,
-                      s.remarks, s.OT, a.gender, s.judge_remarks, s.discipline, s.PB
+                      s.remarks, s.OT, a.gender, s.judge_remarks, s.discipline, s.PB,
+                      s.day, s.block, s.lane
                FROM start s
                INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
                INNER JOIN athlete a ON ca.athlete_id == a.id
@@ -1790,6 +1791,7 @@ class CompyData:
             return -1, None
 
         discipline = db_out[0][11]
+        ret, lane_list_dict = self.getLaneList(u.convDay(db_out[0][13]), db_out[0][14], self.laneStyleConverter(db_out[0][15]))
         return 0, {'Name': db_out[0][0] + " " + db_out[0][1],
                    'Country': db_out[0][2],
                    'AP': self.convertPerformance(db_out[0][3], discipline),
@@ -1803,7 +1805,8 @@ class CompyData:
                    'Id': s_id,
                    'OT': u.convTime(db_out[0][8]),
                    'NR': self.getNr(db_out[0][2], "", db_out[0][9], discipline, True),
-                   'Gender': db_out[0][9]}
+                   'Gender': db_out[0][9],
+                   'lane_list': lane_list_dict['lane_list']}
 
     def cleanFederation(self, federation):
         if not federation in FEDERATIONS:
