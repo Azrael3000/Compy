@@ -5,7 +5,6 @@ CREATE TABLE start (
   competition_athlete_id INTEGER NOT NULL,
   discipline TEXT NOT NULL,
   lane INTEGER NOT NULL,
-  day TEXT NOT NULL,
   block INTEGER NOT NULL,
   OT TEXT NOT NULL,
   PB FLOAT,

@@ -346,6 +346,8 @@ class CompyFlask:
         if ret == 0 and not start_list is None:
             data = {"status": "success", "status_msg": "Successfully updated start list", "start_list": start_list}
             self.data_.setOTs(data)
+            data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
+            data["blocks"] = self.data_.getBlocks()
             return data, 200
         elif ret != 0 and not start_list is None:
             data = {"status": "success", "status_msg": "Failed database update", "start_list": start_list}

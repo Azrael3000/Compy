@@ -1140,6 +1140,7 @@ $(document).ready(function() {
             success: function(data) {
                 console.log(data.status_msg);
                 generateStartList(data.start_list);
+                initSubmenus(data, true);
                 setOTs(data);
                 _sl = data.start_list;
                 _sl_remove = [];

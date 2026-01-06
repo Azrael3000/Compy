@@ -351,15 +351,15 @@ class CompyData:
                 print(block, dis, blocks)
                 if rp is not None:
                     self.db_.execute('''INSERT INTO start
-                                        (competition_athlete_id, discipline, lane, OT, AP, day,
+                                        (competition_athlete_id, discipline, lane, OT, AP,
                                          rp, card, penalty, remarks, block)
                                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                                     (ca_id[0][0], dis, lane, u.convTime(ot), ap, u.convDay(day), rp, card, penalty, remarks, block))
+                                     (ca_id[0][0], dis, lane, u.convTime(ot), ap, rp, card, penalty, remarks, block))
                 else:
                     self.db_.execute('''INSERT INTO start
-                                        (competition_athlete_id, discipline, lane, OT, AP, day, block)
+                                        (competition_athlete_id, discipline, lane, OT, AP, block)
                                         VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                                     (ca_id[0][0], dis, lane, u.convTime(ot), ap, u.convDay(day), block))
+                                     (ca_id[0][0], dis, lane, u.convTime(ot), ap, block))
 
 
     def setRegistration(self, athlete_id, special_ranking, change_type, warn=True):
@@ -504,7 +504,9 @@ class CompyData:
             db_out = self.db_.execute('''SELECT DISTINCT discipline, lane FROM start s
                                          INNER JOIN competition_athlete ca
                                          ON s.competition_athlete_id == ca.id
-                                         WHERE (ca.competition_id==? AND s.day==?)''',
+                                         INNER JOIN block b
+                                         ON s.block == b.id
+                                         WHERE (ca.competition_id==? AND b.day==?)''',
                                       (self.id_, u.convDay(day)))
             if db_out is None:
                 continue
@@ -561,7 +563,8 @@ class CompyData:
             FROM start s
             INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
             INNER JOIN athlete a ON ca.athlete_id == a.id
-            WHERE ca.competition_id==? AND s.block==? AND s.day==?''',
+            INNER JOIN block b ON s.block == b.id
+            WHERE ca.competition_id==? AND s.block==? AND b.day==?''',
             (self.id_, block, u.convDay(day)))
         if db_out is None:
             return []
@@ -578,9 +581,10 @@ class CompyData:
         startlist.sort(key=lambda r: (self.getMinFromTime(r['OT']), int(self.laneStyleConverter(r['Lane'], True))))
 
         br_out = self.db_.execute('''
-            SELECT duration, idx
-            FROM break
-            WHERE competition_id == ? AND block == ? AND day == ?''',
+            SELECT br.duration, br.idx
+            FROM break br
+            INNER JOIN block bl ON bl.id == br.block
+            WHERE br.competition_id == ? AND br.block == ? AND bl.day == ?''',
             (self.id_, block, u.convDay(day)))
         if br_out is not None:
             for br in br_out:
@@ -618,16 +622,17 @@ class CompyData:
                     (rlist, self.id_))
 
         # remove all breaks
-        self.db_.execute("DELETE FROM break WHERE competition_id == ? AND block == ? AND day == ?",
-                         (self.id_, block, u.convDay(day)))
+        self.db_.execute('''DELETE FROM break
+                            WHERE competition_id == ? AND block == ?''',
+                         (self.id_, block))
 
         for i in range(len(startlist)):
             if startlist[i]["Name"] == "Break":
                 duration = self.getMinFromTime(self.cleanTime(startlist[i]["AP"]))
                 self.db_.execute(
                     '''INSERT INTO break
-                       (competition_id, block, day, duration, idx) VALUES (?, ?, ?, ?, ?)''',
-                    (self.id_, block, u.convDay(day), duration, i))
+                       (competition_id, block, duration, idx) VALUES (?, ?, ?, ?)''',
+                    (self.id_, block, duration, i))
             else: # start
                 ca_id = int(startlist[i]["Id"])
                 if ca_id < 0: # new start, in this case ca_id = - athlete_id
@@ -657,15 +662,15 @@ class CompyData:
                 if int(startlist[i]["Id"]) < 0: # new start
                     self.db_.execute(
                         '''INSERT INTO start
-                           (competition_athlete_id, discipline, block, lane, day, OT, AP, PB)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                        (ca_id[0][0], discipline, block, lane, u.convDay(day), u.convTime(ot), ap, pb));
+                           (competition_athlete_id, discipline, block, lane, OT, AP, PB)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                        (ca_id[0][0], discipline, block, lane, u.convTime(ot), ap, pb));
                 else: #update start
                     self.db_.execute(
                         '''UPDATE start SET
-                           discipline=?, block=?, lane=?, day=?, OT=?, AP=?, PB=?
+                           discipline=?, block=?, lane=?, OT=?, AP=?, PB=?
                            WHERE id == ?''',
-                        (discipline, block, lane, u.convDay(day), u.convTime(ot), ap, pb, ca_id[0][0]));
+                        (discipline, block, lane, u.convTime(ot), ap, pb, ca_id[0][0]));
         return 0
 
     def convertPerformance(self, val, dis):
@@ -797,7 +802,8 @@ class CompyData:
                                      FROM athlete a
                                      INNER JOIN competition_athlete ca ON a.id == ca.athlete_id
                                      INNER JOIN start s ON s.competition_athlete_id == ca.id
-                                     WHERE s.block == ? AND s.lane == ? AND s.day == ? AND ca.competition_id == ?
+                                     INNER JOIN block b ON b.id == s.block
+                                     WHERE s.block == ? AND s.lane == ? AND b.day == ? AND ca.competition_id == ?
                                   ''',
                                   (block, lane_db, u.convDay(day), self.id_))
         if db_out is None:
@@ -1407,7 +1413,8 @@ class CompyData:
             db_out = self.db_.execute(
                 '''SELECT s.OT, s.discipline FROM start s
                    INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
-                   WHERE s.day = ? AND ca.competition_id = ? AND ca.athlete_id == ?''',
+                   INNER JOIN block b ON b.id == s.block
+                   WHERE bl.day = ? AND ca.competition_id = ? AND ca.athlete_id == ?''',
                 (u.convDay(day), self.id_, a[0]))
             if db_out is None:
                 continue
@@ -1440,7 +1447,8 @@ class CompyData:
             ots_on_day = self.db_.execute(
                 '''SELECT DISTINCT s.OT from start s
                    INNER JOIN competition_athlete ca ON ca.id == s.competition_athlete_id
-                   WHERE ca.competition_id == ? AND s.day == ?''',
+                   INNER JOIN block b ON b.id == s.block
+                   WHERE ca.competition_id == ? AND b.day == ?''',
                 (self.id_, u.convDay(day)))
             if ots_on_day is None:
                 continue
@@ -1780,10 +1788,11 @@ class CompyData:
         db_out = self.db_.execute(
             '''SELECT a.first_name, a.last_name, a.country, s.AP, s.RP, s.penalty, s.card,
                       s.remarks, s.OT, a.gender, s.judge_remarks, s.discipline, s.PB,
-                      s.day, s.block, s.lane
+                      b.day, s.block, s.lane
                FROM start s
                INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
                INNER JOIN athlete a ON ca.athlete_id == a.id
+               INNER JOIN block b ON b.id == s.block
                WHERE ca.competition_id == ? AND s.id == ?''',
             (self.id_, s_id))
 
@@ -1874,15 +1883,19 @@ class CompyData:
                  ON s.competition_athlete_id == ca.id
                  INNER JOIN athlete a
                  ON a.id = ca.athlete_id
-                 WHERE s.day*10000+s.OT == (
-                    SELECT s.day*10000+s.OT
+                 INNER JOIN block b
+                 ON b.id == s.block
+                 WHERE b.day*10000+s.OT == (
+                    SELECT b.day*10000+s.OT
                     FROM start s
                     INNER JOIN competition_athlete ca
                     ON s.competition_athlete_id == ca.id
                     INNER JOIN athlete a
                     ON a.id = ca.athlete_id
-                    WHERE ca.competition_id = ? AND s.day*10000+s.OT {} ?
-                    ORDER BY s.day {}, CAST(s.OT as INTEGER) {}
+                    INNER JOIN block b
+                    ON b.id == s.block
+                    WHERE ca.competition_id = ? AND b.day*10000+s.OT {} ?
+                    ORDER BY b.day {}, CAST(s.OT as INTEGER) {}
                     LIMIT 1)
                  ORDER BY s.lane
                  LIMIT 4'''.format(comp, order, order)
