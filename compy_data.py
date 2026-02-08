@@ -60,6 +60,7 @@ import athlete
 from compy_config import CompyConfig
 
 import compy_utilities as u
+from openpyxl import load_workbook
 
 INVALID_DATE="0000-00-00"
 INVALID_TIME="99:99"
@@ -476,7 +477,7 @@ class CompyData:
             yield (d0 + timedelta(days=i)).strftime('%Y-%m-%d')
 
     def getDays(self):
-        days = self.db_.execute('''SELECT day FROM block WHERE competition_id==?''', self.id_)
+        days = self.db_.execute('''SELECT DISTINCT day FROM block WHERE competition_id==?''', self.id_)
         if days is None:
             return
         for day in days:
@@ -2033,3 +2034,60 @@ class CompyData:
         data['status'] = 'success'
         data['status_msg'] = 'Successfully deleted comp with id ' + str(comp_id)
         return 0, data
+
+    def storeResults(self, fpath):
+        outfile = os.path.join(self.config.download_folder, "Results_" + os.path.basename(fpath))
+        with pd.ExcelWriter(outfile) as xls_writer:
+            # copy first three sheets
+            copy_sheets = ['Event', 'Athletes and Judges', 'Settings']
+            for c in copy_sheets:
+                df = pd.read_excel(fpath, sheet_name=c)
+                df.to_excel(xls_writer, sheet_name=c, index=False)
+
+            for day in self.getDays():
+                df = pd.read_excel(fpath, sheet_name=day, skiprows=1)
+                selector = list(zip(df['Diver Id'], df['Discipline']))
+                selector_str = ", ".join(["(\"" + i + "\", \"" + d + "\")" for (i, d) in selector])
+                cmd = f'''SELECT s.RP, s.penalty, s.card, s.remarks, s.AP, a.aida_id, s.discipline
+                          FROM start s
+                          INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
+                          INNER JOIN athlete a ON ca.athlete_id == a.id
+                          WHERE (a.aida_id, s.discipline) in (VALUES {selector_str}) AND ca.competition_id == ?'''
+                db_out = self.db_.execute(cmd, self.id_)
+                if db_out is None:
+                    return -1, None
+                df['Card'] = df['Card'].astype(str)
+                df['Remarks'] = df['Remarks'].astype(str)
+                for i, s in enumerate(selector):
+                    j = -1
+                    for jj, db_row in enumerate(db_out):
+                        if db_row[5] == s[0] and db_row[6] == s[1]:
+                            j = jj
+                            break
+                    if j == -1:
+                        df.at[i, 'Card'] = 'RED'
+                        df.at[i, 'Remarks'] = 'DNS'
+                        continue
+                    db_row = db_out[j]
+                    if s[1] == "STA":
+                        rp_min = int(db_row[0] / 60)
+                        df.at[i, 'Meters or Min.1'] = rp_min
+                        df.at[i, 'Sec(STA only).1'] = db_row[0] - 60*rp_min
+                    else:
+                        df.at[i, 'Meters or Min.1'] = db_row[0]
+                    under_ap_penalty = self.getUnderApPenalty(db_row[4], db_row[0], s[1], db_row[2])
+                    df.at[i, 'Pen(other)'] = max(db_row[1] - under_ap_penalty, 0)
+                    df.at[i, 'Card'] = db_row[2]
+                    df.at[i, 'Remarks'] = db_row[3]
+                    db_out.pop(j)
+                df.fillna('', inplace=True)
+                df.to_excel(xls_writer, sheet_name=day, index=False)
+        wb = load_workbook(outfile)
+        for day in self.getDays():
+            ws = wb[day]
+            ws.insert_rows(1)
+            ws['F1'] = 'AP'
+            ws['H1'] = 'RP'
+            ws['J1'] = 'Penalties'
+        wb.save(outfile)
+        return 0, outfile

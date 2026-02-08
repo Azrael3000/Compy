@@ -60,6 +60,10 @@ class CompyFlask:
         def uploadFile():
             return self.uploadFile()
 
+        @app.route('/store_results', methods=['POST'])
+        def storeResults():
+            return self.storeResults()
+
         @app.route('/upload_sponsor_img', methods=['POST'])
         def uploadSponsorImg():
             return self.uploadSponsorImg()
@@ -233,6 +237,31 @@ class CompyFlask:
                 self.data_.getJudgeData(data)
                 self.setSubmenuData(data)
                 self.data_.setOTs(data)
+        data["status_msg"] = status_msg
+        return data, 200
+
+    def storeResults(self):
+        if 'file' not in request.files:
+            logging.debug("Post request without file upload")
+            return {}, 400
+        logging.debug("Received file upload")
+        data_file = request.files['file']
+        status_msg = ""
+        data = {"status": "success"}
+        if data_file.filename == '':
+            logging.debug("File upload with empty filename")
+            status_msg = "No file uploaded due to empty filename"
+        else:
+            filename = secure_filename(data_file.filename)
+            ext = path.splitext(filename)[1].lower()
+            if ext != ".xlsx":
+                status_msg = "File uploaded (" + filename + ") is not a *.xlsx file"
+            else:
+                fpath = path.join(self.app_.config['UPLOAD_FOLDER'], filename)
+                data_file.save(fpath)
+                ret, file = self.data_.storeResults(fpath)
+                if ret == 0:
+                    return send_file(file, as_attachment=True)
         data["status_msg"] = status_msg
         return data, 200
 

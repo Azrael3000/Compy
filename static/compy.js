@@ -359,6 +359,39 @@ $(document).ready(function() {
             },
         })
     });
+    $('#store_results_button').click(function() {
+        let form_data = new FormData($('#upload_file')[0]);
+        $.ajax({
+            type: 'POST',
+            url: '/store_results',
+            data: form_data,
+            contentType: false,
+            cache: false,
+            processData: false,
+            xhrFields: {
+                responseType: 'blob'
+            },
+            success: function(data) {
+                let link = document.createElement('a');
+                link.href = window.URL.createObjectURL(data);
+                let fullpath = $('#file').val();
+                let xlsx = "Result_" + fullpath.substr(fullpath.lastIndexOf('\\')+1);
+                link.download = xlsx;
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                console.log("Served pdf: " + link.download);
+            },
+            error: function(data) {
+                let element = document.getElementById('file_upload_status');
+                console.log(data.status_msg)
+                // show status msg
+                element.style.display = "block";
+                element.innerHTML = data.status_msg;
+            }
+        })
+    });
     $('#upload_sponsor_img_button').click(function() {
         let form_data = new FormData($('#upload_sponsor_img')[0]);
         $.ajax({
