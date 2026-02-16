@@ -8,3 +8,7 @@ download/*
 compy.sqlite
 \.env
 venv/*
+log.html
+output.xml
+report.html
+playwright-log.txt
