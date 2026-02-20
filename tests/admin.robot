@@ -18,5 +18,6 @@ Load competition
 
 Create and remove athletes
     ${comp_id} =    Create Competition
-    Add Athlete     ${comp_id}
+    Add Athlete
+    Remove Athlete  0
     #Remove Competition  ${comp_id}
