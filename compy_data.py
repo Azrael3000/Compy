@@ -359,7 +359,7 @@ class CompyData:
                 else:
                     self.db_.execute('''INSERT INTO start
                                         (competition_athlete_id, discipline, lane, OT, AP, block)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                                        VALUES (?, ?, ?, ?, ?, ?)''',
                                      (ca_id[0][0], dis, lane, u.convTime(ot), ap, block))
 
 
