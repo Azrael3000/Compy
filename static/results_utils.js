@@ -1,7 +1,7 @@
 var REMARKS = {
     'aida': {
         'WHITE': ['OK'],
-        'YELLOW': ["OTHER", "SHORT", "LATESTART", "GRAB", "LANYARD", "PULL", "TURN", "EARLYSTART", "START", "NO TAG", "UNDER AP"],
+        'YELLOW': ["OTHER", "LATESTART", "PULL", "TURN", "EARLYSTART", "START", "UNDER AP"],
         'RED': ["DQSP", "DQJUMP", "DQOTHER", "DQAIRWAYS", "DQTOUCH", "DQLATESTART", "DQCHECK-IN", "DQBO-UW", "DQBO-SURFACE", "DQPULL", "DQOTHER-LANE", "DNS"]
     },
     'cmas': {
