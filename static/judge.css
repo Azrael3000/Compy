@@ -107,7 +107,7 @@ th:last-child, td:last-child {
     display: table;
 }
 
-.info_all div:first-child {
+.info_all > div:first-child {
     padding-left: 3vw;
 }
 
@@ -135,7 +135,7 @@ th:last-child, td:last-child {
     width: 21vw;
 }
 
-.info_head {
+.info_head, .remark_title {
     font-size: 2vh;
     color: var(--light);
     line-height: 2.5vh;
@@ -187,6 +187,11 @@ th:last-child, td:last-child {
 .card.highlight, .remark.highlight {
     border: 0.5vw solid var(--dark);
     font-weight: bold;
+}
+
+.remark_title {
+    padding-left: 0;
+    padding-top: 1vh;
 }
 
 .remark {

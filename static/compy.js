@@ -88,7 +88,8 @@ function generateStartList(startlist) {
                     <td><input type="number" step="1" id="sl_no_lanes"/></td>
                 </tr>
                     <td><button id="sl_recalc">Recalculate</button></td>
-                    <td><button id="sl_sort">Sort by AP</button></td>
+                    <td><button id="sl_sort_ap" class="sl_sort">Sort by AP</button></td>
+                    <td><button id="sl_sort_pb" class="sl_sort">Sort by PB</button></td>
                 <tr>
                 </tr>
                     <td><button id="sl_add">Add athlete</button></td>
@@ -1032,12 +1033,13 @@ $(document).ready(function() {
     $('#sl_content').on('click', '#sl_recalc', function() {
         calculateStartList();
     });
-    $('#sl_content').on('click', '#sl_sort', function() {
-        function convertToInt(s) {
+    $('#sl_content').on('click', '.sl_sort', function() {
+        let sort_by_ap = this.id == "sl_sort_ap";
+        function convertToInt(s, sort_by_ap) {
             if (s.Discipline == 'STA')
-                return timeToMinutes(s.AP);
+                return timeToMinutes(sort_by_ap ? s.AP : s.PB);
             else
-                return Number(s.AP);
+                return Number(sort_by_ap ? s.AP : s.PB);
         }
         if (_sl.length == 0)
             return;
@@ -1048,7 +1050,7 @@ $(document).ready(function() {
         }
         for (let i = brs.length-1; i >= 0; i--)
             _sl.splice(brs[i].i, 1);
-        _sl.sort((a,b) => Math.sign(convertToInt(a) - convertToInt(b)));
+        _sl.sort((a,b) => Math.sign(convertToInt(a, sort_by_ap) - convertToInt(b, sort_by_ap)));
         for (let i = 0; i < brs.length; i++) {
             let break_entry = {Name: "Break", AP: brs[i].time, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1, Discipline: "", PB: ""};
             _sl.splice(brs[i].i, 0, break_entry);
@@ -1384,12 +1386,15 @@ function generateResultContent(type_str, name, rp, penalty, penalty_not_reached_
                 <td>
                     <div id="result_remark_chooser">`;
      if (federation == "aida") {
-        let aida_remarks = ["OK", "OTHER", "SHORT", "LATESTART", "GRAB", "LANYARD", "PULL", "TURN", "EARLYSTART", "START", "NO TAG", "UNDER AP", "DQSP", "DQJUMP", "DQOTHER", "DQAIRWAYS", "DQTOUCH", "DQLATESTART", "DQCHECK-IN", "DQBO-UW", "DQBO-SURFACE", "DQPULL", "DQOTHER-LANE", "DNS"];
-        for (let i = 0; i < aida_remarks.length; i++) {
-            let remark = aida_remarks[i];
-            let checked = remarks.split(",").indexOf(remark) > -1 ? "checked" : "";
-            content += `<input type="checkbox" name="result_remark" value="${remark}" id="result_remark_${remark}" ${checked}/>
-                        <label for="result_remark_${remark}">${remark}</label><br>`;
+        let all_remarks = getRemarksForCard('RED', federation);
+        for (let key in all_remarks) {
+            content += `<span>${key}:</span><br>`;
+            for (let i = 0; i < all_remarks[key].length; i++) {
+                let remark = all_remarks[key][i];
+                let checked = remarks.split(",").indexOf(remark) > -1 ? "checked" : "";
+                content += `<input type="checkbox" name="result_remark" value="${remark}" id="result_remark_${remark}" ${checked}/>
+                            <label for="result_remark_${remark}">${remark}</label><br>`;
+            }
         }
      }
      else {

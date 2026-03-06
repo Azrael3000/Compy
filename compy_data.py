@@ -1415,7 +1415,7 @@ class CompyData:
                 '''SELECT s.OT, s.discipline FROM start s
                    INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
                    INNER JOIN block b ON b.id == s.block
-                   WHERE bl.day = ? AND ca.competition_id = ? AND ca.athlete_id == ?''',
+                   WHERE b.day = ? AND ca.competition_id = ? AND ca.athlete_id == ?''',
                 (u.convDay(day), self.id_, a[0]))
             if db_out is None:
                 continue
@@ -2065,7 +2065,7 @@ class CompyData:
                             j = jj
                             break
                     if j == -1:
-                        df.at[i, 'Card'] = 'RED'
+                        df.at[i, 'Card'] = ''
                         df.at[i, 'Remarks'] = 'DNS'
                         continue
                     db_row = db_out[j]
@@ -2077,7 +2077,10 @@ class CompyData:
                         df.at[i, 'Meters or Min.1'] = db_row[0]
                     under_ap_penalty = self.getUnderApPenalty(db_row[4], db_row[0], s[1], db_row[2])
                     df.at[i, 'Pen(other)'] = max(db_row[1] - under_ap_penalty, 0)
-                    df.at[i, 'Card'] = db_row[2]
+                    if db_row[3] == 'DNS':
+                        df.at[i, 'Card'] = ''
+                    else:
+                        df.at[i, 'Card'] = db_row[2]
                     df.at[i, 'Remarks'] = db_row[3]
                     db_out.pop(j)
                 df.fillna('', inplace=True)

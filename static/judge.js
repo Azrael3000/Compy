@@ -448,13 +448,19 @@ function showRemarks() {
     let remarks = getRemarksForCard(card, _federation);
     let div = $('#remarks_input');
     div.empty();
-    for (let i = 0; i < remarks.length; i++) {
-        let highlight = "";
-        if (remarks.length == 1 ||
-            old_remarks.includes(remarks[i]) ||
-            (getJudgePenaltyUnder(false) != null && remarks[i] == "UNDER AP"))
-            highlight = "highlight";
-        div.append(`<span class='remark selector ${highlight}'>${remarks[i]}</span`);
+    if (remarks.constructor == String)
+        div.append(`<span class='remark selector highlight'>${remarks}</span>`);
+    else {
+        for (let key in remarks) {
+            div.append(`<div class='remark_title'>${key}:</div>`);
+            for (let i = 0; i < remarks[key].length; i++) {
+                let highlight = "";
+                if (old_remarks.includes(remarks[key][i]) ||
+                    (getJudgePenaltyUnder(false) != null && remarks[key][i] == "UNDER AP"))
+                    highlight = "highlight";
+                div.append(`<span class='remark selector ${highlight}'>${remarks[key][i]}</span`);
+            }
+        }
     }
 }
 

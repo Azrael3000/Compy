@@ -6,6 +6,7 @@ Documentation   Athlete resources for compy
 ${START_LISTS_BUTTON}   id=start_lists_button >> a
 ${ADD_BLOCK_BUTTON}     id=sl_add_day
 ${OVERLAY_CANCEL_BUTTON}    id=overlay_cancel
+${ADD_BLOCK_DAY_FIELD}  id=sl_modify_block_day
 
 *** Keywords ***
 Goto Start List
@@ -17,6 +18,8 @@ Create Block Today
     [Arguments]     ${discipline}
     Goto Start List
     Click   ${ADD_BLOCK_BUTTON}
+    Fill Text   ${ADD_BLOCK_DAY_FIELD}  24.04.2026
 
-Cancel Overlay
+Click Add Block And Cancel Overlay
+    Click   ${ADD_BLOCK_BUTTON}
     Click   ${OVERLAY_CANCEL_BUTTON}

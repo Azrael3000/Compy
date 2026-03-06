@@ -1,13 +1,25 @@
 var REMARKS = {
     'aida': {
-        'WHITE': ['OK'],
-        'YELLOW': ["OTHER", "LATESTART", "PULL", "TURN", "EARLYSTART", "START", "UNDER AP"],
-        'RED': ["DQSP", "DQJUMP", "DQOTHER", "DQAIRWAYS", "DQTOUCH", "DQLATESTART", "DQCHECK-IN", "DQBO-UW", "DQBO-SURFACE", "DQPULL", "DQOTHER-LANE", "DNS"]
+        'WHITE': 'OK',
+        'YELLOW': {
+            'Penalties': ["OTHER", "SHORT", "LATESTART", "GRAB", "LANYARD", "PULL", "TURN", "EARLYSTART", "START", "NO TAG", "UNDER AP"],
+        },
+        'RED': {
+            'DQ': ["DQSP", "DQJUMP", "DQOTHER", "DQAIRWAYS", "DQTOUCH", "DQLATESTART", "DQCHECK-IN", "DQBO-UW", "DQBO-SURFACE", "DQPULL", "DQOTHER-LANE", "DNS"]
+        }
     },
     'cmas': {
-        'WHITE': ['-'],
-        'YELLOW': ['-'],
-        'RED': ['DQ early start', 'DQOTHER', 'DQ SP', 'DQ SP out', 'DQ surface BO', 'DQ underwater BO', 'DNS']
+        'WHITE': '-',
+        'YELLOW': {
+            'Penalties': ['NO WALL TOUCH', 'DOLPHIN', 'BODY STRAY', 'ASSISTANT WARNED', 'POSTPONED']
+        },
+        'RED': {
+            'DQSP': ['DQ SP NO OK', 'DQ SP OK DIR', 'DQ SP HELP', 'DQ SP HEAD', 'DQ SP CHIN', 'DQ SP OUT'],
+            'DQ ASSIST': ['DQ ASSIST', 'DQ HELP DELEG', 'DQ TOUCH'],
+            'DQ BO': ['DQ SURFACE BO', 'DQ UW BO'],
+            'DQ START': ['DQ LATE START', 'DQ EARLY START'],
+            'DQ OTHER': ['DQ HOLD WALL', 'DQ WALL TURN', 'DQ SURFACING', 'DQ INTERFERE', 'DQ WEIGHT', 'DQ O2', 'DQ EQUIPMENT', 'EARLY WARMUP', 'DNS']
+        }
     }
 };
 
@@ -30,14 +42,18 @@ function penaltyUnderAP(rp, ap, card, federation, discipline) {
     return null;
 }
 
+function getAllFrom(federation, card) {
+    return Array.from(Object.values(REMARKS[federation][card])).flat();
+}
+
 function getRemarksFromStr(str, federation) {
     let all_remarks = str.split(',')
                          .map(function(i){ return i.trim(); });
     let valid_remarks = [];
     for (let i = 0; i < str.length; i++) {
-        if (REMARKS[federation]['WHITE'].includes(all_remarks[i]) ||
-            REMARKS[federation]['YELLOW'].includes(all_remarks[i]) ||
-            REMARKS[federation]['RED'].includes(all_remarks[i])) {
+        if (REMARKS[federation]['WHITE'] == all_remarks[i] ||
+            getAllFrom(federation, 'YELLOW').includes(all_remarks[i]) ||
+            getAllFrom(federation, 'RED').includes(all_remarks[i])) {
             valid_remarks.push(all_remarks[i]);
         }
     }
@@ -50,10 +66,13 @@ function isValidCard(card, federation) {
 }
 
 function getRemarksForCard(card, federation) {
-    if (card != 'RED') {
-        return REMARKS[federation][card];
+    if (card == 'WHITE') {
+        return REMARKS[federation]['WHITE'];
     }
-    return REMARKS[federation]['YELLOW'].concat(REMARKS[federation]['RED']);
+    if (card == 'YELLOW') {
+        return REMARKS[federation]['YELLOW'];
+    }
+    return Object.assign({}, REMARKS[federation]['YELLOW'], REMARKS[federation]['RED']);
 }
 
 function getPerformanceInput(discipline, federation) {
@@ -73,7 +92,7 @@ function timeToMinutes(time) {
 
 function getDefaultRemark(card, federation) {
     if (card == 'WHITE')
-        return REMARKS[federation][card][0];
+        return REMARKS[federation][card];
     else
         return "";
 }
