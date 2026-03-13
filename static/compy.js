@@ -1637,6 +1637,7 @@ function populateSpecialRanking(data) {
             <td>First name</td>
             <td>Gender</td>
             <td>Country</td>
+            <td>Eligible National</td>
             <td>${special_ranking_name}</td>
             <td>Paid</td>
             <td>Medical</td>
@@ -1646,7 +1647,7 @@ function populateSpecialRanking(data) {
     if (data.hasOwnProperty("athletes")) {
         let athletes = data.athletes;
         for (let i = 0; i < athletes.length; i++) {
-            let checked = ['special_ranking', 'paid', 'medical_checked', 'registered'];
+            let checked = ['eligible_national', 'special_ranking', 'paid', 'medical_checked', 'registered'];
             registration_table += `
                 <tr>
                     <td>${athletes[i].last_name}</td>

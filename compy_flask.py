@@ -292,15 +292,15 @@ class CompyFlask:
     def changeRegistration(self):
         content = request.json
         if "id" not in content and "checked" not in content and "type" not in content:
-            logging.debug("Post request to change_special_ranking without id, type and checked")
+            logging.debug("Post request to change_registration without id, type and checked")
             return {}, 400
         athlete_id = content["id"]
-        is_special_ranking = content["checked"]
+        is_checked = content["checked"]
         change_type = content["type"]
-        if self.data_.setRegistration(athlete_id, is_special_ranking, change_type) == 0:
-            data = {"status": "success", "status_msg": "Successfully updated athlete with id '" + athlete_id + "' to value '" + str(is_special_ranking) + "'"}
+        if self.data_.setRegistration(athlete_id, is_checked, change_type) == 0:
+            data = {"status": "success", "status_msg": "Successfully updated athlete with id '" + athlete_id + "' to value '" + str(is_checked) + "'"}
         else:
-            data = {"status": "success", "status_msg": "Failed to update athlete with id '" + athlete_id + "' to value '" + str(is_special_ranking) + "'"}
+            data = {"status": "success", "status_msg": "Failed to update athlete with id '" + athlete_id + "' to value '" + str(is_checked) + "'"}
         data["disciplines"] = self.data_.getDisciplines()
         return data, 200
 

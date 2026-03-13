@@ -363,23 +363,23 @@ class CompyData:
                                      (ca_id[0][0], dis, lane, u.convTime(ot), ap, block))
 
 
-    def setRegistration(self, athlete_id, special_ranking, change_type, warn=True):
+    def setRegistration(self, athlete_id, is_checked, change_type, warn=True):
         found = False
         if self.number_of_athletes == 0:
             logging.warning("Data not initialized yet in setRegistration")
             return 1
         try:
-            type_map = {'specialranking': 'special_ranking', 'paid': 'paid', 'medicalchecked': 'medical_checked', 'registered': 'registered'}
+            type_map = {'eligiblenational': 'eligible_national', 'specialranking': 'special_ranking', 'paid': 'paid', 'medicalchecked': 'medical_checked', 'registered': 'registered'}
             if not change_type in type_map:
                 return 0
             self.db_.execute(
                 '''UPDATE competition_athlete SET {}=?
                    WHERE competition_id==? AND athlete_id==?'''.format(type_map[change_type]),
-                (special_ranking, self.id_, athlete_id))
+                (is_checked, self.id_, athlete_id))
             return 0
         except sqlite3.Error as e:
             if warn:
-                logging.warning("Tried setting " + change_type + " (" + str(special_ranking) + ") to athlete with id '" + athlete_id + "' but this id could not be found")
+                logging.warning("Tried setting " + change_type + " (" + str(is_checked) + ") to athlete with id '" + athlete_id + "' but this id could not be found")
             return 1
 
     def getSavedCompetitions(self):
@@ -1084,6 +1084,7 @@ class CompyData:
             if country != 'International':
                 cmd += " AND a.country = ?"
                 args += (country, )
+                cmd += self.addEligibleCheck();
             if discipline == self.special_ranking_name:
                 cmd += " AND ca.special_ranking"
 
@@ -1132,9 +1133,11 @@ class CompyData:
             if not with_empty: # remove unset results if requested
                 cmd += " AND s.remarks IS NOT NULL"
             args = (discipline, gender, self.id_)
+            # Add condition on country
             if country != 'International' and country != self.special_ranking_name:
                 cmd += " AND a.country = ?"
                 args += (country, )
+                cmd += self.addEligibleCheck()
             if self.comp_type == "cmas" and country == self.special_ranking_name:
                 if self.selected_country == "none":
                     cmd += " AND ca.special_ranking"
@@ -1506,7 +1509,7 @@ class CompyData:
         data["athletes"] = []
         athletes = self.db_.execute(
             '''SELECT a.id, a.first_name, a.last_name, a.gender, a.country, a.aida_id, a.club,
-                      ca.special_ranking, ca.paid, ca.medical_checked, ca.registered
+                      ca.special_ranking, ca.paid, ca.medical_checked, ca.registered, ca.eligible_national
                FROM athlete a
                INNER JOIN competition_athlete ca ON ca.athlete_id == a.id
                WHERE ca.competition_id == ?''',
@@ -1518,7 +1521,8 @@ class CompyData:
                 {"last_name": a[2], "first_name": a[1], "gender": a[3],
                  "country": a[4], "id": a[0], "aida_id": a[5],
                  "club": a[6], "special_ranking": a[7], "paid": a[8],
-                 "medical_checked": a[9], "registered": a[10]})
+                 "medical_checked": a[9], "registered": a[10],
+                 "eligible_national": a[11]})
 
     def addAthlete(self, first_name, last_name, gender, country, club, aida_id):
         country = self.cleanCountry(country)
@@ -2094,3 +2098,10 @@ class CompyData:
             ws['J1'] = 'Penalties'
         wb.save(outfile)
         return 0, outfile
+
+    def addEligibleCheck(self):
+        # check if at least one eligible
+        has_eligible = self.db_.execute("SELECT COUNT(*) FROM competition_athlete WHERE competition_id==? AND eligible_national==1", self.id_)
+        if has_eligible is not None and has_eligible[0][0] != 0:
+            return " AND ca.eligible_national == 1"
+        return ""
