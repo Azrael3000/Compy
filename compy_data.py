@@ -722,7 +722,6 @@ class CompyData:
         html_string = start_df.to_html(index=False, justify="left", classes="df_table")
         day_obj = datetime.strptime(day, "%Y-%m-%d")
         human_day = day_obj.strftime("%d. %m. %Y")
-        today = datetime.now().strftime("%d.%m.%Y")
         dis = self.db_.execute('SELECT disciplines FROM block WHERE competition_id==? AND id==?', (self.id_, block))
         if dis is None:
             return None
@@ -1180,6 +1179,7 @@ class CompyData:
                            'Country': r[2],
                            'Club': r[3],
                            'RP': self.convertPerformance(r[5], discipline) if r[8] != "DNS" else 0.,
+                           'Penalty': round(r[6], 1) if r[8] != "DNS" and r[5] is not None else "",
                            'Card': r[7] if r[8] != "DNS" else "",
                            'Remarks': r[8],
                            'Judge Remarks': r[12],
@@ -1990,7 +1990,7 @@ class CompyData:
                                         'value': "DNS" if 'Remarks' in keys and r['Remarks'] == "DNS" else r[value_key],
                                         'country': r['Country'],
                                         'card': r['Card'] if 'Card' in keys else None,
-                                        'ap': r['AP'],
+                                        'ap': r['AP'] if 'AP' in keys else None,
                                         'penalty': r['Penalty'],
                                         'remarks': r['Remarks'] if 'Remarks' in keys else None,
                                         'points': r['Points'] if 'Points' in keys else None
