@@ -109,7 +109,7 @@ function showResult() {
                         <td>${data.results[i].name}</td>
                         <td class="${card_class}">${data.results[i].value}</td>
                     </tr>`;
-                if (_menu.discipline != 0) {
+                if (isMainDiscipline(discipline)) {
                     table += `
                         <tr class="toggle sub sub_${i}" id="sub1_${i}">
                             <td>

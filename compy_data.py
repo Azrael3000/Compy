@@ -1561,7 +1561,7 @@ class CompyData:
                     return None
             return dis
 
-        if dis not in DISCIPLINES:
+        if not self.isMainDiscipline(dis):
             return None
         else:
             if block is not None:
@@ -1971,7 +1971,7 @@ class CompyData:
             keys = content['keys']
             results = content['results']
             value_key = 'RP' if 'RP' in keys else 'Points'
-            if discipline_id == 0:
+            if not self.isMainDiscipline(discipline):
                 def getIndividualResults(r):
                     indiv_results = []
                     for d in DISCIPLINES:
@@ -1998,6 +1998,9 @@ class CompyData:
         except Exception as e:
             print(e.msg)
             return -1, None
+
+    def isMainDiscipline(self, discipline):
+        return discipline in DISCIPLINES
 
     def deleteComp(self, comp_id):
         try:

@@ -23,6 +23,12 @@ var REMARKS = {
     }
 };
 
+var DISCIPLINES = ['STA', 'DYN', 'DYNB', 'DNF', 'CNF', 'CWT', 'CWTB', 'FIM']
+
+function isMainDiscipline(discipline) {
+    return DISCIPLINES.indexOf(discipline) > -1;
+}
+
 function penaltyUnderAP(rp, ap, card, federation, discipline) {
     if (federation != "aida" || card != "YELLOW")
         return null;
