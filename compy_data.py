@@ -1182,7 +1182,7 @@ class CompyData:
                            'Penalty': round(r[6], 1) if r[8] != "DNS" and r[5] is not None else "",
                            'Card': r[7] if r[8] != "DNS" else "",
                            'Remarks': r[8],
-                           'Judge Remarks': r[12],
+                           'JudgeRemarks': r[12],
                            'Points': "%.2f" % self.computePoints(r[5], r[6], r[7], r[8], discipline),
                            'Id': r[9]}
                            for i,r in enumerate(db_out)]
