@@ -32,6 +32,6 @@ Start creating block and cancel
 
 Create block and remove
     ${comp_id} =    Create Competition
-    Create Block Today  STA
-    Cancel Overlay
+    Create Block    STA     2000-01-01
+    Remove Block    STA     2000-01-01
     Remove Competition  ${comp_id}
