@@ -32,6 +32,15 @@ Start creating block and cancel
 
 Create block and remove
     ${comp_id} =    Create Competition
-    Create Block    STA     2000-01-01
-    Remove Block    STA     2000-01-01
+    @{sta} =    Create List     STA
+    @{dnf} =    Create List     DNF
+    @{dnf_dyn} =    Create List     DNF     DYN
+    Create Block    @{sta}  day=2000-01-01
+    Remove Block    @{sta}  day=2000-01-01
+    Create Block    @{sta}  day=2000-01-01
+    Create Block    @{dnf}  day=2000-01-01
+    Create Block    @{dnf_dyn}  day=2000-01-01
+    Remove Block    @{sta}  day=2000-01-01
+    Remove Block    @{dnf_dyn}  day=2000-01-01
+    Remove Block    @{dnf}  day=2000-01-01
     Remove Competition  ${comp_id}

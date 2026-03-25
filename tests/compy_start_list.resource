@@ -20,21 +20,25 @@ Goto Start List
     Get Element States  ${ADD_BLOCK_BUTTON}    contains    visible
 
 Create Block
-    [Arguments]     ${discipline}   ${day}
+    [Arguments]     @{disciplines}   ${day}
     Goto Start List
     Click   ${ADD_BLOCK_BUTTON}
     Fill Text   ${ADD_BLOCK_DAY_FIELD}  2000-01-01
-    Check Checkbox      id=${ADD_BLOCK_DISCIPLINE_PREFIX}${discipline}
+    FOR     ${discipline}   IN  @{disciplines}
+        Check Checkbox      id=${ADD_BLOCK_DISCIPLINE_PREFIX}${discipline}
+    END
     Click   ${OVERLAY_BLOCK_SAVE_BUTTON}
     Get Element States  id=${DAY_PREFIX}${day}  contains    visible
     Click   id=${DAY_PREFIX}${day}
-    Get Element States  xpath=//a[@class='${BLOCK_DISCIPLINE_CLASS}' and text()='${discipline}']     contains    visible
+    ${disciplinesString} =  Catenate    SEPARATOR=,${SPACE}   @{disciplines}
+    Get Element States  xpath=//a[@class='${BLOCK_DISCIPLINE_CLASS}' and text()='${disciplinesString}']     contains    visible
 
 Remove Block
-    [Arguments]     ${discipline}   ${day}
+    [Arguments]     @{disciplines}   ${day}
     Goto Start List
     Click   id=${DAY_PREFIX}${day}
-    Click   xpath=//a[@class='${BLOCK_DISCIPLINE_CLASS}' and text()='${discipline}']
+    ${disciplinesString} =  Catenate    SEPARATOR=,${SPACE}   @{disciplines}
+    Click   xpath=//a[@class='${BLOCK_DISCIPLINE_CLASS}' and text()='${disciplinesString}']
     Click   xpath=//button[@class='${EDIT_BLOCK_BUTTON_CLASS}' and text()='Edit block']
     ${promise} =    Promise To  Wait For Response   matcher=**/block    timeout=10s
     Click   ${OVERLAY_BLOCK_REMOVE_BUTTON}
@@ -42,7 +46,7 @@ Remove Block
     ${day_count} =    Get Element Count     id=${DAY_PREFIX}${day}
     IF  ${day_count} > 0
         Click   id=${DAY_PREFIX}${day}
-        Get Element Count  xpath=//a[@class='${BLOCK_DISCIPLINE_CLASS}' and text()='${discipline}']     ==  0
+        Get Element Count  xpath=//a[@class='${BLOCK_DISCIPLINE_CLASS}' and text()='${disciplinesString}']     ==  0
     END
 
 Click Add Block And Cancel Overlay
