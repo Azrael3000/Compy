@@ -486,8 +486,7 @@ class CompyFlask:
         option = content["comp_type"]
         if self.data_.changeCompType(option) == 0:
             data = {}
-            data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
-            data["blocks"] = self.data_.getBlocks()
+            self.setSubmenuData(data)
             data["status_msg"] = "Successfully changed comp type"
             data["status"] = "success"
             return data, 200

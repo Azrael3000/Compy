@@ -38,6 +38,8 @@ function penaltyUnderAP(rp, ap, card, federation, discipline) {
         rp = timeToMinutes(rp);
         ap = timeToMinutes(ap);
     }
+    rp = Number(rp)
+    ap = Number(ap)
     if (ap > rp) {
         let delta = ap - rp;
         let factor = discipline == "STA" ? 0.2 : (discipline[0] == "D" ? 0.5 : 1.);
