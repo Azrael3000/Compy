@@ -24,7 +24,6 @@
  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 TODO:
-- Clock push current time of client for lookup
 - When refreshing file ask user whether he wants to delete all athletes or only update
 - NR/CR/WR database (CMAS/AIDA, former with links to record pages)
 - Marking CR/WRs in results

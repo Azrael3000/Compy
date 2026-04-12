@@ -1905,7 +1905,7 @@ class CompyData:
                  ORDER BY s.lane
                  LIMIT 4'''.format(comp, order, order)
         min_shift = 3 if self.comp_type == "cmas" else 2
-        now = datetime.now() + timedelta(minutes=min_shift) + timedelta(milliseconds=offset)
+        now = datetime.utcnow() + timedelta(minutes=min_shift) + timedelta(milliseconds=offset)
         today = now.year*10000 + now.month*100 + now.day
         time = now.hour*100 + now.minute
         db_out = self.db_.execute(cmd, (self.id_, today*10000 + time))

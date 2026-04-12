@@ -35,7 +35,8 @@
             setInterval(()=>{window.location.href="{{refresh_url}}"},10000);
             function updateTime() {
                 let time = new Date();
-                let ms_adjust = {{offset}};
+                let utc_adjust = new Date().getTimezoneOffset()*60*1000;
+                let ms_adjust = {{offset}} + utc_adjust;
                 time.setMilliseconds(time.getMilliseconds() + ms_adjust);
                 $('#time').text(time.toLocaleTimeString());
                 window.requestAnimationFrame(updateTime);

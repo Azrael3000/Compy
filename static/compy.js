@@ -226,6 +226,8 @@ function getDateNow(with_correction = true) {
     if (with_correction) {
         ms_adjust = parseInt($("#deciseconds_adjust").val(), 10)*100 + parseInt($("#seconds_adjust").val(), 10)*1000;
         now.setMilliseconds(now.getMilliseconds() + ms_adjust);
+        // Adjust to utc, offset is in minutes
+        ms_adjust -= new Date().getTimezoneOffset()*60*1000;
         $('#clock_button').children()[0].href = "clock/" + _comp_id + "/0/" + ms_adjust;
     }
     return now;
@@ -1959,6 +1961,8 @@ function loadCompetition(comp_id, testAutoPlayExecute) {
             console.log(data.status_msg);
             // Update clock link
             ms_adjust = parseInt($("#deciseconds_adjust").val(), 10)*100 + parseInt($("#seconds_adjust").val(), 10)*1000;
+            // Adjust to utc, offset is in minutes
+            ms_adjust -= new Date().getTimezoneOffset()*60*1000;
             $('#clock_button').children()[0].href = "clock/" + comp_id + "/0/" + ms_adjust;
             if ('special_ranking_name' in data)
             {
