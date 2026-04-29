@@ -1,6 +1,7 @@
 *** Settings ***
 Resource    compy.resource
 Resource    compy_athlete.resource
+Resource    compy_registration.resource
 Resource    compy_start_list.resource
 
 *** Test Cases ***
@@ -43,4 +44,13 @@ Create block and remove
     Remove Block    @{sta}  day=2000-01-01
     Remove Block    @{dnf_dyn}  day=2000-01-01
     Remove Block    @{dnf}  day=2000-01-01
+    Remove Competition  ${comp_id}
+
+Test registration
+    ${comp_id} =    Create Competition
+    Add Athlete
+    Add Athlete
+    Verify Athletes In Registration Table
+    Remove Athlete  0
+    Remove Athlete  1
     Remove Competition  ${comp_id}

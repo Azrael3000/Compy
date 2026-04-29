@@ -9,12 +9,11 @@ ${TOTAL_ATHLETES}   id=total_athletes
 *** Keywords ***
 Goto Athletes
     Click   id=athletes_button >> a
-    ${table_visible} =   Get Element States  ${ATHLETES_TABLE}    contains    visible
-    Should Be True  ${table_visible}     Athletes table not visible
+    Get Element States  ${ATHLETES_TABLE}    contains    visible
 
 Get Athlete Country
     [Arguments]     ${athlete_id}
-    ${is_aut} =     Evaluate    (${n_athletes} // 2) % 2 == 0
+    ${is_aut} =     Evaluate    (${athlete_id} // 2) % 2 == 0
     IF  ${is_aut}
         RETURN  AUT
     ELSE
@@ -23,7 +22,7 @@ Get Athlete Country
 
 Get Athlete Gender
     [Arguments]     ${athlete_id}
-    ${is_female} =     Evaluate    ${n_athletes} % 2 == 0
+    ${is_female} =     Evaluate    ${athlete_id} % 2 == 0
     IF  ${is_female}
         RETURN  F
     ELSE
@@ -43,7 +42,7 @@ Get Athlete
 
 Add Athlete
     Goto Athletes
-    ${athlete} =    Get Athlete     0
+    ${athlete} =    Get Athlete     ${n_athletes}
     Fill Text   id=athlete_first_name  ${athlete.fn}
     Fill Text   id=athlete_last_name  ${athlete.ln}
     Select Options By   id=athlete_gender   text    ${athlete.gen}
