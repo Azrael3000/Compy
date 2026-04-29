@@ -227,22 +227,21 @@ function navAction(id) {
         showRP();
     }
     else if ((is_next && rp_on) ||
-             (is_prev && penalty_on) ||
+             (is_prev && remarks_on) ||
               id == "info_card") {
         showCard();
     }
     else if ((is_next && card_on) ||
-             (is_prev && remarks_on) ||
-              id=="info_penalty") {
-        showPenalty(is_next);
-    }
-    else if ((is_next && penalty_on) ||
-             (is_prev && judge_remarks_on) ||
+             (is_prev && penalty_on) ||
               id == "info_remarks") {
         showRemarks();
     }
     else if ((is_next && remarks_on) ||
-             (is_prev && penalty_on) ||
+             (is_prev && judge_remarks_on) ||
+              id=="info_penalty") {
+        showPenalty(is_next);
+    }
+    else if ((is_next && penalty_on) ||
               id == "info_judge_remarks") {
         showJudgeRemarks();
     } else if (is_ok) {
@@ -397,9 +396,9 @@ function showPenalty(is_next) {
     if (isValidCard(card, _federation) && card != 'YELLOW') {
         savePenalty(0)
         if (is_next)
-            showRemarks();
+            showJudgeRemarks();
         else
-            showCard();
+            showRemarks();
         return;
     }
     $('#result_input').html(`
