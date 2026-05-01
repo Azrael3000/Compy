@@ -1388,7 +1388,7 @@ function generateResultContent(type_str, name, rp, penalty, penalty_not_reached_
                 <td>
                     <div id="result_remark_chooser">`;
      if (federation == "aida") {
-        let all_remarks = getRemarksForCard('RED', federation);
+        let all_remarks = getRemarksForCard('RED', federation, _cur_menu.discipline);
         for (let key in all_remarks) {
             content += `<span>${key}:</span><br>`;
             for (let i = 0; i < all_remarks[key].length; i++) {

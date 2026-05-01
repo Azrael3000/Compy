@@ -439,12 +439,13 @@ function showRemarks() {
             <div id="remarks_input"></div>
         </div>`);
     let card = $('#card_title').html();
-    let old_remarks = getRemarksFromStr($('#info_remarks').children('.info_piece').children('.info').html(), _federation);
+    let dis = $('#info_dis').children('.info').html();
+    let old_remarks = getRemarksFromStr($('#info_remarks').children('.info_piece').children('.info').html(), _federation, dis);
     if (!isValidCard(card, _federation)) {
         $('#remarks_input').html('<span class="error">Error: Card not set</span>');
         return;
     }
-    let remarks = getRemarksForCard(card, _federation);
+    let remarks = getRemarksForCard(card, _federation, dis);
     let div = $('#remarks_input');
     div.empty();
     if (remarks.constructor == String)
