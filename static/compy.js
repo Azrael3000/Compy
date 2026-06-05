@@ -71,8 +71,8 @@ function generateStartList(startlist) {
     let interval = 0;
     let sl = "";
     if (startlist) {
-        sl += `<button class='sl_edit_block' id='sl_edit_block_${day}_${block}'>Edit block</button><br>`;
-        sl += "<a href='#' class='sl_pdf_button' id='sl_pdf_" + day + "_" + block + "'>Print PDF</a>";
+        sl += `<button class='sl_edit_block' id='sl_edit_block_${_cur_menu.day}_${_cur_menu.block}'>Edit block</button><br>`;
+        sl += "<a href='#' class='sl_pdf_button' id='sl_pdf_" + _cur_menu.day + "_" + _cur_menu.block + "'>Print PDF</a>";
         sl += `
             <table>
                 <tr>
@@ -103,7 +103,16 @@ function generateStartList(startlist) {
             <tr>
                 <td>Name</td>
                 <td>Discipline</td>
-                <td>AP</td>
+                <td>AP</td>`;
+        let disciplines = _blocks[_cur_menu.day][_cur_menu.block]["dis_s"].split(', ');
+        let is_depth = false;
+        for (let i = 0; i < disciplines.length; i++) {
+            let dis = disciplines[i];
+            is_depth |= DEPTH_DISCIPLINES.includes(dis);
+        }
+        if (is_depth)
+            sl += '<td>Dive time</td>';
+        sl += `
                 <td>PB</td>
                 <td>Nationality</td>
                 <td>Warmup</td>
@@ -127,7 +136,10 @@ function generateStartList(startlist) {
                 <tr>
                     <td>${startlist[i].Name}</td>
                     <td>${startlist[i].Discipline}</td>
-                    <td>${startlist[i].AP}</td>
+                    <td>${startlist[i].AP}</td>`;
+            if (is_depth)
+                sl += `<td>${startlist[i]["Dive Time"]}</td>`;
+            sl += `
                     <td>${startlist[i].PB}</td>
                     <td>${startlist[i].Nationality}</td>
                     <td>${startlist[i].Warmup}</td>
@@ -864,14 +876,8 @@ $(document).ready(function() {
             duration = removeBreak(i+1);
             addBreak(i-1, duration);
         }
-        else {
-            [_sl[i].Name,        _sl[i+1].Name       ] = [_sl[i+1].Name,        _sl[i].Name       ];
-            [_sl[i].AP,          _sl[i+1].AP         ] = [_sl[i+1].AP,          _sl[i].AP         ];
-            [_sl[i].PB,          _sl[i+1].PB         ] = [_sl[i+1].PB,          _sl[i].PB         ];
-            [_sl[i].Nationality, _sl[i+1].Nationality] = [_sl[i+1].Nationality, _sl[i].Nationality];
-            [_sl[i].Id         , _sl[i+1].Id         ] = [_sl[i+1].Id         , _sl[i].Id         ];
-            [_sl[i].Discipline , _sl[i+1].Discipline ] = [_sl[i+1].Discipline , _sl[i].Discipline ];
-        }
+        else
+            swapStartList(i, i+1);
         generateStartList(_sl);
         _sl_edited = true;
     });
@@ -889,14 +895,8 @@ $(document).ready(function() {
             duration = removeBreak(i-1);
             addBreak(i-1, duration);
         }
-        else {
-            [_sl[i].Name,        _sl[i-1].Name       ] = [_sl[i-1].Name,        _sl[i].Name       ];
-            [_sl[i].AP,          _sl[i-1].AP         ] = [_sl[i-1].AP,          _sl[i].AP         ];
-            [_sl[i].PB,          _sl[i-1].PB         ] = [_sl[i-1].PB,          _sl[i].PB         ];
-            [_sl[i].Nationality, _sl[i-1].Nationality] = [_sl[i-1].Nationality, _sl[i].Nationality];
-            [_sl[i].Id         , _sl[i-1].Id         ] = [_sl[i-1].Id         , _sl[i].Id         ];
-            [_sl[i].Discipline , _sl[i-1].Discipline ] = [_sl[i-1].Discipline , _sl[i].Discipline ];
-        }
+        else
+            swapStartList(i, i-1);
         generateStartList(_sl);
         _sl_edited = true;
     });
@@ -945,7 +945,15 @@ $(document).ready(function() {
                     <tr>
                         <td>AP</td>
                         <td>${ap_btn}</td>
-                    </tr>
+                    </tr>`;
+            if (DEPTH_DISCIPLINES.includes(_sl[i].Discipline)) {
+                content += `
+                    <tr>
+                        <td>Dive time</td>
+                        <td><input type="time" id="sl_edit_dive_time" value="${_sl[i]['Dive Time'].padStart(5, '0')}"/></td>
+                    </tr>`;
+            }
+            content += `
                     <tr>
                         <td>PB</td>
                         <td>${pb_btn}</td>
@@ -988,6 +996,9 @@ $(document).ready(function() {
                 } else {
                     _sl[i].AP = $('#sl_edit_ap').val();
                     _sl[i].PB = $('#sl_edit_pb').val();
+                }
+                if (DEPTH_DISCIPLINES.includes(_sl[i].Discipline)) {
+                    _sl[i]["Dive Time"] = $('#sl_edit_dive_time').val();
                 }
                 let ot = $('#sl_edit_ot')[0].valueAsDate;
                 setOT(i, ot);
@@ -1054,7 +1065,7 @@ $(document).ready(function() {
             _sl.splice(brs[i].i, 1);
         _sl.sort((a,b) => Math.sign(convertToInt(a, sort_by_ap) - convertToInt(b, sort_by_ap)));
         for (let i = 0; i < brs.length; i++) {
-            let break_entry = {Name: "Break", AP: brs[i].time, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1, Discipline: "", PB: ""};
+            let break_entry = {Name: "Break", AP: brs[i].time, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1, Discipline: "", PB: "", "Dive Time": ""};
             _sl.splice(brs[i].i, 0, break_entry);
         }
         calculateStartList();
@@ -1089,8 +1100,10 @@ $(document).ready(function() {
                     pb_btn = `<input type="time" id="sl_add_pb" value="00:01"/>`;
                 }
                 dis_chooser = "";
+                let is_depth = false;
                 for (let i = 0; i < disciplines.length; i++) {
                     let dis = disciplines[i];
+                    is_depth |= DEPTH_DISCIPLINES.includes(dis);
                     let checked = i == 0 ? "checked" : "";
                     dis_chooser += `<input type="radio" name="sl_add_dis" value="${dis}" id="sl_add_dis_${dis}" ${checked}/>
                                     <label for="sl_add_dis_${dis}">${dis}</label><br>`;
@@ -1115,7 +1128,15 @@ $(document).ready(function() {
                         <tr>
                             <td>AP</td>
                             <td>${ap_btn}</td>
-                        </tr>
+                        </tr>`;
+                if (is_depth) {
+                    content += `
+                        <tr>
+                            <td>Dive time</td>
+                            <td><input type="time" id="sl_add_dive_time" value="00:00"/></td>
+                        </tr>`;
+                }
+                content += `
                         <tr>
                             <td>PB</td>
                             <td>${pb_btn}</td>
@@ -1149,7 +1170,7 @@ $(document).ready(function() {
         let lane = convertActualLaneToNumeric($('#sl_add_lane').val());
         if (!$('#sl_add_ap') || isNaN(i) || i < 0 || i >= _sl_athletes.length || lane <= 0 || lane > 12)
             return;
-        let new_entry = {Name: _sl_athletes[i].first_name + " " + _sl_athletes[i].last_name, AP: $('#sl_add_ap').val(), PB: $('#sl_add_pb').val(), Nationality: _sl_athletes[i].country, Warmup: "", OT: "", Lane: $('#sl_add_lane').val(), Id: -_sl_athletes[i].id, Discipline: dis};
+        let new_entry = {Name: _sl_athletes[i].first_name + " " + _sl_athletes[i].last_name, AP: $('#sl_add_ap').val(), PB: $('#sl_add_pb').val(), Nationality: _sl_athletes[i].country, Warmup: "", OT: "", Lane: $('#sl_add_lane').val(), Id: -_sl_athletes[i].id, Discipline: dis, "Dive Time": $('#sl_add_dive_time').val()};
         let ot = timeToMinutes($('#sl_add_ot').val());
         i = 0;
         for (; i < _sl.length; i++) {
@@ -1442,6 +1463,16 @@ function calculateStartList() {
     _sl_edited = true;
 }
 
+function swapStartList(i, j) {
+    [_sl[i].Name,         _sl[j].Name        ] = [_sl[j].Name,         _sl[i].Name       ];
+    [_sl[i].AP,           _sl[j].AP          ] = [_sl[j].AP,           _sl[i].AP         ];
+    [_sl[i].PB,           _sl[j].PB          ] = [_sl[j].PB,           _sl[i].PB         ];
+    [_sl[i].Nationality,  _sl[j].Nationality ] = [_sl[j].Nationality,  _sl[i].Nationality];
+    [_sl[i].Id,           _sl[j].Id          ] = [_sl[j].Id,           _sl[i].Id         ];
+    [_sl[i].Discipline ,  _sl[j].Discipline  ] = [_sl[j].Discipline ,  _sl[i].Discipline ];
+    [_sl[i]["Dive Time"], _sl[j]["Dive Time"]] = [_sl[j]["Dive Time"], _sl[i]["Dive Time"]];
+}
+
 function addBreak(i, duration) {
     if (i >= 0 && i < _sl.length-1) {
         let break_str = null;
@@ -1454,7 +1485,7 @@ function addBreak(i, duration) {
             break_date = $('#sl_break_duration')[0].valueAsDate;
             break_str = dateToStr(break_date);
         }
-        let break_entry = {Name: "Break", AP: break_str, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1, Discipline: "", PB: ""};
+        let break_entry = {Name: "Break", AP: break_str, Nationality: "", Warmup: "", OT: "", Lane: "", Id: -1, Discipline: "", PB: "", "Dive Time": ""};
         _sl.splice(i+1, 0, break_entry);
         let ot_old = timeToMinutes(_sl[i+2].OT);
         let ot_prev = timeToMinutes(_sl[i].OT);

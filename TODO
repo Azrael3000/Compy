@@ -27,9 +27,9 @@ TODO:
 - When refreshing file ask user whether he wants to delete all athletes or only update
 - NR/CR/WR database (CMAS/AIDA, former with links to record pages)
 - Marking CR/WRs in results
-- Divetime add to start list / lane lists
 - Athletes without result sort by OT
 - Athlete adding, allow choosing from existing ones
+- CMAS depth needs AP similar to STA
 
 WISHLIST:
 - Interface for registration

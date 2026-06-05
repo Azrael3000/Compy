@@ -64,7 +64,9 @@ from openpyxl import load_workbook
 
 INVALID_DATE="0000-00-00"
 INVALID_TIME="99:99"
-DISCIPLINES=["FIM", "CNF", "CWT", "CWTB", "STA", "DNF", "DYN", "DYNB"]
+POOL_DISCIPLINES = ["STA", "DNF", "DYN", "DYNB"]
+DEPTH_DISCIPLINES=["FIM", "CNF", "CWT", "CWTB"]
+DISCIPLINES = DEPTH_DISCIPLINES + POOL_DISCIPLINES
 FEDERATIONS=["aida", "cmas"]
 
 class CompyData:
@@ -560,7 +562,7 @@ class CompyData:
         if self.comp_file is None:
             return None
         db_out = self.db_.execute('''
-            SELECT a.first_name, a.last_name, a.country, s.AP, s.OT, s.lane, s.id, s.discipline, s.PB
+            SELECT a.first_name, a.last_name, a.country, s.AP, s.OT, s.lane, s.id, s.discipline, s.PB, s.dive_time
             FROM start s
             INNER JOIN competition_athlete ca ON s.competition_athlete_id == ca.id
             INNER JOIN athlete a ON ca.athlete_id == a.id
@@ -572,6 +574,7 @@ class CompyData:
         startlist = [{'Name': r[0] + " " + r[1],
                       'Nationality': r[2],
                       'AP': self.convertPerformance(r[3], r[7]),
+                      'Dive Time': self.formatDiveTime(r[9]),
                       'PB': self.convertPerformance(r[8], r[7]),
                       'Warmup': self.getWTfromOT(u.convTime(r[4])),
                       'OT': u.convTime(r[4]),
@@ -594,7 +597,7 @@ class CompyData:
                     continue
                 br_time = str(int(br[0]/60)) + ":" + str(br[0]%60).zfill(2)
                 startlist.insert(idx, {'Name': "Break", 'Nationality': "", 'AP': br_time, 'PB': '', 'Warmup': "",
-                                       'OT': "", 'Lane': "", 'Discipline': "", 'Id': -1})
+                                       'OT': "", 'Lane': "", 'Discipline': "", 'Id': -1, 'Dive Time': ""})
 
         return startlist
 
@@ -651,6 +654,7 @@ class CompyData:
                     log.warning("Invalid athlete not added to competition")
                     continue
                 ot = self.cleanTime(startlist[i]["OT"])
+                dive_time = self.getMinFromTime(self.cleanTime(startlist[i]["Dive Time"])) if "Dive Time" in startlist[i].keys() else 0
                 discipline = self.cleanDiscipline(startlist[i]['Discipline'], block)
                 if discipline is None:
                     continue
@@ -663,15 +667,15 @@ class CompyData:
                 if int(startlist[i]["Id"]) < 0: # new start
                     self.db_.execute(
                         '''INSERT INTO start
-                           (competition_athlete_id, discipline, block, lane, OT, AP, PB)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                        (ca_id[0][0], discipline, block, lane, u.convTime(ot), ap, pb));
+                           (competition_athlete_id, discipline, block, lane, OT, AP, PB, dive_time)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                        (ca_id[0][0], discipline, block, lane, u.convTime(ot), ap, pb, dive_time));
                 else: #update start
                     self.db_.execute(
                         '''UPDATE start SET
-                           discipline=?, block=?, lane=?, OT=?, AP=?, PB=?
+                           discipline=?, block=?, lane=?, OT=?, AP=?, PB=?, dive_time=?
                            WHERE id == ?''',
-                        (discipline, block, lane, u.convTime(ot), ap, pb, ca_id[0][0]));
+                        (discipline, block, lane, u.convTime(ot), ap, pb, dive_time, ca_id[0][0]));
         return 0
 
     def convertPerformance(self, val, dis):
@@ -712,13 +716,9 @@ class CompyData:
         block_disciplines = blocks[day][int(block)]['dis_s']
         if self.comp_type == "aida":
             start_df.drop("PB", axis=1, inplace=True)
-        else:
-            if block_disciplines != "STA":
-                start_df.drop("AP", axis=1, inplace=True)
-            else:
-                start_df["AP"] = start_df.apply(lambda row: row["AP"] if row['Discipline'] == "STA" else "", axis=1)
-        if block_disciplines.find(",") == -1:
-            start_df.drop("Discipline", axis=1, inplace=True)
+        elif block_disciplines == "STA":
+            start_df["AP"] = start_df.apply(lambda row: row["AP"] if row['Discipline'] == "STA" else "", axis=1)
+        self.dropUnusedColumns(block_disciplines, start_df)
         html_string = start_df.to_html(index=False, justify="left", classes="df_table")
         day_obj = datetime.strptime(day, "%Y-%m-%d")
         human_day = day_obj.strftime("%d. %m. %Y")
@@ -798,7 +798,7 @@ class CompyData:
 
     def getLaneList(self, day, block, lane):
         lane_db = self.laneStyleConverter(lane, True)
-        db_out = self.db_.execute('''SELECT a.first_name, a.last_name, s.AP, s.OT, a.country, a.gender, a.id, s.id, s.PB, s.discipline, s.RP, s.card, s.remarks
+        db_out = self.db_.execute('''SELECT a.first_name, a.last_name, s.AP, s.OT, a.country, a.gender, a.id, s.id, s.PB, s.discipline, s.RP, s.card, s.remarks, s.dive_time
                                      FROM athlete a
                                      INNER JOIN competition_athlete ca ON a.id == ca.athlete_id
                                      INNER JOIN start s ON s.competition_athlete_id == ca.id
@@ -815,6 +815,7 @@ class CompyData:
                       'Name': r[0] + " " + r[1],
                       'Nat': r[4],
                       'AP': self.convertPerformance(r[2], r[9]),
+                      'Dive Time': self.formatDiveTime(r[13]),
                       'PB': self.convertPerformance(r[8], r[9]),
                       'RP': self.convertPerformance(r[10], r[9]),
                       'Card': r[11],
@@ -833,6 +834,27 @@ class CompyData:
                 return self.nr.get(nr)
         else:
             return ""
+
+    # Drops columsn which are not used under certain conditions, e.g. dive time for pool disciplines.
+    def dropUnusedColumns(self, block_disciplines, df):
+        block_comma_idx = block_disciplines.find(",")
+        if block_comma_idx == -1:
+            # drop discipline if only one
+            if "Discipline" in df.columns.tolist():
+                df.drop("Discipline", axis=1, inplace=True)
+            elif "Dis" in df.columns.tolist():
+                df.drop("Dis", axis=1, inplace=True)
+
+            # drop AP for CMAS, except for STA
+            if self.comp_type == "cmas" and block_disciplines != "STA":
+                lane_df.drop("AP", axis=1, inplace=True)
+
+            # drop dive time for pool disciplines
+            if not block_disciplines in DEPTH_DISCIPLINES:
+                df.drop("Dive Time", axis=1, inplace=True)
+
+        elif not block_disciplines[:block_comma_idx] in DEPTH_DISCIPLINES:
+                df.drop("Dive Time", axis=1, inplace=True)
 
     def getLaneListPDF(self, safety=False, day="all", block="all", lane="all", in_memory=False):
         if day=="all" and block=="all":
@@ -865,29 +887,33 @@ class CompyData:
         block_str = blocks[day][int(block)]['dis_s']
         block_str_underscore = block_str.replace(', ', '_')
         has_multiple_dis = ',' in block_str
-
-        if not has_multiple_dis:
-            if self.comp_type == "cmas" and block_str != "STA":
-                lane_df.drop("AP", axis=1, inplace=True)
-            lane_df.drop("Dis", axis=1, inplace=True)
+        self.dropUnusedColumns(block_str, lane_df)
         if not safety:
             lane_df["RP"] = ""
             lane_df["Card"] = ""
             lane_df["Remarks"] = ""
+        col_weight = {
+                "OT": 4,
+                "Name": 25,
+                "Nat": 4,
+                "AP": 4,
+                "Dive Time": 4,
+                "Dis": 4,
+                "RP": 10,
+                "Card": 10,
+                "Remarks": 40,
+                "PB": 4,
+                "NR": 4}
         cols = lane_df.columns.tolist()
         if not safety:
+            dive_time_col = ["Dive Time"] if "Dive Time" in cols else []
+            dis_col = ["Dis"] if has_multiple_dis else []
             if self.comp_type == "aida":
-                if has_multiple_dis:
-                    cols = cols[0:5] + cols[7:] + cols[5:7]
-                else:
-                    cols = cols[0:4] + cols[6:] + cols[4:6]
+                cols = ['OT', 'Name', 'Nat', 'AP'] + dive_time_col + dis_col + ['RP', 'Card', 'Remarks', 'PB', 'NR']
             else:
-                if block_str == "STA":
-                    cols = ['OT', 'Name', 'Nat', 'AP', 'PB', 'RP', 'Card', 'Remarks', 'NR']
-                elif has_multiple_dis:
-                    cols = ['OT', 'Dis', 'Name', 'Nat', 'PB', 'RP', 'Card', 'Remarks', 'NR']
-                else:
-                    cols = ['OT', 'Name', 'Nat', 'PB', 'RP', 'Card', 'Remarks', 'NR']
+                ap_col = ['AP'] if block_str == "STA" else []
+                cols = ['OT', 'Name', 'Nat'] + ap_col + ['PB'] + dive_time_col + dis_col + ['RP', 'Card', 'Remarks', 'NR']
+        sum_col_weight = sum([col_weight[c] for c in cols])
         lane_df = lane_df[cols]
         df_html = lane_df.to_html(index=False, justify="left", classes="df_table")
         day_obj = datetime.strptime(day, "%Y-%m-%d")
@@ -923,58 +949,15 @@ class CompyData:
                     text-align: center;
                     border-bottom: 1px solid #ddd;
                 }"""
-        html_string += """
-            table th:nth-child(1) {
-                width: 4%;
-            }"""
-        i = 2
-        if has_multiple_dis:
+        i = 1
+        for c in cols:
+            alignment = "left" if c == "Name" else "center"
             html_string += """
-                table th:nth-child({}) {{
-                    width: 4%;
-                }}""".format(str(i))
+                table th:nth-child({}), table td:nth-child({}) {{
+                    width: {}%;
+                    text-align: {};
+                }}""".format(str(i), str(i), str(round(100*col_weight[c]/sum_col_weight, 1)), alignment)
             i += 1
-        html_string += """
-            table th:nth-child({}) {{
-                width: 21%;
-                text-align: left;
-            }}
-            table td:nth-child({}) {{
-                text-align: left;
-            }}
-            table th:nth-child({}) {{
-                width: 4%;
-            }}
-            table th:nth-child({}) {{
-                width: 4%;
-            }}
-            """.format(str(i), str(i), str(i+1), str(i+2))
-        i += 3
-        if self.comp_type == "cmas" and block_str == "STA":
-            html_string += """
-                table th:nth-child({}) {{
-                    width: 4%;
-                }}
-                """.format(str(i))
-            i += 1
-        if not safety:
-            html_string += """
-                table th:nth-child({}) {{
-                    width: 10%;
-                }}
-                table th:nth-child({}) {{
-                    width: 10%;
-                }}
-                table th:nth-child({}) {{
-                    width: 39%;
-                }}
-                table th:nth-child({}) {{
-                    width: 4%;
-                }}
-                table th:nth-child({}) {{
-                    width: 4%;
-                }}""".format(str(i), str(i+1), str(i+2), str(i+3), str(i+4))
-            i += 5
         html_string += """
             header, footer {
                 position: fixed;
@@ -1224,7 +1207,7 @@ class CompyData:
         else:
             if discipline == "STA":
                 return max(int(rp)*0.2 - penalty, 0.0)
-            elif discipline in ["DNF", "DYNB", "DYN"]:
+            elif discipline in POOL_DISCIPLINES:
                 if self.comp_type == "aida":
                     return max(int(rp)*0.5 - penalty, 0.0)
                 else:
@@ -1475,6 +1458,14 @@ class CompyData:
         else:
             return str(date)
 
+    def formatDiveTime(self, dive_time_seconds):
+        minutes = 0
+        seconds = 0
+        if dive_time_seconds >= 60:
+            minutes = dive_time_seconds % 60
+        seconds = dive_time_seconds - minutes*60
+        return str(minutes) + ":" + str(seconds).zfill(2)
+
     def formatSTA(self, minutes, seconds):
         if seconds == "" or math.isnan(seconds):
             return ""
@@ -1602,7 +1593,7 @@ class CompyData:
     def cleanPerf(self, perf, discipline):
         if discipline == "STA":
             return self.cleanTime(perf)
-        elif self.comp_type == "aida" or discipline in ['CWT', 'CWTB', 'FIM', 'CNF']:
+        elif self.comp_type == "aida" or discipline in DEPTH_DISCIPLINES:
             return self.cleanNumber(perf, 0, 0)
         else: # cmas dynamic disciplines
             return self.cleanNumber(perf, 1, 0)

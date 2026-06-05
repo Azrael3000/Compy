@@ -13,5 +13,6 @@ CREATE TABLE start (
   card TEXT,
   penalty FLOAT,
   remarks TEXT,
-  judge_remarks TEXT
+  judge_remarks TEXT,
+  dive_time INTEGER DEFAULT 0
 );
