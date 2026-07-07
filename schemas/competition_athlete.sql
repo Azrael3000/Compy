@@ -7,5 +7,6 @@ CREATE TABLE competition_athlete (
   special_ranking BOOL NOT NULL DEFAULT 0,
   paid BOOL NOT NULL DEFAULT 0,
   medical_checked BOOL NOT NULL DEFAULT 0,
-  registered BOOL NOT NULL DEFAULT 0
+  registered BOOL NOT NULL DEFAULT 0,
+  eligible_national BOOL NOT NULL DEFAULT 0
 );

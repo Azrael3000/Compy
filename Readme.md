@@ -73,6 +73,22 @@ Install Weasyprint https://doc.courtbouillon.org/weasyprint/stable/first_steps.h
    - Linux: `python3 compy.py`
    - Windows: `python3.exe compy.py`
  - Navigate your browser to `localhost:5000`
+ - The admin interface is at `localhost:5000/admin?auth=XXXXXX` where `XXXXXX` are the first 6
+   characters of your `FLASK_SECRET_KEY` from `.env`
+
+## Test data
+
+A generator for a realistic sample competition (30 athletes, 3 days: CWT, STA, DYN,
+results and cards for past days, DNS entries, open results for today) lives in
+`tools/generate_test_data.py`:
+
+ - `python3 tools/generate_test_data.py test_competition.xlsx`
+ - Start the server and open the admin page
+ - Set a competition name, save, choose the generated file and press "Refresh data"
+
+Alternatively a pre-seeded `compy.sqlite` with the competition "Compy Test Open 2026"
+(including `test_competition.xlsx`) may already be present, in which case you can simply
+load it from "Load competition" on the Settings tab.
 
 ## Want to help?
 
