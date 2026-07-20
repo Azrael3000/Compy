@@ -127,7 +127,7 @@ function generateStartList(startlist) {
         let empty = "<td></td>";
         let down_btn = (i) => `<td><button id="sl_down_${i}" class="down" type="button">Down</button></td>`;
         let up_btn = (i) => `<td><button id="sl_up_${i}" class="up" type="button">Up</button></td>`;
-        let break_btn = (i) => `<td><button id="sl_break_${i}" class="break" type="button">` +
+        let break_btn = (i) => `<td><button id="sl_break_${i}" class="break${startlist[i].Name=="Break" ? " danger" : ""}" type="button">` +
                                (startlist[i].Name=="Break" ? "Remove" : "Add") + ` break</button></td>`;
         let rm_btn = (i) => startlist[i].Name != "Break" ? `<td><button id="sl_remove_${i}" class="remove" type="button">Remove</button></td>` : empty;
         let interval_ot1 = 0;
@@ -209,10 +209,9 @@ function minutesToStr(mins, padH = false) {
     return h_str + ":"  + m.toString().padStart(2, "0");
 }
 
-function showOverlayBox(width, height, content) {
+function showOverlayBox(content) {
+    // the box sizes itself to its content (see #overlay_box in compy.css)
     $('#overlay_blur').show();
-    $('#overlay_box').width(width);
-    $('#overlay_box').height(height);
     $('#overlay_box').html(content);
     $('body').addClass('stop-scrolling');
 }
@@ -534,11 +533,13 @@ $(document).ready(function() {
             {
                 console.log(data.status_msg);
                 content = `
+                    <div style="text-align:center">
                     QR Code for ${data.judge_first_name} ${data.judge_last_name}:<br>
                     <a href="${data.judge_url}" target="_blank"><img src="${data.judge_qr_code}" style="width:250px;"/></a><br>
                     <button id="overlay_cancel" type="button">Close</button>
+                    </div>
                     `;
-                showOverlayBox(400, 300, content);
+                showOverlayBox(content);
             }
         });
     });
@@ -971,7 +972,7 @@ $(document).ready(function() {
                 </table>
                 `;
         }
-        showOverlayBox(400, 300, content);
+        showOverlayBox(content);
     });
     $('#overlay_box').on('click', '#overlay_cancel', function() {
         hideOverlayBox();
@@ -1032,7 +1033,7 @@ $(document).ready(function() {
                         </tr>
                     </table>
                     `;
-                showOverlayBox(400, 200, content);
+                showOverlayBox(content);
             }
         }
     });
@@ -1155,7 +1156,7 @@ $(document).ready(function() {
                         </tr>
                     </table>
                     `;
-                showOverlayBox(400, 300, content);
+                showOverlayBox(content);
                 let sl_add_athlete = $('#sl_add_athlete');
                 sl_add_athlete.empty();
                 for (let i = 0; i < data.athletes.length; i++)
@@ -1213,7 +1214,7 @@ $(document).ready(function() {
         let rp = 0;
         let content = generateResultContent("Add", name, rp, 0, "", "checked", "", "", "", "");
         _sl_athletes = id;
-        showOverlayBox(400, 800, content);
+        showOverlayBox(content);
     });
     $('#results_content').on('click', '.result_edit', function() {
         //TODO: card auto select and forbid
@@ -1240,7 +1241,7 @@ $(document).ready(function() {
             rp = timeToMinutes(rp);
         let content = generateResultContent("Edit", name, rp, penalty, penalty_not_reached_ap_str, rcw_checked, rcy_checked, rcr_checked, judge_remark, remarks);
         _sl_athletes = id;
-        showOverlayBox(400, 800, content);
+        showOverlayBox(content);
     });
     $('#overlay_box').on('click', '#result_save', function() {
         let rp = $('#result_rp').val();
@@ -1367,7 +1368,7 @@ function blockModify(type, day = "", disciplines = [], block = -1)
                     </tr>
                 </table>
                 `;
-            showOverlayBox(400, 400, content);
+            showOverlayBox(content);
         }
     });
 }
@@ -1443,8 +1444,13 @@ function calculateStartList() {
     let no_lane = $('#sl_no_lanes').val();
     let interval = timeToMinutes($('#sl_interval').val());
     let ot = $('#sl_start_time')[0].valueAsDate;
-    if (!no_lane || !interval || !ot || no_lane < 1)
+    if (!no_lane || !interval || !ot || no_lane < 1) {
+        // can't recalculate OTs/lanes yet, but still re-render so that
+        // changes to _sl (e.g. sorting) are not silently hidden
+        generateStartList(_sl);
+        _sl_edited = true;
         return;
+    }
     let lane = 1;
     for (let i = 0; i < _sl.length; i++) {
         if (_sl[i].Name == "Break") {

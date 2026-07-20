@@ -49,7 +49,6 @@ def convTime(time):
     return None
 
 def getNationalRecordsAida():
-    breakpoint()
     empty_req = requests.post('https://www.aidainternational.org/public_pages/all_national_records.php', data={})
     html = empty_req.text
     start = html.find('id="nationality"')
@@ -91,7 +90,7 @@ def getNationalRecordsAida():
                 p_dis = re.compile("[0-9]+")
                 result = float(p_dis.search(res_str).group(0))
             points = float(p.search(entries[i*10 + 6]).group(1))
-            nrs[self.NR(federation="aida", country=c_ioc, cls="", gender=gender, discipline=dis)] = result
+            nrs[NR(federation="aida", country=c_ioc, cls="", gender=gender, discipline=dis)] = result
     logging.debug("National records:")
     logging.debug("Country | Gender | Discipline | Result | Points")
     for key, val in nrs.items():

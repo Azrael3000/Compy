@@ -13,7 +13,7 @@ html, body {
     padding: 0;
     background-image: linear-gradient(var(--medium), var(--dark));
     height: 100%;
-    font-family: "sans";
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background-attachment: fixed;
     color: var(--medium);
 }

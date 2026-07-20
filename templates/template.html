@@ -45,7 +45,7 @@
             </span>
         </span>
     </div>
-    <table>
+    <table id="main_nav">
         <tr>
             <td id="settings_button" style="font-weight:bold"><a href="#" onclick="switchTo('settings')">Settings</a></td>
             <td id="judges_button"><a href='#' onclick="switchTo('judges')">Judges</a></td>
@@ -255,8 +255,8 @@
             <label for="record_cwtb">CWTB</label><input type="text" id="record_cwtb" value="{{record_cwtb}}"/>
         </div>
     </div>
-    <div id="overlay_blur" style="display:none; position:absolute; top:0; left:0; height:100%; width:100%; backdrop-filter:blur(10px); z-index:1000">
-        <div id="overlay_box" style="background:white; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:1001; width:300px; height:300px;">
+    <div id="overlay_blur" style="display:none; position:fixed; top:0; left:0; height:100%; width:100%; backdrop-filter:blur(10px); z-index:1000">
+        <div id="overlay_box" style="background:white; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:1001;">
             Foo
         </div>
     </div>

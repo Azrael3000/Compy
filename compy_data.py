@@ -39,37 +39,24 @@ import hashlib
 import math
 import random
 import os
-import json
-import glob
-from datetime import datetime, timedelta, time
+import sqlite3
+from datetime import datetime, timedelta, time, timezone
 from io import BytesIO
-import flask
-try:
-    import weasyprint as wp
-except ImportError:
-    print("Could not find weasyprint. Install with 'pip3 install weasyprint'")
-    exit(-1)
 import base64
 from PIL import Image
-from io import BytesIO
-import numpy as np
 import regex
 import sys
 
 import athlete
 from compy_config import CompyConfig
+from compy_constants import (INVALID_DATE, INVALID_TIME, POOL_DISCIPLINES,
+                             DEPTH_DISCIPLINES, DISCIPLINES, FEDERATIONS)
+from compy_pdf import PdfReportMixin
 
 import compy_utilities as u
 from openpyxl import load_workbook
 
-INVALID_DATE="0000-00-00"
-INVALID_TIME="99:99"
-POOL_DISCIPLINES = ["STA", "DNF", "DYN", "DYNB"]
-DEPTH_DISCIPLINES=["FIM", "CNF", "CWT", "CWTB"]
-DISCIPLINES = DEPTH_DISCIPLINES + POOL_DISCIPLINES
-FEDERATIONS=["aida", "cmas"]
-
-class CompyData:
+class CompyData(PdfReportMixin):
 
     version_ = None
 
@@ -94,7 +81,7 @@ class CompyData:
         self.name_ = "undefined"
 
         with self.app_.app_context():
-            #self.updateNationalRecords();
+            #self.updateNationalRecords()
             # try and find it first
             if comp_id == -1:
                 c_id = self.db_.execute("SELECT id FROM competition WHERE name=?", self.name_)
@@ -107,7 +94,6 @@ class CompyData:
                 self.load(comp_id)
 
     @property
-    @staticmethod
     def version(self):
         if self.version_ is None:
             base_path = os.path.dirname(os.path.realpath(__file__))
@@ -304,14 +290,14 @@ class CompyData:
         # read second sheet (list of athletes)
         df = pd.read_excel(self.comp_file_, sheet_name="Athletes and Judges", skiprows=1)
         for i,r in df.iterrows():
-            a = athlete.Athlete.fromArgs(r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country'], r['Club'] if 'club' in r else "", self.db_)
+            a = athlete.Athlete.fromArgs(r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country'], r['Club'] if 'Club' in r else "", self.db_)
             logging.debug("Athlete: %s %s %s %s %s", r['Id'], r['FirstName'], r['LastName'], r['Gender'], r['Country'])
             a.associateWithComp(self.id_)
         logging.debug("Number of athletes: %d", self.number_of_athletes)
 
         if sr_ids is not None:
             for sr in sr_ids:
-                self.setRegistration(sr[0], True, False, "specialranking")
+                self.setRegistration(sr[0], True, "specialranking", warn=False)
 
         self.save()
 
@@ -351,12 +337,11 @@ class CompyData:
                     card = "nan"
                     penalty = "nan"
                 block = blocks[dis]
-                print(block, dis, blocks)
                 if rp is not None:
                     self.db_.execute('''INSERT INTO start
                                         (competition_athlete_id, discipline, lane, OT, AP,
                                          rp, card, penalty, remarks, block)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                                      (ca_id[0][0], dis, lane, u.convTime(ot), ap, rp, card, penalty, remarks, block))
                 else:
                     self.db_.execute('''INSERT INTO start
@@ -385,7 +370,6 @@ class CompyData:
             return 1
 
     def getSavedCompetitions(self):
-        os.chdir(self.config.storage_folder)
         saved_comp_info = []
         comps = self.db_.execute("SELECT id, name, save_date FROM competition")
         if comps is None:
@@ -443,7 +427,7 @@ class CompyData:
                                         FROM competition WHERE id=?''',
                                      comp_id)
         if load_data is None:
-            logging.error("Could not find competition with id '" + id + "'")
+            logging.error("Could not find competition with id '" + str(comp_id) + "'")
             self.id_ = None
             return None
         else:
@@ -651,7 +635,7 @@ class CompyData:
                            WHERE s.id == ? AND ca.competition_id == ?''',
                         (ca_id, self.id_))
                 if ca_id is None:
-                    log.warning("Invalid athlete not added to competition")
+                    logging.warning("Invalid athlete not added to competition")
                     continue
                 ot = self.cleanTime(startlist[i]["OT"])
                 dive_time = self.getMinFromTime(self.cleanTime(startlist[i]["Dive Time"])) if "Dive Time" in startlist[i].keys() else 0
@@ -669,13 +653,13 @@ class CompyData:
                         '''INSERT INTO start
                            (competition_athlete_id, discipline, block, lane, OT, AP, PB, dive_time)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                        (ca_id[0][0], discipline, block, lane, u.convTime(ot), ap, pb, dive_time));
+                        (ca_id[0][0], discipline, block, lane, u.convTime(ot), ap, pb, dive_time))
                 else: #update start
                     self.db_.execute(
                         '''UPDATE start SET
                            discipline=?, block=?, lane=?, OT=?, AP=?, PB=?, dive_time=?
                            WHERE id == ?''',
-                        (discipline, block, lane, u.convTime(ot), ap, pb, dive_time, ca_id[0][0]));
+                        (discipline, block, lane, u.convTime(ot), ap, pb, dive_time, ca_id[0][0]))
         return 0
 
     def convertPerformance(self, val, dis):
@@ -694,107 +678,6 @@ class CompyData:
         wtf = otf-45 # does not work if ot is close to midnight, but seriously?
         wt = str(math.floor(wtf/60)) + ":" + str(wtf%60).zfill(2)
         return wt
-
-    def getStartListPDF(self, day="all", block="all", in_memory=False):
-        if day=="all" and block=="all":
-            day_block = self.getBlocks()
-            files = []
-            for d in day_block:
-                for block in day_block[d].keys():
-                    files.append(self.getStartListPDF(d, block, True))
-            pages = []
-            for doc in files:
-                for page in doc.pages:
-                    pages.append(page)
-            merged_pdf = files[0].copy(pages)
-            fname = os.path.join(self.config.download_folder, self.name + "_start_lists.pdf")
-            merged_pdf.write_pdf(fname)
-            return fname
-        start_df = pd.DataFrame(self.getStartList(day, block))
-        start_df.drop("Id", axis=1, inplace=True)
-        blocks = self.getBlocks()
-        block_disciplines = blocks[day][int(block)]['dis_s']
-        if self.comp_type == "aida":
-            start_df.drop("PB", axis=1, inplace=True)
-        elif block_disciplines == "STA":
-            start_df["AP"] = start_df.apply(lambda row: row["AP"] if row['Discipline'] == "STA" else "", axis=1)
-        self.dropUnusedColumns(block_disciplines, start_df)
-        html_string = start_df.to_html(index=False, justify="left", classes="df_table")
-        day_obj = datetime.strptime(day, "%Y-%m-%d")
-        human_day = day_obj.strftime("%d. %m. %Y")
-        dis = self.db_.execute('SELECT disciplines FROM block WHERE competition_id==? AND id==?', (self.id_, block))
-        if dis is None:
-            return None
-        disciplines = self.disciplineIntToStr(dis[0][0])
-        html_string = """
-            <html>
-            <head>
-            <style>
-            table {{
-                margin-left: 2cm;
-            }}
-            tr th:first-child {{
-                padding-left:0px;
-                text-align: left;
-            }}
-            tr td:first-child {{
-                padding-left:0;
-                text-align: left;
-            }}
-            th, td {{
-                padding:5px 0px 2px 20px;
-                text-align: center;
-                border-bottom: 1px solid #ddd;
-                font-size: 12px;
-            }}
-            @page {{
-                margin: 4cm 1cm 6cm 1cm;
-                size: A4;
-                @top-right {{
-                    content: counter(page) "/" counter(pages);
-                }}
-            }}
-            header, footer {{
-                position: fixed;
-                left: 0;
-                right: 0;
-            }}
-            header {{
-                /* subtract @page margin */
-                top: -4cm;
-                height: 4cm;
-                text-align: center;
-                vertical-align: center;
-            }}
-            footer {{
-                /* subtract @page margin */
-                bottom: -6cm;
-                height: 6cm;
-                text-align: center;
-                vertical-align: center;
-            }}
-            </style>
-            </head>
-            <body>
-            <header>
-                <h1>{}</h1>
-                <h2>Start list {} - {}</h2>
-            </header>
-            {}
-            <footer><img src="{}" style="width:{}cm; height:{}cm;"></footer>
-            </body>
-            </html>
-            """.format(self.name, disciplines, human_day, html_string, self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
-        html = wp.HTML(string=html_string, base_url="/")
-        #fname = os.path.join(self.config.download_folder, "test.html")
-        #with open(fname, "w") as f:
-        #    f.write(html_string)
-        if in_memory:
-            return html.render()
-        else:
-            fname = os.path.join(self.config.download_folder, self.name + "_start_list_" + day + "_" + disciplines.replace(', ', '_') + ".pdf")
-            html.write_pdf(fname)
-            return fname
 
     def getLaneList(self, day, block, lane):
         lane_db = self.laneStyleConverter(lane, True)
@@ -835,215 +718,6 @@ class CompyData:
         else:
             return ""
 
-    # Drops columsn which are not used under certain conditions, e.g. dive time for pool disciplines.
-    def dropUnusedColumns(self, block_disciplines, df):
-        block_comma_idx = block_disciplines.find(",")
-        if block_comma_idx == -1:
-            # drop discipline if only one
-            if "Discipline" in df.columns.tolist():
-                df.drop("Discipline", axis=1, inplace=True)
-            elif "Dis" in df.columns.tolist():
-                df.drop("Dis", axis=1, inplace=True)
-
-            # drop AP for CMAS, except for STA
-            if self.comp_type == "cmas" and block_disciplines != "STA":
-                lane_df.drop("AP", axis=1, inplace=True)
-
-            # drop dive time for pool disciplines
-            if not block_disciplines in DEPTH_DISCIPLINES:
-                df.drop("Dive Time", axis=1, inplace=True)
-
-        elif not block_disciplines[:block_comma_idx] in DEPTH_DISCIPLINES:
-                df.drop("Dive Time", axis=1, inplace=True)
-
-    def getLaneListPDF(self, safety=False, day="all", block="all", lane="all", in_memory=False):
-        if day=="all" and block=="all":
-            blocks = self.getBlocks()
-            files = []
-            for day in blocks:
-                for block in blocks[day].keys():
-                    for lane in blocks[day][block]['lanes']:
-                        files.append(self.getLaneListPDF(safety, day, block, lane, True))
-            pages = []
-            for doc in files:
-                for page in doc.pages:
-                    pages.append(page)
-            merged_pdf = files[0].copy(pages)
-            fname = os.path.join(self.config.download_folder, self.name + "_lane_lists.pdf")
-            merged_pdf.write_pdf(fname)
-            return fname
-        ret, content = self.getLaneList(day, block, lane)
-        lane_df = pd.DataFrame(content['lane_list'])
-        lane_df.drop("id", axis=1, inplace=True)
-        lane_df.drop("s_id", axis=1, inplace=True)
-        lane_df.drop("RP", axis=1, inplace=True)
-        lane_df.drop("Card", axis=1, inplace=True)
-        lane_df.drop("Remarks", axis=1, inplace=True)
-        if safety:
-            lane_df.drop("Nat", axis=1, inplace=True)
-            lane_df.drop("NR", axis=1, inplace=True)
-
-        blocks = self.getBlocks()
-        block_str = blocks[day][int(block)]['dis_s']
-        block_str_underscore = block_str.replace(', ', '_')
-        has_multiple_dis = ',' in block_str
-        self.dropUnusedColumns(block_str, lane_df)
-        if not safety:
-            lane_df["RP"] = ""
-            lane_df["Card"] = ""
-            lane_df["Remarks"] = ""
-        col_weight = {
-                "OT": 4,
-                "Name": 25,
-                "Nat": 4,
-                "AP": 4,
-                "Dive Time": 4,
-                "Dis": 4,
-                "RP": 10,
-                "Card": 10,
-                "Remarks": 40,
-                "PB": 4,
-                "NR": 4}
-        cols = lane_df.columns.tolist()
-        if not safety:
-            dive_time_col = ["Dive Time"] if "Dive Time" in cols else []
-            dis_col = ["Dis"] if has_multiple_dis else []
-            if self.comp_type == "aida":
-                cols = ['OT', 'Name', 'Nat', 'AP'] + dive_time_col + dis_col + ['RP', 'Card', 'Remarks', 'PB', 'NR']
-            else:
-                ap_col = ['AP'] if block_str == "STA" else []
-                cols = ['OT', 'Name', 'Nat'] + ap_col + ['PB'] + dive_time_col + dis_col + ['RP', 'Card', 'Remarks', 'NR']
-        sum_col_weight = sum([col_weight[c] for c in cols])
-        lane_df = lane_df[cols]
-        df_html = lane_df.to_html(index=False, justify="left", classes="df_table")
-        day_obj = datetime.strptime(day, "%Y-%m-%d")
-        human_day = day_obj.strftime("%d. %m. %Y")
-        html_string = """
-            <html>
-            <head>
-            <style>
-            table {
-                width: 100%;
-            }
-            tr th:first-child {
-                padding-left:0px;
-            }
-            tr td:first-child {
-                padding-left:0px;
-            }"""
-        if safety:
-            html_string += """
-                h2 {
-                    font-size: 4mm;
-                }
-                th, td {
-                    padding:1mm 0mm 1mm 1mm;
-                    text-align: center;
-                    font-size: 4mm;
-                    border-bottom: 1px solid #ddd;
-                }"""
-        else:
-            html_string += """
-                th, td {
-                    padding:10px 0px 10px 20px;
-                    text-align: center;
-                    border-bottom: 1px solid #ddd;
-                }"""
-        i = 1
-        for c in cols:
-            alignment = "left" if c == "Name" else "center"
-            html_string += """
-                table th:nth-child({}), table td:nth-child({}) {{
-                    width: {}%;
-                    text-align: {};
-                }}""".format(str(i), str(i), str(round(100*col_weight[c]/sum_col_weight, 1)), alignment)
-            i += 1
-        html_string += """
-            header, footer {
-                position: fixed;
-                left: 0;
-                right: 0;
-            }"""
-        if safety:
-            html_string += """
-                @page {{
-                    margin: 1.5cm 0.5cm 0.5cm 0.5cm;
-                    size: A5 portrait;
-                    @top-right {{
-                        content: counter(page) "/" counter(pages);
-                    }}
-                }}
-                header {{
-                    /* subtract @page margin */
-                    top: -1.5cm;
-                    height: 1.5cm;
-                    text-align: center;
-                    vertical-align: center;
-                }}
-                footer {{
-                    /* subtract @page margin */
-                    bottom: -0.5cm;
-                    height: 0.5cm;
-                    text-align: left;
-                    vertical-align: center;
-                }}
-                </style>
-                </head>
-                <body>
-                <header>
-                    <h2>Safety lane list {} - lane {} - {}</h2>
-                </header>
-                {}
-                <footer></footer>
-                </body>
-                </html>
-                """.format(block_str, lane, human_day, df_html)
-        else:
-            html_string += """
-                @page {{
-                    margin: 4cm 1cm 1.5cm 2.5cm;
-                    size: A4 landscape;
-                    @top-right {{
-                        counter(page) "/" counter(pages);
-                    }}
-                }}
-                header {{
-                    /* subtract @page margin */
-                    top: -4cm;
-                    height: 4cm;
-                    text-align: center;
-                    vertical-align: center;
-                }}
-                footer {{
-                    /* subtract @page margin */
-                    bottom: -1.5cm;
-                    height: 1.5cm;
-                    text-align: left;
-                    vertical-align: center;
-                }}
-                </style>
-                </head>
-                <body>
-                <header>
-                    <h1>{}</h1>
-                    <h2>Lane list {} - lane {} - {}</h2>
-                </header>
-                {}
-                <footer><span style="margin-left:3mm">Judge Name:</span><span style="margin-left:8cm">Signature:</span></footer>
-                </body>
-                </html>
-                """.format(self.name, block_str, lane, human_day, df_html)
-        html = wp.HTML(string=html_string, base_url="/")
-        fname = os.path.join(self.config.download_folder, "test.html")
-        with open(fname, "w") as f:
-            f.write(html_string)
-        if in_memory:
-            return html.render()
-        else:
-            fname = os.path.join(self.config.download_folder, self.name + "_lane_list_" + day + "_" + block_str_underscore + "_" + lane + ".pdf")
-            html.write_pdf(fname)
-            return fname
-
     def getResult(self, discipline, gender, country, with_empty=True):
         if self.comp_file is None:
             return -1, None
@@ -1066,7 +740,7 @@ class CompyData:
             if country != 'International':
                 cmd += " AND a.country = ?"
                 args += (country, )
-                cmd += self.addEligibleCheck();
+                cmd += self.addEligibleCheck()
             if discipline == self.special_ranking_name:
                 cmd += " AND ca.special_ranking"
 
@@ -1202,171 +876,15 @@ class CompyData:
     def computePoints(self, rp, penalty, card, remarks, discipline):
         if card == "RED" or remarks == "DNS" or rp is None:
             return 0.
-        if self.comp_type == "CMAS":
-            return max(rp - penalty, 0.0)
-        else:
-            if discipline == "STA":
-                return max(int(rp)*0.2 - penalty, 0.0)
-            elif discipline in POOL_DISCIPLINES:
-                if self.comp_type == "aida":
-                    return max(int(rp)*0.5 - penalty, 0.0)
-                else:
-                    return max(int(rp*2.)*0.25 - penalty, 0.0)
+        if discipline == "STA":
+            return max(int(rp)*0.2 - penalty, 0.0)
+        elif discipline in POOL_DISCIPLINES:
+            if self.comp_type == "aida":
+                return max(int(rp)*0.5 - penalty, 0.0)
             else:
-                return max(int(rp) - penalty, 0.0)
-
-    def getResultPDF(self, discipline="all", gender="all", country="all", in_memory=False, top3=False):
-        if discipline=="all" and gender=="all":
-            dwd = self.getDaysWithDisciplinesLanes()
-            files = []
-            gender_list = ["F", "M"]
-            if top3:
-                gender_list = [gender_list] # if gender is a list, one pdf will contain both genders, for top 3
-            for d in self.getDisciplines():
-                for g in gender_list:
-                    for c in self.getCountries(True):
-                        pdf = self.getResultPDF(d, g, c, True, top3)
-                        if pdf is not None:
-                            files.append(pdf)
-            pages = []
-            for doc in files:
-                for page in doc.pages:
-                    pages.append(page)
-            merged_pdf = files[0].copy(pages)
-            fname = os.path.join(self.config.download_folder, self.name + "_results")
-            if top3:
-                fname += "_top3"
-            fname += ".pdf"
-            merged_pdf.write_pdf(fname)
-            return fname
-
-        html_string = """
-            {}
-            <header>
-                <h1>{}</h1>
-                <h2>Result {} - {}""".format(self.getHtmlHeader(), self.name, discipline, country)
-        if top3:
-            gender_list = gender # for top 3, this is ["F", "M"]
+                return max(int(rp*2.)*0.25 - penalty, 0.0)
         else:
-            gender_str = "Female" if gender == "F" else "Male"
-            html_string += " - " + gender_str
-            gender_list = [gender] # for all others a string
-        html_string += """</h2>
-            </header>
-            """
-        for g in gender_list:
-            ret, content = self.getResult(discipline, g, country, False)
-            if content is None:
-                return None
-            result = content['results']
-            result_keys = content['keys']
-            result_df = pd.DataFrame(result)
-            if len(result_df.index) == 0:
-                return None
-            if self.comp_type == "cmas":
-                result_df.drop("Points", axis=1, inplace=True)
-            if "Id" in result_df.columns.tolist():
-                result_df.drop("Id", axis=1, inplace=True)
-            if "AP_float" in result_df.columns.tolist():
-                result_df.drop("AP_float", axis=1, inplace=True)
-            if "OT" in result_df.columns.tolist():
-                result_df.drop("OT", axis=1, inplace=True)
-            if "JudgeRemarks" in result_df.columns.tolist():
-                result_df.drop("JudgeRemarks", axis=1, inplace=True)
-            if top3:
-                gender_str = "Female" if g == "F" else "Male"
-                html_string += "<h3>" + gender_str + "</h3>\n"
-                # drop all entries where rank is > 3
-                # first find one where this is true
-                result_df['Rank'] = pd.to_numeric(result_df['Rank'], errors='coerce')
-                remainder = result_df[(result_df['Rank'] > 3)]
-                if len(remainder.index) != 0:
-                    index_to_drop_after = remainder.idxmin(numeric_only=True)[0]
-                    # keep only ones before
-                    result_df = result_df.loc[:index_to_drop_after-1]
-                # convert back to strings
-                result_df['Rank'] = result_df['Rank'].replace(np.nan, 0).astype(int).astype(str).replace('0', '')
-                # remove all Red cards
-                result_df = result_df[(result_df['Card'] != "RED")]
-            html_string += result_df.to_html(index=False, justify="left", classes="df_table") + "\n"
-            html_string = html_string.replace("&lt;b&gt;", "<b>")
-            html_string = html_string.replace("&lt;/b&gt;", "</b>")
-        html_string += self.getHtmlFooter();
-
-        html = wp.HTML(string=html_string, base_url="/")
-        fname = os.path.join(self.config.download_folder, "test.html")
-        with open(fname, "w") as f:
-            f.write(html_string)
-        if in_memory:
-            return html.render()
-        else:
-            fname = os.path.join(self.config.download_folder, self.name + "_result_" + discipline + "_" + gender + "_" + country + ".pdf")
-            html.write_pdf(fname)
-            return fname
-
-    def getHtmlHeader(self):
-        html_header = """
-            <html>
-            <head>
-            <style>
-            table {
-                width: 100%;
-            }
-            tr th:first-child {
-                padding-left:0px;
-                text-align: left;
-            }
-            tr td:first-child {
-                padding-left:0px;
-                text-align: left;
-            }
-            th, td {
-                padding:20px 0px 5px 5px;
-                text-align: center;
-                font-size: 12px;
-                border-bottom: 1px solid #ddd;
-            }
-            @page {
-                margin: 4cm 1cm 6cm 1cm;
-                size: A4;
-                @top-right {
-                    content: counter(page) "/" counter(pages);
-                }
-            }
-            header, footer {
-                position: fixed;
-                left: 0;
-                right: 0;
-            }
-            header {
-                /* subtract @page margin */
-                top: -4cm;
-                height: 4cm;
-                text-align: center;
-                vertical-align: center;
-            }
-            footer {
-                /* subtract @page margin */
-                bottom: -6cm;
-                height: 6cm;
-                text-align: center;
-                vertical-align: center;
-            }
-            h3 {
-                padding-top: 1cm;
-            }
-            </style>
-            </head>
-            <body>"""
-        return html_header
-
-    def getHtmlFooter(self):
-        html_footer = """
-            <footer><img src="{}" style="width:{}cm; height:{}cm;"></footer>
-            </body>
-            </html>
-            """.format(self.sponsor_img_data, self.sponsor_img_width, self.sponsor_img_height)
-        return html_footer
+            return max(int(rp) - penalty, 0.0)
 
     def changeSelectedCountry(self, country):
         if country == "none":
@@ -1459,10 +977,7 @@ class CompyData:
             return str(date)
 
     def formatDiveTime(self, dive_time_seconds):
-        minutes = 0
-        seconds = 0
-        if dive_time_seconds >= 60:
-            minutes = dive_time_seconds % 60
+        minutes = dive_time_seconds // 60
         seconds = dive_time_seconds - minutes*60
         return str(minutes) + ":" + str(seconds).zfill(2)
 
@@ -1896,7 +1411,7 @@ class CompyData:
                  ORDER BY s.lane
                  LIMIT 4'''.format(comp, order, order)
         min_shift = 3 if self.comp_type == "cmas" else 2
-        now = datetime.utcnow() + timedelta(minutes=min_shift) + timedelta(milliseconds=offset)
+        now = datetime.now(timezone.utc) + timedelta(minutes=min_shift) + timedelta(milliseconds=offset)
         today = now.year*10000 + now.month*100 + now.day
         time = now.hour*100 + now.minute
         db_out = self.db_.execute(cmd, (self.id_, today*10000 + time))
@@ -1987,7 +1502,7 @@ class CompyData:
                                         'points': r['Points'] if 'Points' in keys else None
                                        } for r in results]}
         except Exception as e:
-            print(e.msg)
+            logging.debug("Failed to get result list: %s", e)
             return -1, None
 
     def isMainDiscipline(self, discipline):
@@ -2067,6 +1582,12 @@ class CompyData:
                         df.at[i, 'Remarks'] = 'DNS'
                         continue
                     db_row = db_out[j]
+                    if db_row[0] is None:
+                        # start exists but has no result recorded yet
+                        df.at[i, 'Card'] = ''
+                        df.at[i, 'Remarks'] = db_row[3] if db_row[3] is not None else ''
+                        db_out.pop(j)
+                        continue
                     if s[1] == "STA":
                         rp_min = int(db_row[0] / 60)
                         df.at[i, 'Meters or Min.1'] = rp_min

@@ -315,7 +315,7 @@ class CompyFlask:
         data['status'] = 'success'
         if data['file_exists']:
             data["status_msg"] = "File exists"
-            data["prev_name"] = name
+            data["prev_name"] = data['name']
         else:
             data["status_msg"] = "Successfully changed competition name to '" + comp_name + "'"
             data["prev_name"] = ""
@@ -705,7 +705,7 @@ class CompyFlask:
         return data, 200
 
     def nationalRecords(self):
-        return self.handleRequest(request, None, CompyData.updateNationalRecords);
+        return self.handleRequest(request, None, CompyData.updateNationalRecords)
 
     def getJudgeComp(self, comp_id, judge_id, return_json = False):
         judge_hash = request.args.get('hash')
@@ -743,7 +743,7 @@ class CompyFlask:
     def getJudgeAthletes(self):
         request_id = uuid.uuid4()
         if not self.isValidJudge(request, request_id):
-            content = {"version": CompyData.version}
+            content = {"version": self.data_.version}
             return make_response(render_template('404.html', **content), 404)
 
         return self.laneListNew(request_id)
