@@ -67,11 +67,10 @@ class Athlete:
                 self.id_ = db_id[0][0]
 
         if self.id_ is None:
-            self.db_.execute('''INSERT INTO athlete
+            self.id_ = self.db_.insert('''INSERT INTO athlete
                                 (first_name, last_name, aida_id, gender, country, club)
                                 VALUES(?, ?, ?, ?, ?, ?)''',
                              (self.first_name, self.last_name, self.aida_id, self.gender, self.country, self.club))
-            self.id_ = self.db_.last_index
         else:
             self.db_.execute('''UPDATE athlete
                                 SET first_name=?, last_name=?, aida_id=?, gender=?, country=?,
@@ -92,11 +91,10 @@ class Athlete:
 
         # if the comp_athlete_id is set, we don't need to do anything
         if self.comp_athlete_id_ is None:
-            self.db_.execute(
+            self.comp_athlete_id_ = self.db_.insert(
                 '''INSERT INTO competition_athlete
                    (competition_id, athlete_id, special_ranking) VALUES(?, ?, ?)''',
                 (comp_id, self.id_, special_ranking))
-            self.comp_athlete_id_ = self.db_.last_index
 
     @property
     def id(self):

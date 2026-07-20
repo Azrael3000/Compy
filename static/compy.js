@@ -45,6 +45,14 @@ var _stopBtnTimeout = null;
 var _schedulingPlay = false;
 var _nAudioPlay = 0;
 
+// The server no longer keeps a "currently loaded competition" (that made it
+// impossible to have more than one page open at a time), so every request
+// has to say which competition it operates on. Wraps request data with the
+// comp_id of the competition loaded in this browser tab.
+function withCompId(data = {}) {
+    return Object.assign({comp_id: _comp_id}, data);
+}
+
 $(window).on('load', function() {
     $('#comp_name').val("undefined");
     $('#numeric_radio').prop('checked', true);
@@ -352,6 +360,7 @@ $(document).ready(function() {
     });
     $('#upload_file_button').click(function() {
         let form_data = new FormData($('#upload_file')[0]);
+        form_data.append('comp_id', _comp_id);
         $.ajax({
             type: 'POST',
             url: '/upload_file',
@@ -375,6 +384,7 @@ $(document).ready(function() {
     });
     $('#store_results_button').click(function() {
         let form_data = new FormData($('#upload_file')[0]);
+        form_data.append('comp_id', _comp_id);
         $.ajax({
             type: 'POST',
             url: '/store_results',
@@ -408,6 +418,7 @@ $(document).ready(function() {
     });
     $('#upload_sponsor_img_button').click(function() {
         let form_data = new FormData($('#upload_sponsor_img')[0]);
+        form_data.append('comp_id', _comp_id);
         $.ajax({
             type: 'POST',
             url: '/upload_sponsor_img',
@@ -426,7 +437,7 @@ $(document).ready(function() {
     });
     $('#special_ranking_name').change(function() {
         let name = this.value;
-        let data = {special_ranking_name: name};
+        let data = withCompId({special_ranking_name: name});
         $.ajax({
             type: "POST",
             url: "/change_special_ranking_name",
@@ -444,7 +455,7 @@ $(document).ready(function() {
     });
     $('#save_comp').click(function() {
         $('#save_comp').hide();
-        let data = {comp_name: $('#comp_name').val(), overwrite: false};
+        let data = withCompId({comp_name: $('#comp_name').val(), overwrite: false});
         $.ajax({
             type: "POST",
             url: "/competition",
@@ -457,6 +468,8 @@ $(document).ready(function() {
                     $('#overwrite').show();
                     _global_prev_name = data.prev_name;
                 } else {
+                    if ('comp_id' in data && data.comp_id != null)
+                        _comp_id = data.comp_id;
                     showCompList(data);
                 }
             }
@@ -464,7 +477,7 @@ $(document).ready(function() {
     });
     $('#overwrite_yes').click(function() {
         let comp_name = document.getElementById("comp_name").value;
-        let data = {comp_name: comp_name, overwrite: true};
+        let data = withCompId({comp_name: comp_name, overwrite: true});
         $.ajax({
             type: "POST",
             url: "/competition",
@@ -474,6 +487,8 @@ $(document).ready(function() {
             success: function(data) {
                 console.log(data.status_msg);
                 $('#overwrite').hide();
+                if ('comp_id' in data && data.comp_id != null)
+                    _comp_id = data.comp_id;
                 showCompList(data);
             }
         });
@@ -487,7 +502,7 @@ $(document).ready(function() {
         let id = this.id.split('_'); // checkbox id is equal to type + "_cb_" + athlete_id
         let type = id[0];
         let athlete_id = id[2];
-        let data = {id: athlete_id, checked: this.checked, type: type};
+        let data = withCompId({id: athlete_id, checked: this.checked, type: type});
         $.ajax({
             type: "POST",
             url: "/change_registration",
@@ -501,10 +516,10 @@ $(document).ready(function() {
         })
     });
     $('#judges_table').on("click", "#add_judge", function() {
-        let data = {
+        let data = withCompId({
             first_name: $('#judge_first_name')[0].value,
             last_name: $('#judge_last_name')[0].value,
-        };
+        });
         $.ajax({
             url: '/judge',
             data: JSON.stringify(data),
@@ -525,7 +540,7 @@ $(document).ready(function() {
     });
     $('#judges_table').on("click", ".show", function() {
         let judge_id = this.id.split('_')[2]; // button id is equal to "show_judge_" + id
-        let data = {judge_id: judge_id};
+        let data = withCompId({judge_id: judge_id});
         $.ajax({
             type: "GET",
             url: "/judge/qr_code?" + $.param(data),
@@ -545,7 +560,7 @@ $(document).ready(function() {
     });
     $('#judges_table').on("click", ".delete", function() {
         let judge_id = this.id.split('_')[2]; // button id is equal to "del_judge_" + id
-        let data = {judge_id: judge_id};
+        let data = withCompId({judge_id: judge_id});
         $.ajax({
             type: "DELETE",
             url: "/judge",
@@ -560,14 +575,14 @@ $(document).ready(function() {
         });
     });
     $('#athletes_table').on("click", "#add_athlete", function() {
-        let data = {
+        let data = withCompId({
             first_name: $('#athlete_first_name')[0].value,
             last_name: $('#athlete_last_name')[0].value,
             gender: $('#athlete_gender').find("option:selected").attr('value'),
             country: $('#athlete_country')[0].value,
             club: $('#athlete_club')[0].value,
             aida_id: $('#athlete_aida_id')[0].value
-        };
+        });
         $.ajax({
             url: '/athlete',
             data: JSON.stringify(data),
@@ -593,7 +608,7 @@ $(document).ready(function() {
     });
     $('#athletes_table').on("click", ".delete", function() {
         let athlete_id = this.id.split('_')[2]; // button id is equal to "del_athlete_" + id
-        let data = {athlete_id: athlete_id};
+        let data = withCompId({athlete_id: athlete_id});
         $.ajax({
             type: "DELETE",
             url: "/athlete",
@@ -627,7 +642,7 @@ $(document).ready(function() {
         _cur_menu = {block: block, day: day};
         $.ajax({
             type: "GET",
-            url: "/start_list?" + $.param(_cur_menu),
+            url: "/start_list?" + $.param(withCompId(_cur_menu)),
             success: function(data) {
                 console.log(data.status_msg);
                 if (data.start_list)
@@ -642,9 +657,9 @@ $(document).ready(function() {
     $("#breaks_date_menu").on("click", "a", function() {
         let id_arr = this.id.split('_'); // button id is equal to "breaks_" + day
         day = id_arr[1];
-        let data = {
+        let data = withCompId({
             day: day
-        };
+        });
         $.ajax({
             type: "GET",
             url: "/breaks?" + $.param(data),
@@ -703,11 +718,11 @@ $(document).ready(function() {
         let day = id_arr[1];
         let block = id_arr[2];
         let lane = id_arr[3];
-        let data = {
+        let data = withCompId({
             day: day,
             block: block,
             lane: lane
-        };
+        });
         $.ajax({
             type: "GET",
             url: "/lane_list?" + $.param(data),
@@ -797,9 +812,9 @@ $(document).ready(function() {
     });
     $('input[name="lane_style"]').change(function() {
         let selectedOption = $("input[name='lane_style']:checked").val();
-        let data = {
+        let data = withCompId({
             lane_style: selectedOption
-        };
+        });
         $.ajax({
             url: '/change_lane_style',
             data: JSON.stringify(data),
@@ -814,9 +829,9 @@ $(document).ready(function() {
     });
     $('input[name="comp_type"]').change(function() {
         let selectedOption = $("input[name='comp_type']:checked").val();
-        let data = {
+        let data = withCompId({
             comp_type: selectedOption
-        };
+        });
         $.ajax({
             url: '/change_comp_type',
             data: JSON.stringify(data),
@@ -848,9 +863,9 @@ $(document).ready(function() {
     });
     $('#country_select').change(function() {
         selected_country = $(this).find("option:selected").attr('value');
-        let data = {
+        let data = withCompId({
             selected_country: selected_country
-        };
+        });
         $.ajax({
             url: '/change_selected_country',
             data: JSON.stringify(data),
@@ -1086,7 +1101,7 @@ $(document).ready(function() {
             return;
         $.ajax({
             type: "GET",
-            url: "/athletes",
+            url: "/athletes?" + $.param(withCompId()),
             success: function(data) {
                 console.log(data.status_msg);
                 let disciplines = _blocks[_cur_menu.day][_cur_menu.block]["dis_s"].split(', ');
@@ -1189,7 +1204,7 @@ $(document).ready(function() {
     $('#sl_content').on('click', '#sl_save', function() {
         let _sl_edited = false;
         let _sl_athletes = null;
-        let data = {startlist: _sl, to_remove: _sl_remove, day: _cur_menu.day, block: _cur_menu.block};
+        let data = withCompId({startlist: _sl, to_remove: _sl_remove, day: _cur_menu.day, block: _cur_menu.block});
         $.ajax({
             type: "PUT",
             url: "/start_list",
@@ -1251,7 +1266,7 @@ $(document).ready(function() {
         let judge_remarks = $('#result_judge_remarks').val();
         let id = _sl_athletes;
         _sl_athletes = null;
-        let data = {id: id,
+        let data = withCompId({id: id,
                     rp: rp,
                     penalty: penalty,
                     card: card,
@@ -1259,7 +1274,7 @@ $(document).ready(function() {
                     judge_remarks: judge_remarks,
                     discipline: _cur_menu.discipline, //TODO correct handling of new _cur_menu structure
                     gender: _cur_menu.gender,
-                    country: _cur_menu.country};
+                    country: _cur_menu.country});
         $.ajax({
             type: "PUT",
             url: "/result",
@@ -1281,7 +1296,7 @@ $(document).ready(function() {
         let day = $('#sl_modify_block_day').val();
         let type = $('#sl_modify_block_type').val();
         let block = $('#sl_modify_block_id').val();
-        let data = {day: day, dis: dis, block: block};
+        let data = withCompId({day: day, dis: dis, block: block});
         $.ajax({
             type: type == "add" ? "POST" : "UPDATE",
             url: "/block",
@@ -1297,7 +1312,7 @@ $(document).ready(function() {
     });
     $('#overlay_box').on('click', '#sl_modify_block_remove', function() {
         let block = $('#sl_modify_block_id').val();
-        let data = {block: block};
+        let data = withCompId({block: block});
         $.ajax({
             type: "DELETE",
             url: "/block",
@@ -1540,7 +1555,7 @@ function getPDF(type, params = {type: "all"})
 {
     $.ajax({
         type: "GET",
-        url: "/" + type + "_pdf?" + $.param(params),
+        url: "/" + type + "_pdf?" + $.param(withCompId(params)),
         xhrFields: {
             responseType: 'blob'
         },
@@ -1884,7 +1899,7 @@ function getResult(discipline, gender, country)
     _cur_menu = {discipline: discipline, gender: gender, country: country};
     $.ajax({
         type: "GET",
-        url: "/result?" + $.param(_cur_menu),
+        url: "/result?" + $.param(withCompId(_cur_menu)),
         success: function(data) {
             console.log(data.status_msg);
             showResults(data.results, data.keys);

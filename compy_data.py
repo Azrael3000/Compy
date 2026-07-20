@@ -60,7 +60,19 @@ class CompyData(PdfReportMixin):
 
     version_ = None
 
-    def __init__(self, db, app, comp_id = -1):
+    def __init__(self, db, app, comp_id = None, published_only = False):
+        """Per-request competition data object.
+
+        One CompyData is created for every request that needs competition
+        state (see CompyFlask.getData). It must never be stored on the
+        application object or shared between requests - a shared instance
+        would make "the currently open competition" global to the server,
+        breaking concurrent admin/judge/clock/results pages.
+
+        comp_id None creates an empty (unloaded) object, an integer loads
+        that competition. With published_only=True only competitions whose
+        results are published can be loaded (for the public results pages).
+        """
         self.id_ = None
         self.db_ = db
         self.app_ = app
@@ -78,20 +90,28 @@ class CompyData(PdfReportMixin):
         self.selected_country_ = None
         self.publish_results_ = False
 
-        self.name_ = "undefined"
-
-        with self.app_.app_context():
-            #self.updateNationalRecords()
-            # try and find it first
-            if comp_id == -1:
-                c_id = self.db_.execute("SELECT id FROM competition WHERE name=?", self.name_)
-                if c_id is not None:
-                    self.load(c_id[0][0])
-                else:
-                    self.save()
-            elif comp_id is not None:
-                self.id_, self.name_ = self.cleanCompIdPublished(comp_id)
+        if comp_id is not None:
+            try:
+                comp_id = int(comp_id)
+            except (TypeError, ValueError):
+                comp_id = None
+            if comp_id is not None and published_only:
+                comp_id, _ = self.cleanCompIdPublished(comp_id)
+            if comp_id is not None:
                 self.load(comp_id)
+
+    @classmethod
+    def ensureDefaultCompetition(cls, db, app):
+        """Create the default competition on a fresh database.
+
+        The admin frontend loads competition 1 on startup, so at least one
+        competition has to exist. Called once at server start (inside an app
+        context); requests never create competitions implicitly.
+        """
+        data = cls(db, app)
+        if db.execute("SELECT id FROM competition") is None:
+            data.save()
+        return data
 
     @property
     def version(self):
@@ -255,8 +275,17 @@ class CompyData(PdfReportMixin):
         self.refresh()
 
     def refresh(self):
+        if not os.path.exists(self.comp_file_):
+            logging.error("File '%s' does not exist", self.comp_file_)
+            return
+        # run the whole re-import atomically so that concurrent readers never
+        # see a competition with deleted athletes but no new data yet
+        with self.db_.transaction():
+            self.refreshImpl()
+
+    def refreshImpl(self):
         # special ranking ids of athletes
-        srd_ids = None
+        sr_ids = None
         if self.id_ is not None:
             sr_ids = self.db_.execute(
                 '''SELECT a.id FROM athlete a
@@ -272,9 +301,6 @@ class CompyData(PdfReportMixin):
                              self.id_)
             self.db_.execute("DELETE FROM competition_athlete WHERE competition_id=?", self.id_)
         # read first sheet (start & end date)
-        if not os.path.exists(self.comp_file_):
-            logging.error("File '%s' does not exist", self.comp_file_)
-            return
         df = pd.read_excel(self.comp_file_, sheet_name="Event")
         i = 0
         for l in df[df.keys()[0]]:
@@ -311,11 +337,10 @@ class CompyData(PdfReportMixin):
             for i,r in df.iterrows():
                 dis = r['Discipline']
                 if not dis in blocks.keys():
-                    self.db_.execute('''INSERT INTO block
+                    blocks[dis] = self.db_.insert('''INSERT INTO block
                                         (competition_id, day, disciplines)
                                         VALUES (?, ?, ?)''',
                                      (self.id_, day_db, self.disciplineListToInt([dis])))
-                    blocks[dis] = self.db_.last_index
             for i,r in df.iterrows():
                 aida_id = r['Diver Id']
                 ca_id = self.db_.execute('''SELECT competition_athlete.id FROM competition_athlete
@@ -392,20 +417,19 @@ class CompyData(PdfReportMixin):
                 self.id_ = comp_id[0][0]
             self.save()
             comps = self.getSavedCompetitions()
-        return {'file_exists': file_exists, 'name': self.name_, 'competitions': comps}
+        return {'file_exists': file_exists, 'name': self.name_, 'comp_id': self.id_, 'competitions': comps}
 
     def save(self):
         # force version update
         self.version_ = None
         if self.id_ is None:
-            self.db_.execute('''INSERT INTO competition
+            self.id_ = self.db_.insert('''INSERT INTO competition
                                 (name, save_date, version, lane_style, comp_type, comp_file, start_date,
                                  end_date, disciplines)
                                 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                              (self.name_, datetime.now().isoformat(), self.version,
                               self.lane_style, self.comp_type, self.comp_file,
                               self.start_date_, self.end_date_, self.disciplines_))
-            self.id_ = self.db_.last_index
         sponsor_img_data = ""
         if self.sponsor_img_ is not None:
             sponsor_img_data = self.sponsor_img_["data"]
@@ -591,23 +615,20 @@ class CompyData(PdfReportMixin):
         if block is None or day == INVALID_DATE:
             return -1
         to_remove = [int(tr) for tr in to_remove]
+        # apply the whole start list update atomically
+        with self.db_.transaction():
+            return self.updateStartListImpl(day, block, to_remove, startlist)
+
+    def updateStartListImpl(self, day, block, to_remove, startlist):
         # remove all starts from the start list that were removed and make sure they belong to this comp
         if len(to_remove) > 0:
-            if len(to_remove) == 1:
-                self.db_.execute(
-                    '''DELETE FROM start WHERE id IN
-                       (SELECT s.id FROM start s
-                        INNER JOIN competition_athlete ca ON ca.id == s.competition_athlete_id
-                        WHERE s.id == ? AND ca.competition_id == ?)''',
-                    (to_remove[0], self.id_))
-            else:
-                rlist = str(tuple(to_remove))
-                self.db_.execute(
-                    '''DELETE FROM start WHERE id IN
-                       (SELECT s.id FROM start s
-                        INNER JOIN competition_athlete ca ON ca.id == s.competition_athlete_id
-                        WHERE s.id IN ? AND ca.competition_id == ?''',
-                    (rlist, self.id_))
+            placeholders = ",".join("?" * len(to_remove))
+            self.db_.execute(
+                '''DELETE FROM start WHERE id IN
+                   (SELECT s.id FROM start s
+                    INNER JOIN competition_athlete ca ON ca.id == s.competition_athlete_id
+                    WHERE s.id IN ({}) AND ca.competition_id == ?)'''.format(placeholders),
+                tuple(to_remove) + (self.id_, ))
 
         # remove all breaks
         self.db_.execute('''DELETE FROM break
@@ -1006,10 +1027,11 @@ class CompyData(PdfReportMixin):
             return db_out[0][0], in_other_comp
 
     def deleteAthlete(self, ca_id, a_id, in_other_comp):
-        self.db_.execute("DELETE FROM start WHERE competition_athlete_id=?", ca_id)
-        self.db_.execute("DELETE FROM competition_athlete WHERE id=?", ca_id)
-        if not in_other_comp:
-            self.db_.execute("DELETE FROM athlete WHERE id=?", a_id)
+        with self.db_.transaction():
+            self.db_.execute("DELETE FROM start WHERE competition_athlete_id=?", ca_id)
+            self.db_.execute("DELETE FROM competition_athlete WHERE id=?", ca_id)
+            if not in_other_comp:
+                self.db_.execute("DELETE FROM athlete WHERE id=?", a_id)
 
     def getAthleteData(self, data):
         data["athletes"] = []
@@ -1194,13 +1216,14 @@ class CompyData(PdfReportMixin):
         # Do check if country converter is >= 1.2
         try:
             self.nrs_ = u.getNationalRecordsAida()
-            self.db_.execute("DELETE FROM records WHERE federation='aida'")
-            for nr_key, nr_val in self.nrs_.items():
-                self.db_.execute('''INSERT INTO records
-                                 ('federation', 'country', 'class', 'gender', 'discipline', 'value')
-                                 VALUES (?, ?, ?, ?, ?, ?)''',
-                                 (nr_key.federation, nr_key.country, nr_key.cls, nr_key.gender,
-                                 nr_key.discipline, nr_val))
+            with self.db_.transaction():
+                self.db_.execute("DELETE FROM records WHERE federation='aida'")
+                for nr_key, nr_val in self.nrs_.items():
+                    self.db_.execute('''INSERT INTO records
+                                     ('federation', 'country', 'class', 'gender', 'discipline', 'value')
+                                     VALUES (?, ?, ?, ?, ?, ?)''',
+                                     (nr_key.federation, nr_key.country, nr_key.cls, nr_key.gender,
+                                     nr_key.discipline, nr_val))
         except Exception as e:
             logging.debug("Error", e)
             return 1, None
@@ -1239,7 +1262,7 @@ class CompyData(PdfReportMixin):
             return 1;
         else:
             salt = random.randrange(sys.maxsize)
-            j_id = self.db_.execute(
+            self.db_.insert(
                 "INSERT INTO judge (first_name, last_name, salt, competition_id) VALUES (?, ?, ?, ?)",
                 (first_name, last_name, salt, self.id_))
             return 0
@@ -1267,15 +1290,15 @@ class CompyData(PdfReportMixin):
         try:
             assert(comp_id is not None)
             assert(judge_id is not None)
-            self.id_ = int(comp_id)
+            comp_id = int(comp_id)
             judge_id = int(judge_id)
             assert(judge_hash.isalnum())
         except:
             return -1, None
         db_out = self.db_.execute(
             "SELECT first_name, last_name, salt FROM judge WHERE competition_id==? AND id==?",
-            (self.id_, judge_id))
-        db_out2 = self.db_.execute("SELECT name, comp_type FROM competition WHERE id==?", self.id_)
+            (comp_id, judge_id))
+        db_out2 = self.db_.execute("SELECT name, comp_type FROM competition WHERE id==?", comp_id)
         if db_out is None or db_out2 is None:
             return -1, None
 
@@ -1283,8 +1306,10 @@ class CompyData(PdfReportMixin):
         last_name = db_out[0][1]
         judge_hash_db = self.getJudgeQrCodeHash(first_name, last_name, db_out[0][2], judge_id)
         if judge_hash_db != judge_hash:
+            # do not touch any state for a failed validation
             return -1, None
 
+        self.id_ = comp_id
         return 0, {'comp_name': db_out2[0][0],
                    'first_name': first_name,
                    'last_name': last_name,
@@ -1521,27 +1546,29 @@ class CompyData(PdfReportMixin):
             return 1, {'status': 'error', 'status_msg': 'Cannot delete competition with id 1'}
         data = {}
 
-        self.db_.execute("DELETE FROM competition WHERE id=?", comp_id)
-        self.db_.execute("DELETE FROM judge WHERE competition_id=?", comp_id)
-        self.db_.execute("DELETE FROM block WHERE competition_id=?", comp_id)
-        self.db_.execute("DELETE FROM break WHERE competition_id=?", comp_id)
+        # delete the competition and all its dependent rows atomically
+        with self.db_.transaction():
+            self.db_.execute("DELETE FROM competition WHERE id=?", comp_id)
+            self.db_.execute("DELETE FROM judge WHERE competition_id=?", comp_id)
+            self.db_.execute("DELETE FROM block WHERE competition_id=?", comp_id)
+            self.db_.execute("DELETE FROM break WHERE competition_id=?", comp_id)
 
-        # Get all athletes from comp
-        db_out = self.db_.execute("SELECT id, athlete_id FROM competition_athlete WHERE competition_id=?", comp_id)
+            # Get all athletes from comp
+            db_out = self.db_.execute("SELECT id, athlete_id FROM competition_athlete WHERE competition_id=?", comp_id)
 
-        if db_out is not None:
-            for ca in db_out:
-                ca_id = ca[0]
-                self.db_.execute("DELETE FROM start WHERE competition_athlete_id=?", ca_id)
+            if db_out is not None:
+                for ca in db_out:
+                    ca_id = ca[0]
+                    self.db_.execute("DELETE FROM start WHERE competition_athlete_id=?", ca_id)
 
-                athlete_id = ca[1]
-                n_comp_athlete = self.db_.execute("SELECT COUNT(*) FROM competition_athlete WHERE athlete_id=?", athlete_id)
+                    athlete_id = ca[1]
+                    n_comp_athlete = self.db_.execute("SELECT COUNT(*) FROM competition_athlete WHERE athlete_id=?", athlete_id)
 
-                # Delete if athlete is only in one comp (i.e. the one being deleted)
-                if n_comp_athlete is not None and n_comp_athlete[0][0] == 1:
-                    self.db_.execute("DELETE FROM athlete WHERE id=?", athlete_id)
+                    # Delete if athlete is only in one comp (i.e. the one being deleted)
+                    if n_comp_athlete is not None and n_comp_athlete[0][0] == 1:
+                        self.db_.execute("DELETE FROM athlete WHERE id=?", athlete_id)
 
-            self.db_.execute("DELETE FROM competition_athlete WHERE competition_id=?", comp_id)
+                self.db_.execute("DELETE FROM competition_athlete WHERE competition_id=?", comp_id)
 
         data['competitions'] = self.getSavedCompetitions()
         data['status'] = 'success'
