@@ -26,9 +26,9 @@
 
 import logging
 from compy_data import CompyData
+from compy_config import CompyConfig
 from flask import Flask, render_template, request, send_file, Response, make_response, current_app
 from os import path, mkdir
-import uuid
 from werkzeug.utils import secure_filename
 from werkzeug.routing import IntegerConverter
 try:
@@ -38,18 +38,24 @@ except ImportError:
     exit(-1)
 
 class CompyFlask:
+    """HTTP layer of Compy.
+
+    This object holds no competition state. Every request builds its own
+    CompyData (see getData) from the comp_id sent by the client, so any
+    number of admin tabs, judge phones, clock displays and result pages can
+    run concurrently without stepping on each other.
+    """
 
     class SignedIntConverter(IntegerConverter):
         regex = r'-?\d+'
 
-    def __init__(self, app, data, db, start_flask):
+    def __init__(self, app, db, start_flask):
 
-        self.data_ = data
         self.app_ = app
         self.db_ = db
-        self.cache_ = {}
+        self.config_ = CompyConfig()
 
-        app.config['UPLOAD_FOLDER'] = self.data_.config.upload_folder
+        app.config['UPLOAD_FOLDER'] = self.config_.upload_folder
         app.url_map.converters['signed_int'] = self.SignedIntConverter
 
         @app.route('/admin', methods=['GET'])
@@ -212,7 +218,14 @@ class CompyFlask:
         if start_flask:
             app.run()
 
+    def version(self):
+        # the version is cached on the CompyData class after the first read
+        return CompyData(self.db_, self.app_).version
+
     def uploadFile(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         if 'file' not in request.files:
             logging.debug("Post request without file upload")
             return {}, 400
@@ -232,15 +245,18 @@ class CompyFlask:
                 status_msg = "File '" + filename + "' uploaded successfully"
                 fpath = path.join(self.app_.config['UPLOAD_FOLDER'], filename)
                 data_file.save(fpath)
-                self.data_.compFileChange(fpath)
-                self.data_.getAthleteData(data)
-                self.data_.getJudgeData(data)
-                self.setSubmenuData(data)
-                self.data_.setOTs(data)
+                comp.compFileChange(fpath)
+                comp.getAthleteData(data)
+                comp.getJudgeData(data)
+                self.setSubmenuData(comp, data)
+                comp.setOTs(data)
         data["status_msg"] = status_msg
         return data, 200
 
     def storeResults(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         if 'file' not in request.files:
             logging.debug("Post request without file upload")
             return {}, 400
@@ -259,13 +275,16 @@ class CompyFlask:
             else:
                 fpath = path.join(self.app_.config['UPLOAD_FOLDER'], filename)
                 data_file.save(fpath)
-                ret, file = self.data_.storeResults(fpath)
+                ret, file = comp.storeResults(fpath)
                 if ret == 0:
                     return send_file(file, as_attachment=True)
         data["status_msg"] = status_msg
         return data, 200
 
     def uploadSponsorImg(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         if 'sponsor_img' not in request.files:
             logging.debug("Post request without image upload")
             return {}, 400
@@ -283,13 +302,15 @@ class CompyFlask:
                 status_msg = "Image uploaded (" + filename + ") is not a *.png file"
             else:
                 status_msg = "Image '" + filename + "' uploaded successfully"
-                fpath = path.join(self.app_.config['UPLOAD_FOLDER'], filename)
                 img_content = img_file.read()
-                self.data_.changeSponsorImage(img_content)
+                comp.changeSponsorImage(img_content)
         data["status_msg"] = status_msg
         return data, 200
 
     def changeRegistration(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         content = request.json
         if "id" not in content and "checked" not in content and "type" not in content:
             logging.debug("Post request to change_registration without id, type and checked")
@@ -297,21 +318,24 @@ class CompyFlask:
         athlete_id = content["id"]
         is_checked = content["checked"]
         change_type = content["type"]
-        if self.data_.setRegistration(athlete_id, is_checked, change_type) == 0:
+        if comp.setRegistration(athlete_id, is_checked, change_type) == 0:
             data = {"status": "success", "status_msg": "Successfully updated athlete with id '" + athlete_id + "' to value '" + str(is_checked) + "'"}
         else:
             data = {"status": "success", "status_msg": "Failed to update athlete with id '" + athlete_id + "' to value '" + str(is_checked) + "'"}
-        data["disciplines"] = self.data_.getDisciplines()
+        data["disciplines"] = comp.getDisciplines()
         return data, 200
 
     def changeCompName(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         content = request.json
         if "comp_name" not in content and "overwrite" not in content:
             logging.debug("Post request to change_comp_name without comp_name and overwrite")
             return {}, 400
         comp_name = content["comp_name"]
         overwrite = content["overwrite"]
-        data = self.data_.changeName(comp_name, overwrite)
+        data = comp.changeName(comp_name, overwrite)
         data['status'] = 'success'
         if data['file_exists']:
             data["status_msg"] = "File exists"
@@ -326,32 +350,37 @@ class CompyFlask:
         if "comp_id" not in content:
             logging.debug("Post request to load_comp without comp_id")
             return {}, 400
-        comp_id = content["comp_id"]
-        comp_name = self.data_.load(comp_id)
+        comp = self.getData(request)
+        if comp is None or not comp.isValid:
+            return self.badRequest("Failed to load competition")
+        comp_name = comp.name
         data = {}
-        self.data_.getAthleteData(data)
-        self.data_.getJudgeData(data)
+        comp.getAthleteData(data)
+        comp.getJudgeData(data)
         data["comp_name"] = comp_name
-        self.setSubmenuData(data)
-        self.data_.setSpecialRankingName(data)
-        self.data_.setOTs(data)
-        data["lane_style"] = self.data_.lane_style
-        data["comp_type"] = self.data_.comp_type
-        data["selected_country"] = self.data_.selected_country
-        data["publish_results"] = self.data_.publish_results
+        self.setSubmenuData(comp, data)
+        comp.setSpecialRankingName(data)
+        comp.setOTs(data)
+        data["lane_style"] = comp.lane_style
+        data["comp_type"] = comp.comp_type
+        data["selected_country"] = comp.selected_country
+        data["publish_results"] = comp.publish_results
         data["status"] = "success"
         data["status_msg"] = "Loaded competition with name " + comp_name
-        logging.debug("Loaded comp " + comp_name + " with " + str(self.data_.number_of_athletes) + " athletes")
+        logging.debug("Loaded comp " + comp_name + " with " + str(comp.number_of_athletes) + " athletes")
         return data, 200
 
     def startList(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         day = request.args.get('day')
         block = request.args.get('block')
         if day is None or block is None:
             logging.debug("Get request to start_list without day and block")
             return {}, 400
         data = {}
-        start_list = self.data_.getStartList(day, block)
+        start_list = comp.getStartList(day, block)
         if not start_list is None:
             data["start_list"] = start_list
             data["status"] = "success"
@@ -362,6 +391,9 @@ class CompyFlask:
             return {}, 400
 
     def updateStartList(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         content = request.json
         if not self.dictHas(content, {'day', 'block', 'to_remove', 'startlist'}):
             logging.debug("Put request to start_list missing content: " + str(content.keys()))
@@ -370,13 +402,13 @@ class CompyFlask:
         block = content["block"]
         to_remove = content["to_remove"]
         startlist = content["startlist"]
-        ret = self.data_.updateStartList(day, block, to_remove, startlist)
-        start_list = self.data_.getStartList(day, block)
+        ret = comp.updateStartList(day, block, to_remove, startlist)
+        start_list = comp.getStartList(day, block)
         if ret == 0 and not start_list is None:
             data = {"status": "success", "status_msg": "Successfully updated start list", "start_list": start_list}
-            self.data_.setOTs(data)
-            data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
-            data["blocks"] = self.data_.getBlocks()
+            comp.setOTs(data)
+            data["days_with_disciplines_lanes"] = comp.getDaysWithDisciplinesLanes()
+            data["blocks"] = comp.getBlocks()
             return data, 200
         elif ret != 0 and not start_list is None:
             data = {"status": "success", "status_msg": "Failed database update", "start_list": start_list}
@@ -386,6 +418,9 @@ class CompyFlask:
             return {}, 400
 
     def startListPDF(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         day = request.args.get('day')
         block = request.args.get('block')
         req_type = request.args.get('type')
@@ -394,23 +429,26 @@ class CompyFlask:
             return {}, 400
         data = {}
         if req_type is not None and req_type == "all":
-            start_list_pdf = self.data_.getStartListPDF()
+            start_list_pdf = comp.getStartListPDF()
         else:
-            start_list_pdf = self.data_.getStartListPDF(day, block)
+            start_list_pdf = comp.getStartListPDF(day, block)
         if not start_list_pdf is None:
             logging.debug("Sending: " + start_list_pdf)
             return send_file(start_list_pdf, as_attachment=True)
         else:
-            logging.debug("Could not get start list for " + day + ": " + block)
+            logging.debug("Could not get start list for " + str(day) + ": " + str(block))
             return {}, 400
 
     def breaks(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         day = request.args.get('day')
         if day is None:
             logging.debug("Get request to breaks without day")
             return {}, 400
         data = {}
-        breaks = self.data_.getBreaks(day)
+        breaks = comp.getBreaks(day)
         if not breaks is None:
             data["min_break"] = breaks["min_break"]
             data["breaks_list"] = breaks["breaks_list"]
@@ -423,13 +461,16 @@ class CompyFlask:
 
     def laneList(self):
         # TODO move to laneListNew once the query from compy.js has been updated
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         day = request.args.get('day')
         block = request.args.get('block')
         lane = request.args.get('lane')
         if day is None or block is None or lane is None:
             logging.debug("Get request to lane_list without day, block or lane")
             return {}, 400
-        ret, content = self.data_.getLaneList(day, block, lane)
+        ret, content = comp.getLaneList(day, block, lane)
         if content is not None:
             content["status"] = "success"
             content["status_msg"] = "Transfered lane list for " + day + ": " + block + "/" + lane
@@ -438,10 +479,13 @@ class CompyFlask:
             logging.debug("Could not get lane list for " + day + ": " + block + "/" + lane)
             return {}, 400
 
-    def laneListNew(self, request_id = None):
-        return self.handleRequest(request, ['day', 'block', 'lane'], CompyData.getLaneList, request_id, True)
+    def laneListNew(self, comp):
+        return self.handleRequest(request, ['day', 'block', 'lane'], CompyData.getLaneList, comp)
 
     def laneListPDF(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         day = request.args.get('day')
         block = request.args.get('block')
         lane = request.args.get('lane')
@@ -451,26 +495,29 @@ class CompyFlask:
             return {}, 400
         data = {}
         if req_type is not None and (req_type == "all" or req_type == "safety"):
-            lane_list_pdf = self.data_.getLaneListPDF(req_type == "safety")
+            lane_list_pdf = comp.getLaneListPDF(req_type == "safety")
         else:
-            lane_list_pdf = self.data_.getLaneListPDF(False, day, block, lane)
+            lane_list_pdf = comp.getLaneListPDF(False, day, block, lane)
         if not lane_list_pdf is None:
             logging.debug("Sending: " + lane_list_pdf)
             return send_file(lane_list_pdf, as_attachment=True)
         else:
-            logging.debug("Could not get lane list for " + day + ": " + block + "/" + lane)
+            logging.debug("Could not get lane list for " + str(day) + ": " + str(block) + "/" + str(lane))
             return {}, 400
 
     def changeLaneStyle(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         content = request.json
         if "lane_style" not in content:
             logging.debug("Change request for lane style missing variable")
             return {}, 400
         option = content["lane_style"]
-        if self.data_.changeLaneStyle(option) == 0:
+        if comp.changeLaneStyle(option) == 0:
             data = {}
-            data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
-            data["blocks"] = self.data_.getBlocks()
+            data["days_with_disciplines_lanes"] = comp.getDaysWithDisciplinesLanes()
+            data["blocks"] = comp.getBlocks()
             data["status_msg"] = "Successfully changed lane style"
             data["status"] = "success"
             return data, 200
@@ -479,14 +526,17 @@ class CompyFlask:
             return {}, 400
 
     def changeCompType(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         content = request.json
         if "comp_type" not in content:
             logging.debug("Change request for comp type missing variable")
             return {}, 400
         option = content["comp_type"]
-        if self.data_.changeCompType(option) == 0:
+        if comp.changeCompType(option) == 0:
             data = {}
-            self.setSubmenuData(data)
+            self.setSubmenuData(comp, data)
             data["status_msg"] = "Successfully changed comp type"
             data["status"] = "success"
             return data, 200
@@ -495,14 +545,17 @@ class CompyFlask:
             return {}, 400
 
     def changeSelectedCountry(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         content = request.json
         if "selected_country" not in content:
             logging.debug("Change request for selected country missing variable")
             return {}, 400
         option = content["selected_country"]
-        if self.data_.changeSelectedCountry(option) == 0:
+        if comp.changeSelectedCountry(option) == 0:
             data = {}
-            self.setSubmenuData(data)
+            self.setSubmenuData(comp, data)
             data["status_msg"] = "Successfully changed selected country"
             data["status"] = "success"
             return data, 200
@@ -510,12 +563,12 @@ class CompyFlask:
             logging.debug("Invalid country selected")
             return {}, 400
 
-    def setSubmenuData(self, data):
-        data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
-        data["blocks"] = self.data_.getBlocks()
-        data["disciplines"] = self.data_.getDisciplines()
-        data["countries"] = self.data_.getCountries()
-        data["result_countries"] = self.data_.getCountries(True)
+    def setSubmenuData(self, comp, data):
+        data["days_with_disciplines_lanes"] = comp.getDaysWithDisciplinesLanes()
+        data["blocks"] = comp.getBlocks()
+        data["disciplines"] = comp.getDisciplines()
+        data["countries"] = comp.getCountries()
+        data["result_countries"] = comp.getCountries(True)
 
     def dictHas(self, d, keys):
         if isinstance(keys, set):
@@ -524,7 +577,9 @@ class CompyFlask:
             return keys in d
 
     def result(self, pdf):
-        request_id = uuid.uuid4()
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         discipline = request.args.get('discipline')
         gender = request.args.get('gender')
         country = request.args.get('country')
@@ -534,47 +589,53 @@ class CompyFlask:
             return {}, 400
         if pdf:
             if req_type == "all":
-                result_pdf = self.data_.getResultPDF()
+                result_pdf = comp.getResultPDF()
             elif req_type == "top3":
-                result_pdf = self.data_.getResultPDF("all", "all", "all", False, True)
+                result_pdf = comp.getResultPDF("all", "all", "all", False, True)
             elif req_type == "single" or req_type is None:
-                result_pdf = self.data_.getResultPDF(discipline, gender, country)
+                result_pdf = comp.getResultPDF(discipline, gender, country)
             if not result_pdf is None:
                 logging.debug("Sending: " + result_pdf)
                 return send_file(result_pdf, as_attachment=True)
         else:
-            # TODO: Remove me once this is refactored
-            self.cache_[request_id] = self.data_
-            return self.getResultDiscipline(request, request_id)
-        logging.debug("Could not get result for " + discipline + "/" + gender + " country: " + country)
+            return self.getResultDiscipline(request, comp)
+        logging.debug("Could not get result for " + str(discipline) + "/" + str(gender) + " country: " + str(country))
         return {}, 400
 
-    def getResultDiscipline(self, request, request_id):
-        return self.handleRequest(request, ['discipline', 'gender', 'country'], CompyData.getResult, request_id, True)
+    def getResultDiscipline(self, request, comp):
+        return self.handleRequest(request, ['discipline', 'gender', 'country'], CompyData.getResult, comp)
 
     def updateResult(self):
-        request_id = uuid.uuid4()
-        content, status = self.handleRequest(request, ['id', 'rp', 'penalty', 'card', 'remarks', 'judge_remarks'], CompyData.updateResult, request_id)
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
+        content, status = self.handleRequest(request, ['id', 'rp', 'penalty', 'card', 'remarks', 'judge_remarks'], CompyData.updateResult, comp)
         if status != 200:
             logging.debug("Failed to set result")
             return self.badRequest("Failed to set result")
         if self.dictHas(request.json, {"discipline", "gender", "country"}):
-            return self.getResultDiscipline(request, request_id)
+            return self.getResultDiscipline(request, comp)
         else:
-            return self.handleRequest(request, ['id'], CompyData.getAthleteResult, request_id, True)
+            return self.handleRequest(request, ['id'], CompyData.getAthleteResult, comp)
 
     def changeSpecialRankingName(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         content = request.json
         if "special_ranking_name" not in content:
             logging.debug("Post request to change_special_ranking_name without special_ranking_name")
             return {}, 400
         special_ranking_name = content["special_ranking_name"]
-        self.data_.changeSpecialRankingName(special_ranking_name)
+        comp.changeSpecialRankingName(special_ranking_name)
         data = {"status": "success", "status_msg": "Successfully changed special ranking name to '" + special_ranking_name + "'"}
-        self.setSubmenuData(data)
+        self.setSubmenuData(comp, data)
         return data, 200
 
     def deleteJudge(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         judge_id = request.json.get('judge_id')
         if judge_id is None:
             logging.info("Could not delete judge without getting an id")
@@ -586,17 +647,20 @@ class CompyFlask:
             return {}, 400
 
         data = {}
-        judge_id = self.data_.isJudgeInCompetition(judge_id)
+        judge_id = comp.isJudgeInCompetition(judge_id)
         if judge_id is not None:
-            self.data_.deleteJudge(judge_id)
+            comp.deleteJudge(judge_id)
             data = {"status": "success", "status_msg": "Successfully deleted judge with id " + str(judge_id)}
-            self.data_.getJudgeData(data)
+            comp.getJudgeData(data)
             return data, 200
         else:
             logging.info('Invalid judge id provided')
             return {}, 400
 
     def getJudgeQrCode(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         judge_id = request.args.get('judge_id')
         if judge_id is None:
             logging.info("Could not get judge qr code without getting an id")
@@ -608,9 +672,9 @@ class CompyFlask:
             return {}, 400
 
         data = {}
-        judge_id = self.data_.isJudgeInCompetition(judge_id)
+        judge_id = comp.isJudgeInCompetition(judge_id)
         if judge_id is not None:
-            qr_data = self.data_.getJudgeQrCode(judge_id, request.url_root)
+            qr_data = comp.getJudgeQrCode(judge_id, request.url_root)
             if qr_data is None:
                 logging.info('Could not get qr code for judge with id ' + str(judge_id))
                 return {}, 400
@@ -622,6 +686,9 @@ class CompyFlask:
             return {}, 400
 
     def addJudge(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         content = request.json
         if False in [key in content for key in ['first_name', 'last_name']]:
             logging.info("Could not add judge due to missing data")
@@ -631,23 +698,29 @@ class CompyFlask:
         if first_name is None or last_name is None:
             logging.info("Could not add judge with incomplete information")
             return {}, 400
-        status = self.data_.addJudge(first_name, last_name)
+        status = comp.addJudge(first_name, last_name)
         data = {}
         if status == 0:
             data = {"status": "success", "status_msg": "Successfully added judge"}
-            self.data_.getJudgeData(data)
+            comp.getJudgeData(data)
             return data, 200
         elif status == 1:
             data = {"status": "error", "status_msg": "Judge already exists"}
-            self.data_.getJudgeData(data)
+            comp.getJudgeData(data)
             return data, 200
 
     def getJudges(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         data = {"status": "success", "status_msg": "Successfully received judge data"}
-        self.data_.getJudgeData(data)
+        comp.getJudgeData(data)
         return data, 200
 
     def deleteAthlete(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         athlete_id = request.json.get('athlete_id')
         if athlete_id is None:
             logging.info("Could not delete athlete without getting an id")
@@ -659,19 +732,22 @@ class CompyFlask:
             return {}, 400
 
         data = {}
-        ca_id, in_other_comp = self.data_.isAthleteInCompetition(athlete_id)
+        ca_id, in_other_comp = comp.isAthleteInCompetition(athlete_id)
         if ca_id is not None:
-            self.data_.deleteAthlete(ca_id, athlete_id, in_other_comp)
+            comp.deleteAthlete(ca_id, athlete_id, in_other_comp)
             data = {"status": "success", "status_msg": "Successfully deleted athlete with id " + str(athlete_id) + (" completely" if not in_other_comp else "")}
-            self.data_.getAthleteData(data)
-            self.setSubmenuData(data)
-            self.data_.setOTs(data)
+            comp.getAthleteData(data)
+            self.setSubmenuData(comp, data)
+            comp.setOTs(data)
             return data, 200
         else:
             logging.info('Invalid athlete id provided')
             return {}, 400
 
     def addAthlete(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         content = request.json
         if False in [key in content for key in ['first_name', 'last_name', 'gender', 'country', 'club', 'aida_id']]:
             logging.info("Could not add athlete due to missing data")
@@ -686,11 +762,11 @@ class CompyFlask:
            country is None or club is None or aida_id is None:
             logging.info("Could not add athlete with incomplete information")
             return {}, 400
-        status = self.data_.addAthlete(first_name, last_name, gender, country, club, aida_id)
+        status = comp.addAthlete(first_name, last_name, gender, country, club, aida_id)
         data = {}
         if status == 0:
             data = {"status": "success", "status_msg": "Successfully added athlete"}
-            self.data_.getAthleteData(data)
+            comp.getAthleteData(data)
             return data, 200
         elif status == 1:
             data = {"status": "error", "status_msg": "Athlete already exists"}
@@ -700,8 +776,11 @@ class CompyFlask:
             return {}, 400
 
     def getAthletes(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         data = {"status": "success", "status_msg": "Successfully received athlete data"}
-        self.data_.getAthleteData(data)
+        comp.getAthleteData(data)
         return data, 200
 
     def nationalRecords(self):
@@ -709,9 +788,12 @@ class CompyFlask:
 
     def getJudgeComp(self, comp_id, judge_id, return_json = False):
         judge_hash = request.args.get('hash')
-        ret, comp_data = self.data_.getCompDataAndValidateJudge(comp_id, judge_id, judge_hash)
+        # the judge page gets its own CompyData; validating or loading it can
+        # not interfere with any other page that is open at the same time
+        comp = CompyData(self.db_, self.app_, comp_id)
+        ret, comp_data = comp.getCompDataAndValidateJudge(comp_id, judge_id, judge_hash)
         if comp_data is None:
-            content = {"version": self.data_.version}
+            content = {"version": self.version()}
             return make_response(render_template('404.html', **content), 404)
 
         comp_name = comp_data['comp_name']
@@ -719,9 +801,7 @@ class CompyFlask:
         last_name = comp_data['last_name']
         federation = comp_data['federation']
 
-        self.data_.load(comp_id)
-
-        content = {"version": self.data_.version,
+        content = {"version": comp.version,
                    "comp_id": comp_id,
                    "comp_name": comp_name,
                    "judge_id": judge_id,
@@ -729,35 +809,42 @@ class CompyFlask:
                    "judge_first_name": first_name,
                    "judge_last_name": last_name,
                    "federation": federation,
-                   "days_with_disciplines_lanes": self.data_.getDaysWithDisciplinesLanes(),
-                   "blocks": self.data_.getBlocks()}
+                   "days_with_disciplines_lanes": comp.getDaysWithDisciplinesLanes(),
+                   "blocks": comp.getBlocks()}
         if return_json:
             return content, 200
         else:
             return render_template('judge.html', **content)
 
-    def isValidJudge(self, request, request_id):
-        content, status = self.handleRequest(request, ['comp_id', 'judge_id', 'judge_hash'], CompyData.getCompDataAndValidateJudge, request_id)
-        return status == 200
+    def isValidJudge(self, request, comp):
+        try:
+            comp_id = self.parse(request, 'comp_id')
+            judge_id = self.parse(request, 'judge_id')
+            judge_hash = self.parse(request, 'judge_hash')
+        except:
+            return False
+        ret, content = comp.getCompDataAndValidateJudge(comp_id, judge_id, judge_hash)
+        return ret == 0
 
     def getJudgeAthletes(self):
-        request_id = uuid.uuid4()
-        if not self.isValidJudge(request, request_id):
-            content = {"version": self.data_.version}
+        comp = self.getData(request)
+        if comp is None or not self.isValidJudge(request, comp):
+            content = {"version": self.version()}
             return make_response(render_template('404.html', **content), 404)
 
-        return self.laneListNew(request_id)
+        return self.laneListNew(comp)
 
     def getJudgeAthleteResult(self):
-        request_id = uuid.uuid4()
-        if not self.isValidJudge(request, request_id):
+        comp = self.getData(request)
+        if comp is None or not self.isValidJudge(request, comp):
             logging.debug("Not a valid judge")
             return {}, 400
 
-        return self.handleRequest(request, ['s_id'], CompyData.getAthleteResult, request_id, True)
+        return self.handleRequest(request, ['s_id'], CompyData.getAthleteResult, comp)
 
     def disciplines(self, federation):
-        disciplines = self.data_.getAllDisciplines(federation)
+        comp = CompyData(self.db_, self.app_)
+        disciplines = comp.getAllDisciplines(federation)
         if disciplines is None:
             return {}, 400
         else:
@@ -765,6 +852,9 @@ class CompyFlask:
             return data, 200
 
     def modifyBlock(self, add):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         content = request.json
         if False in [key in content for key in ['day', 'dis', 'block']]:
             logging.info("Could not add/edit block due to missing data")
@@ -775,7 +865,7 @@ class CompyFlask:
         if disciplines is None or day is None or (not add and block is None):
             logging.info("Could not add/edit block with incomplete information")
             return {}, 400
-        ret = self.data_.modifyBlock(day, disciplines, block, add)
+        ret = comp.modifyBlock(day, disciplines, block, add)
         data = None
         if ret == 0:
             data = {"status": "success", "status_msg": "Successfully updated block"}
@@ -784,13 +874,16 @@ class CompyFlask:
         elif ret == 2:
             data = {"status": "success", "status_msg": "Could not edit block, does not exist"}
         if data is not None:
-            data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
-            data["blocks"] = self.data_.getBlocks()
+            data["days_with_disciplines_lanes"] = comp.getDaysWithDisciplinesLanes()
+            data["blocks"] = comp.getBlocks()
             return data, 200
         else:
             return {}, 400
 
     def deleteBlock(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
         content = request.json
         if False in [key in content for key in ['block']]:
             logging.info("Could not remove block due to missing data")
@@ -799,122 +892,131 @@ class CompyFlask:
         if block is None:
             logging.info("Could not remove block with incomplete information")
             return {}, 400
-        ret = self.data_.removeBlock(block)
+        ret = comp.removeBlock(block)
         data = None
         if ret == 0:
             data = {"status": "success", "status_msg": "Successfully removed block"}
         elif ret == 1:
             data = {"status": "success", "status_msg": "Could not remove block, does not exist"}
         if data is not None:
-            data["days_with_disciplines_lanes"] = self.data_.getDaysWithDisciplinesLanes()
-            data["blocks"] = self.data_.getBlocks()
+            data["days_with_disciplines_lanes"] = comp.getDaysWithDisciplinesLanes()
+            data["blocks"] = comp.getBlocks()
             return data, 200
         else:
             return {}, 400
 
     def getClock(self, comp_id, current, offset):
         current = (current+1) % 2
-        comp_name = self.data_.load(comp_id)
-        alist = self.data_.getFourStarts(current == 0, offset)
+        # the clock page gets its own CompyData, so the periodic reload of an
+        # open clock display no longer changes any global state
+        comp = CompyData(self.db_, self.app_, comp_id)
+        if not comp.isValid:
+            return {}, 400
+        alist = comp.getFourStarts(current == 0, offset)
         if alist is None:
             current = (current+1) % 2
-            alist = self.data_.getFourStarts(current == 0, offset)
-        if comp_name != None:
-            url = request.base_url
-            refresh_url = url[:url.rfind('/', 0, url.rfind('/'))+1] + str(current) + "/" + str(offset)
-            content = {"comp_name": comp_name,
-                       "comp_id": comp_id,
-                       "alist": alist,
-                       "current": current,
-                       "refresh_url": refresh_url,
-                       "offset": offset}
-            return render_template('clock.html', **content)
-        else:
-            return {}, 400
+            alist = comp.getFourStarts(current == 0, offset)
+        url = request.base_url
+        refresh_url = url[:url.rfind('/', 0, url.rfind('/'))+1] + str(current) + "/" + str(offset)
+        content = {"comp_name": comp.name,
+                   "comp_id": comp_id,
+                   "alist": alist,
+                   "current": current,
+                   "refresh_url": refresh_url,
+                   "offset": offset}
+        return render_template('clock.html', **content)
 
     def admin(self):
         auth = request.args.get('auth')
         if auth != current_app.config["SECRET_KEY"][:6]:
-            content = {"version": self.data_.version}
+            content = {"version": self.version()}
             return make_response(render_template('404.html', **content), 404)
         all_countries = country_converter.CountryConverter().data["IOC"].dropna().to_list()
-        first_records = None #foo.get_records(Federation.AIDA, all_countries[0], Gender.FEMALE)
-        content = {"version": self.data_.version,
-                   "competitions": self.data_.getSavedCompetitions(),
-                   "comp_name": self.data_.name,
+        # the admin frontend loads competition 1 after the page is ready, so
+        # pre-fill the name field with that competition
+        comp = CompyData(self.db_, self.app_, 1)
+        content = {"version": comp.version,
+                   "competitions": comp.getSavedCompetitions(),
+                   "comp_name": comp.name,
                    "all_countries": all_countries,
                    "record_sta": None}
         return render_template('template.html', **content)
 
     def results(self):
-        data = self.getData(request)
-        if data is None:
-            return self.badRequest("Faild to load competition")
-        ret, content = data.getResultContent()
+        comp = self.getData(request, published_only = True)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
+        ret, content = comp.getResultContent()
         return render_template('results.html', **content)
 
     def updatePublishResults(self):
         return self.handleRequest(request, ['publish_results'], CompyData.updatePublishResults)
 
     def resultsList(self):
-        return self.handleRequest(request, ['discipline', 'gender', 'country'], CompyData.getResultList)
+        return self.handleRequest(request, ['discipline', 'gender', 'country'], CompyData.getResultList, published_only = True)
 
-    def handleRequest(self, request, args, func, request_id = None, clean_cache = False):
-        data = self.cache_[request_id] if request_id in self.cache_.keys() else self.getData(request)
-        if data is None:
-            self.cleanCache(request_id, clean_cache)
+    def handleRequest(self, request, args, func, comp = None, published_only = False):
+        if comp is None:
+            comp = self.getData(request, published_only)
+        if comp is None:
             return self.badRequest("Failed to load competition to call " + func.__name__)
-
-        if request_id is not None:
-            self.cache_[request_id] = data
 
         if args is not None:
             try:
                 args_val = [self.parse(request, arg) for arg in args]
             except RuntimeError as re:
-                self.cleanCache(request_id, clean_cache)
                 return self.badRequest(re)
             except:
-                self.cleanCache(request_id, clean_cache)
                 return {}, 400
-            ret, content = func(data, *args_val)
+            ret, content = func(comp, *args_val)
         else:
-            ret, content = func(data)
+            ret, content = func(comp)
         if ret == 0:
             if content is None:
                 content = {"status": "success", "status_msg": "Successfully called " + func.__name__}
             else:
                 content |= {"status": "success", "status_msg": "Successfully called " + func.__name__}
-            self.cleanCache(request_id, clean_cache)
             return content, 200
         else:
-            self.cleanCache(request_id, clean_cache)
             return self.badRequest("Failed to call " + func.__name__)
-
-    def cleanCache(self, request_id, clean_cache):
-        if request_id is not None and clean_cache and request_id in self.cache_.keys():
-            self.cache_.pop(request_id)
 
     def badRequest(self, msg):
         return {"status": "error", "error_msg": msg}, 400
 
-    def getData(self, request):
+    def getData(self, request, published_only = False):
+        """Build the CompyData for this request from its comp_id.
+
+        The comp_id is taken from the json body, form data or query string.
+        Returns None if a comp_id was provided but no matching (or, with
+        published_only, no published) competition exists. Without a comp_id
+        an empty CompyData is returned for endpoints that do not need a
+        loaded competition (e.g. national records).
+        """
         try:
             comp_id = self.parse(request, 'comp_id', True)
-            if comp_id == "":
+            if comp_id == "" or comp_id == "null":
                 comp_id = None
         except Exception as e:
             logging.debug(e)
             return None
-        data = CompyData(self.db_, self.app_, comp_id)
+        data = CompyData(self.db_, self.app_, comp_id, published_only)
         if comp_id is not None and not data.isValid:
             return None
         return data
 
     def parse(self, request, key, allow_none = False):
-        try:
-            content = request.json[key]
-        except:
+        content = None
+        found = False
+        if request.is_json:
+            try:
+                content = request.json[key]
+                found = True
+            except:
+                pass
+        if not found and key in request.form:
+            content = request.form[key]
+            found = True
+        if not found:
             try:
                 content = request.args.get(key)
             except:
@@ -924,6 +1026,7 @@ class CompyFlask:
         return content
 
     def deleteComp(self):
+        comp = CompyData(self.db_, self.app_)
         comp_id = request.json.get('comp_id')
-        ret, data = self.data_.deleteComp(comp_id)
+        ret, data = comp.deleteComp(comp_id)
         return data

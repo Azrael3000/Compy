@@ -66,9 +66,12 @@ def compy(start_flask, init_db = False):
     if init_db:
         db.init_db()
 
-    data = compy_data.CompyData(db, app)
+    # make sure a default competition exists on a fresh database;
+    # per-request CompyData objects are created inside CompyFlask
+    with app.app_context():
+        compy_data.CompyData.ensureDefaultCompetition(db, app)
 
-    compy_flask.CompyFlask(app, data, db, start_flask)
+    compy_flask.CompyFlask(app, db, start_flask)
 
 start_flask = __name__ == '__main__'
 compy(start_flask)

@@ -2,66 +2,109 @@ import flask
 import sqlite3
 import logging
 import glob
+import os
+from contextlib import contextmanager
 
 class CompyDB:
+    """Thread-safe database access layer.
+
+    Every flask app/request context gets its own sqlite3 connection, stored in
+    flask.g and closed on teardown. No connection, cursor or last-rowid state
+    is kept on this object, so a single CompyDB instance can safely be shared
+    between concurrent requests (the flask dev server is threaded by default).
+    """
+
     def __init__(self, app):
         self.app_ = app
-        self.db_ = None
         self.app_.teardown_appcontext(self.close_db)
-        self.last_index_ = -1
 
     @property
     def db(self):
-        if not self.is_open():
-            if "db" not in flask.g:
-                logging.debug("Connecting to database:" + flask.current_app.config["DATABASE"])
-                flask.g.db = sqlite3.connect(
-                    flask.current_app.config["DATABASE"],
-                    detect_types=sqlite3.PARSE_DECLTYPES,
-                )
-                flask.g.db.row_factory = sqlite3.Row
-            self.db_ = flask.g.db
-        return self.db_
+        if "db" not in flask.g:
+            logging.debug("Connecting to database:" + flask.current_app.config["DATABASE"])
+            flask.g.db = sqlite3.connect(
+                flask.current_app.config["DATABASE"],
+                detect_types=sqlite3.PARSE_DECLTYPES,
+            )
+            flask.g.db.row_factory = sqlite3.Row
+        return flask.g.db
 
     @property
     def cursor(self):
         return self.db.cursor()
 
-    @property
-    def last_index(self):
-        return self.last_index_
-
     def execute(self, cmd, args = ()):
+        """Execute a statement and return all rows, or None if there are none."""
+        data, _ = self.executeWithRowId(cmd, args)
+        return data
+
+    def insert(self, cmd, args = ()):
+        """Execute an INSERT statement and return the id of the inserted row.
+
+        Unlike the removed last_index property this value comes from the
+        cursor of this very statement, so it cannot be corrupted by other
+        requests executing statements in parallel.
+        """
+        _, rowid = self.executeWithRowId(cmd, args)
+        return rowid
+
+    def executeWithRowId(self, cmd, args = ()):
         if type(args) is not tuple:
             args = (args, )
         logging.debug("Execute: '" + cmd + "' args: " + str(args))
-        cursor = self.cursor
+        cursor = self.db.cursor()
         data = cursor.execute(cmd, args).fetchall()
-        self.last_index_ = cursor.lastrowid
-        self.db.commit()
+        rowid = cursor.lastrowid
+        self.commitUnlessInTransaction()
         if len(data) == 0:
-            return None
+            return None, rowid
         else:
-            return data
+            return data, rowid
 
-    def is_open(self):
+    @contextmanager
+    def transaction(self):
+        """Group several statements into one atomic commit.
+
+        Usage:
+            with db.transaction():
+                db.execute(...)
+                db.insert(...)
+
+        Inside the with-block no per-statement commits happen; the outermost
+        transaction commits on success and rolls back if an exception is
+        raised, so concurrent readers never see half-applied state.
+        """
+        if flask.g.get("db_in_transaction", False):
+            # nested transaction: the outermost one commits
+            yield
+            return
+        flask.g.db_in_transaction = True
         try:
-            self.db_.cursor()
-            return True
-        except Exception as ex:
-            return False
+            yield
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        finally:
+            flask.g.db_in_transaction = False
+
+    def commitUnlessInTransaction(self):
+        if not flask.g.get("db_in_transaction", False):
+            self.db.commit()
 
     def init_db(self):
-        schemas = glob.glob("schemas/*.sql")
+        # resolve the schemas relative to the app root so that init_db also
+        # works when the process was not started from the repository root
+        schemas = glob.glob(os.path.join(self.app_.root_path, "schemas", "*.sql"))
         with self.app_.app_context():
             for schema in schemas:
                 logging.debug("Initializing database entry from: " + schema)
-                with flask.current_app.open_resource(schema) as f:
-                    self.db.executescript(f.read().decode("utf-8"))
+                with open(schema, "r", encoding="utf-8") as f:
+                    self.db.executescript(f.read())
             logging.info("Database initialized")
 
     def close_db(self, e=None):
-        if self.db_ is not None:
+        db = flask.g.pop("db", None)
+        if db is not None:
             logging.debug("Closing database")
-            self.db_.close()
-            self.db_ = None
+            db.close()
