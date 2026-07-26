@@ -21,7 +21,7 @@ class TestConcurrentPages(compy_testing.CompyServerTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        session = requests.Session()
+        session = cls.adminSession()
 
         # name the default competition and upload the excel file
         response = session.post(cls.base_url + "/competition",
@@ -119,18 +119,20 @@ class TestConcurrentPages(compy_testing.CompyServerTestCase):
 
     def testConcurrentPagesDoNotInterfere(self):
         page_simulations = [
-            ("admin1", self.adminTabCompOne),
-            ("admin2", self.adminTabCompTwo),
-            ("clock", self.clockDisplay),
-            ("judge", self.judgePhone),
-            ("results", self.publicResultsPage),
-            ("registration", self.registrationWrites),
+            ("admin1", self.adminTabCompOne, True),
+            ("admin2", self.adminTabCompTwo, True),
+            ("clock", self.clockDisplay, False),
+            ("judge", self.judgePhone, False),
+            ("results", self.publicResultsPage, False),
+            ("registration", self.registrationWrites, True),
         ]
         failures = []
         stop_event = threading.Event()
 
-        def run_page(page_name, request_round):
-            page_session = requests.Session()
+        def run_page(page_name, request_round, is_admin_page):
+            # admin pages carry a session cookie, public pages must work
+            # without any authentication
+            page_session = self.adminSession() if is_admin_page else requests.Session()
             for round_index in range(N_ROUNDS):
                 if stop_event.is_set():
                     return
@@ -151,7 +153,7 @@ class TestConcurrentPages(compy_testing.CompyServerTestCase):
         self.assertEqual(failures, [])
 
         # after the storm: comp 1 must be fully intact
-        session = requests.Session()
+        session = self.adminSession()
         response = session.post(self.base_url + "/load_comp", json={"comp_id": self.comp_one_id})
         self.assertEqual(response.json()["comp_name"], "Comp One")
         self.assertEqual(len(response.json()["athletes"]), 30)
@@ -175,9 +177,57 @@ class TestConcurrentPages(compy_testing.CompyServerTestCase):
                                         "block": self.first_block, "lane": "1"})
         self.assertEqual(response.status_code, 404)
         # ...and it must not have switched or broken anything
+        response = self.adminSession().get(self.base_url + "/athletes",
+                                           params={"comp_id": self.comp_one_id})
+        self.assertEqual(len(response.json()["athletes"]), 30)
+
+    def testAdminEndpointsRequireLogin(self):
+        # without a session cookie all admin endpoints must refuse to act
         response = requests.get(self.base_url + "/athletes",
                                 params={"comp_id": self.comp_one_id})
-        self.assertEqual(len(response.json()["athletes"]), 30)
+        self.assertEqual(response.status_code, 401)
+        response = requests.post(self.base_url + "/competition",
+                                 json={"comp_name": "Hacked", "overwrite": True,
+                                       "comp_id": self.comp_one_id})
+        self.assertEqual(response.status_code, 401)
+        response = requests.delete(self.base_url + "/competition",
+                                   json={"comp_id": self.comp_one_id})
+        self.assertEqual(response.status_code, 401)
+        # the admin page itself redirects to the login form
+        response = requests.get(self.base_url + "/admin", allow_redirects=False)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/admin/login"))
+        # ...and nothing was changed by the rejected requests
+        response = self.adminSession().post(self.base_url + "/load_comp",
+                                            json={"comp_id": self.comp_one_id})
+        self.assertEqual(response.json()["comp_name"], "Comp One")
+
+    def testWrongPasswordIsRejected(self):
+        session = requests.Session()
+        response = session.post(self.base_url + "/admin/login",
+                                data={"password": "not-the-password"})
+        self.assertEqual(response.status_code, 401)
+        response = session.get(self.base_url + "/athletes",
+                               params={"comp_id": self.comp_one_id})
+        self.assertEqual(response.status_code, 401)
+
+    def testJudgeCanSaveResultWithoutAdminSession(self):
+        # a judge phone is not logged in as admin; the judge hash from the
+        # QR code must be enough to save a result, a forged hash must not be
+        response = requests.get(self.base_url + "/judge/athletes",
+                                params={"comp_id": self.comp_one_id, "judge_id": self.judge_id,
+                                        "judge_hash": self.judge_hash, "day": self.first_day,
+                                        "block": self.first_block, "lane": "1"})
+        start_id = response.json()["lane_list"][0]["s_id"]
+        result = {"comp_id": self.comp_one_id, "judge_id": self.judge_id,
+                  "id": start_id, "rp": "", "penalty": 0, "card": "WHITE",
+                  "remarks": "", "judge_remarks": ""}
+        response = requests.put(self.base_url + "/result",
+                                json=result | {"judge_hash": "deadbeef"})
+        self.assertEqual(response.status_code, 401)
+        response = requests.put(self.base_url + "/result",
+                                json=result | {"judge_hash": self.judge_hash})
+        self.assertEqual(response.status_code, 200)
 
 
 if __name__ == '__main__':

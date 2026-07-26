@@ -10,8 +10,9 @@ ${URL}      localhost
 ${PORT}     5000
 ${PATH}     .
 ${BASE_URL}     http://${URL}:${PORT}/${PATH}
-${ADMIN_KEY}    156a7f#
-${ADMIN_URL}    ${BASE_URL}/admin?auth=${ADMIN_KEY}
+# must match FLASK_ADMIN_PASSWORD in the .env used by the server under test
+${ADMIN_PASSWORD}   compy-admin
+${ADMIN_URL}    ${BASE_URL}/admin
 # Elements
 ${SETTINGS_BUTTON}  id=settings_button >> a
 ${COMP_NAME_FIELD}  id=comp_name
@@ -23,6 +24,11 @@ Open Admin Page
 # Debug enable
 #    Open Browser
     New Page    ${ADMIN_URL}
+    ${login_form} =     Get Element Count   id=admin_password
+    IF    ${login_form} > 0
+        Fill Text   id=admin_password  ${ADMIN_PASSWORD}
+        Click   id=admin_login_button
+    END
     Get Text    h1    contains    Compy
 
 Goto Settings
