@@ -24,11 +24,16 @@
 #
 #  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+import hmac
 import logging
+import time
+from datetime import timedelta
+from functools import wraps
 from compy_data import CompyData
 from compy_config import CompyConfig
-from flask import Flask, render_template, request, send_file, Response, make_response, current_app
+from flask import Flask, render_template, request, send_file, Response, make_response, session, redirect, url_for
 from os import path, mkdir
+from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
 from werkzeug.routing import IntegerConverter
 try:
@@ -58,23 +63,63 @@ class CompyFlask:
         app.config['UPLOAD_FOLDER'] = self.config_.upload_folder
         app.url_map.converters['signed_int'] = self.SignedIntConverter
 
+        # admin sessions are stored in a cookie signed with SECRET_KEY;
+        # the cookie is not readable by page javascript and not sent on
+        # cross-site requests (basic CSRF protection)
+        app.config['SESSION_COOKIE_HTTPONLY'] = True
+        app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+        # one login lasts a full competition day
+        app.permanent_session_lifetime = timedelta(hours=12)
+
+        if not app.config.get('ADMIN_PASSWORD_HASH') and not app.config.get('ADMIN_PASSWORD'):
+            logging.error("Neither FLASK_ADMIN_PASSWORD_HASH nor FLASK_ADMIN_PASSWORD is set "
+                          "in the .env file; logging in to the admin interface is not possible")
+
+        def admin_required(f):
+            """Only allow the request if this browser has an admin session.
+
+            The admin page itself redirects to the login form, all other
+            (api) endpoints return 401 so the frontend can react.
+            """
+            @wraps(f)
+            def wrapper(*args, **kwargs):
+                if session.get('is_admin'):
+                    return f(*args, **kwargs)
+                if request.method == 'GET' and request.path == '/admin':
+                    return redirect(url_for('login'))
+                return self.unauthorized()
+            return wrapper
+
         @app.route('/admin', methods=['GET'])
+        @admin_required
         def admin():
             return self.admin()
 
+        @app.route('/admin/login', methods=['GET', 'POST'])
+        def login():
+            return self.login()
+
+        @app.route('/admin/logout', methods=['GET'])
+        def logout():
+            return self.logout()
+
         @app.route('/upload_file', methods=['POST'])
+        @admin_required
         def uploadFile():
             return self.uploadFile()
 
         @app.route('/store_results', methods=['POST'])
+        @admin_required
         def storeResults():
             return self.storeResults()
 
         @app.route('/upload_sponsor_img', methods=['POST'])
+        @admin_required
         def uploadSponsorImg():
             return self.uploadSponsorImg()
 
         @app.route('/competition', methods=['POST', 'DELETE'])
+        @admin_required
         def changeCompName():
             if request.method == 'POST':
                 return self.changeCompName()
@@ -82,18 +127,22 @@ class CompyFlask:
                 return self.deleteComp()
 
         @app.route('/change_special_ranking_name', methods=['POST'])
+        @admin_required
         def changeSpecialRankingName():
             return self.changeSpecialRankingName()
 
         @app.route('/change_registration', methods=['POST'])
+        @admin_required
         def changeRegistration():
             return self.changeRegistration()
 
         @app.route('/load_comp', methods=['POST'])
+        @admin_required
         def loadComp():
             return self.loadComp()
 
         @app.route('/start_list', methods=['GET', 'PUT'])
+        @admin_required
         def startList():
             if request.method == 'GET':
                 return self.startList()
@@ -101,45 +150,59 @@ class CompyFlask:
                 return self.updateStartList()
 
         @app.route('/start_list_pdf', methods=['GET'])
+        @admin_required
         def startListPDF():
             return self.startListPDF()
 
         @app.route('/breaks', methods=['GET'])
+        @admin_required
         def breaks():
             return self.breaks()
 
         @app.route('/lane_list', methods=['GET'])
+        @admin_required
         def laneList():
             return self.laneList()
 
         @app.route('/lane_list_pdf', methods=['GET'])
+        @admin_required
         def laneListPDF():
             return self.laneListPDF()
 
         @app.route('/result', methods=['GET', 'PUT'])
         def result():
             if request.method == 'GET':
+                # admin page only
+                if not session.get('is_admin'):
+                    return self.unauthorized()
                 return self.result(False)
             elif request.method == 'PUT':
+                # used by the admin page and by judge phones;
+                # updateResult checks the admin session or the judge hash
                 return self.updateResult()
 
         @app.route('/result_pdf', methods=['GET'])
+        @admin_required
         def resultPDF():
             return self.result(True)
 
         @app.route('/change_lane_style', methods=['POST'])
+        @admin_required
         def changeLaneStyle():
             return self.changeLaneStyle()
 
         @app.route('/change_comp_type', methods=['POST'])
+        @admin_required
         def changeCompType():
             return self.changeCompType()
 
         @app.route('/change_selected_country', methods=['POST'])
+        @admin_required
         def changeSelectedCountry():
             return self.changeSelectedCountry()
 
         @app.route('/judge', methods=['DELETE', 'POST'])
+        @admin_required
         def judge():
             if request.method == 'DELETE':
                 return self.deleteJudge()
@@ -147,14 +210,17 @@ class CompyFlask:
                 return self.addJudge()
 
         @app.route('/judge/qr_code', methods=['GET'])
+        @admin_required
         def judgeQrCode():
             return self.getJudgeQrCode()
 
         @app.route('/judges', methods=['GET'])
+        @admin_required
         def judges():
             return self.getJudges()
 
         @app.route('/athlete', methods=['DELETE', 'POST'])
+        @admin_required
         def athlete():
             if request.method == 'DELETE':
                 return self.deleteAthlete()
@@ -162,10 +228,12 @@ class CompyFlask:
                 return self.addAthlete()
 
         @app.route('/athletes', methods=['GET'])
+        @admin_required
         def athletes():
             return self.getAthletes()
 
         @app.route('/national_records', methods=['GET'])
+        @admin_required
         def nationalRecords():
             return self.nationalRecords()
 
@@ -187,10 +255,12 @@ class CompyFlask:
                 return self.getJudgeAthleteResult()
 
         @app.route('/disciplines/<federation>', methods=['GET'])
+        @admin_required
         def disciplines(federation):
             return self.disciplines(federation)
 
         @app.route('/block', methods=['POST', 'UPDATE', 'DELETE'])
+        @admin_required
         def block():
             if request.method == 'POST':
                 return self.modifyBlock(True)
@@ -204,6 +274,7 @@ class CompyFlask:
             return self.getClock(comp_id, current, offset)
 
         @app.route('/publish_results', methods=['UPDATE'])
+        @admin_required
         def publish_results():
             return self.updatePublishResults()
 
@@ -609,6 +680,10 @@ class CompyFlask:
         comp = self.getData(request)
         if comp is None:
             return self.badRequest("Failed to load competition")
+        # results are entered by the admin page (session cookie) or by a
+        # judge phone (judge id + hash in the request body)
+        if not session.get('is_admin') and not self.isValidJudge(request, comp):
+            return self.unauthorized()
         content, status = self.handleRequest(request, ['id', 'rp', 'penalty', 'card', 'remarks', 'judge_remarks'], CompyData.updateResult, comp)
         if status != 200:
             logging.debug("Failed to set result")
@@ -926,11 +1001,49 @@ class CompyFlask:
                    "offset": offset}
         return render_template('clock.html', **content)
 
+    def checkAdminPassword(self, password):
+        """Compare a login attempt against the configured admin password.
+
+        FLASK_ADMIN_PASSWORD_HASH (a werkzeug password hash, recommended
+        for deployments) takes precedence over the plain text
+        FLASK_ADMIN_PASSWORD. Both comparisons are constant time. If
+        neither is configured, logging in is not possible.
+        """
+        pw_hash = self.app_.config.get('ADMIN_PASSWORD_HASH')
+        if pw_hash:
+            return check_password_hash(pw_hash, password)
+        pw = self.app_.config.get('ADMIN_PASSWORD')
+        if pw:
+            return hmac.compare_digest(str(pw).encode('utf-8'), password.encode('utf-8'))
+        return False
+
+    def login(self):
+        if session.get('is_admin'):
+            return redirect(url_for('admin'))
+        error = None
+        if request.method == 'POST':
+            password = request.form.get('password', '')
+            if self.checkAdminPassword(password):
+                session.clear()
+                session['is_admin'] = True
+                session.permanent = True
+                logging.info("Admin login from " + str(request.remote_addr))
+                return redirect(url_for('admin'))
+            # throttle brute force attempts
+            time.sleep(1)
+            logging.warning("Failed admin login attempt from " + str(request.remote_addr))
+            error = "Wrong password"
+        content = {"version": self.version(), "error": error}
+        return make_response(render_template('login.html', **content), 401 if error else 200)
+
+    def logout(self):
+        session.clear()
+        return redirect(url_for('login'))
+
+    def unauthorized(self):
+        return {"status": "error", "error_msg": "Authentication required"}, 401
+
     def admin(self):
-        auth = request.args.get('auth')
-        if auth != current_app.config["SECRET_KEY"][:6]:
-            content = {"version": self.version()}
-            return make_response(render_template('404.html', **content), 404)
         all_countries = country_converter.CountryConverter().data["IOC"].dropna().to_list()
         # the admin frontend loads competition 1 after the page is ready, so
         # pre-fill the name field with that competition

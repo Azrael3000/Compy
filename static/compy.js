@@ -25,6 +25,13 @@
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 */
 
+// if the admin session has expired (or is missing) every api call returns
+// 401; send the user to the login page in that case
+$(document).ajaxError(function(event, jqxhr) {
+    if (jqxhr.status == 401)
+        window.location.href = "/admin/login";
+});
+
 var _global_prev_name = "";
 var _days_with_disciplines_lanes = null;
 var _comp_id = null;

@@ -19,6 +19,7 @@ import threading
 import unittest
 
 import flask
+import requests
 from werkzeug.serving import make_server
 
 import compy_data
@@ -27,12 +28,14 @@ import compy_flask
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 TEST_COMPETITION_XLSX = os.path.join(REPO_ROOT, "test_competition.xlsx")
+ADMIN_PASSWORD = "compy-test-password"
 
 
 def makeApp(database_path):
     app = flask.Flask("compy", root_path=REPO_ROOT)
     app.config["DATABASE"] = database_path
     app.config["SECRET_KEY"] = "0123456789abcdef0123456789abcdef_compy_test"
+    app.config["ADMIN_PASSWORD"] = ADMIN_PASSWORD
     return app
 
 
@@ -96,3 +99,13 @@ class CompyServerTestCase(CompyDataTestCase):
         cls.server.shutdown()
         cls.server_thread.join()
         super().tearDownClass()
+
+    @classmethod
+    def adminSession(cls):
+        """A requests session that is logged in to the admin interface."""
+        session = requests.Session()
+        response = session.post(cls.base_url + "/admin/login",
+                                data={"password": ADMIN_PASSWORD})
+        if response.status_code != 200 or not session.cookies:
+            raise AssertionError("admin login failed in test setup")
+        return session
