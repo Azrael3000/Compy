@@ -47,7 +47,14 @@ from PIL import Image
 import regex
 import sys
 
+try:
+    import country_converter
+except ImportError:
+    print("Could not find country_converter. Install with 'pip3 install country_converter'")
+    exit(-1)
+
 import athlete
+from compy_aida_api import AidaApiClient, AidaApiError
 from compy_config import CompyConfig
 from compy_constants import (INVALID_DATE, INVALID_TIME, POOL_DISCIPLINES,
                              DEPTH_DISCIPLINES, DISCIPLINES, FEDERATIONS)
@@ -85,10 +92,13 @@ class CompyData(PdfReportMixin):
         self.start_date_ = None
         self.end_date_ = None
         self.nrs_ = None
+        self.tiered_records_ = None
         self.sponsor_img_ = None
         self.disciplines_ = 0
         self.selected_country_ = None
         self.publish_results_ = False
+        self.aida_event_id_ = None
+        self.aida_api_key_ = None
 
         if comp_id is not None:
             try:
@@ -161,6 +171,9 @@ class CompyData(PdfReportMixin):
         if comp_type not in FEDERATIONS:
             return 1
         self.comp_type_ = comp_type
+        # the record caches are scoped to the federation
+        self.nrs_ = None
+        self.tiered_records_ = None
         self.save()
         return 0
 
@@ -253,7 +266,8 @@ class CompyData(PdfReportMixin):
     def nr(self):
         if self.nrs_ is None:
             nrs = self.db_.execute('''SELECT country, class, gender, discipline, value
-                                      FROM records''')
+                                      FROM records WHERE federation=? AND tier='NR' ''',
+                                   self.comp_type)
             if nrs is None:
                 return None
             self.nrs_ = {}
@@ -394,6 +408,452 @@ class CompyData(PdfReportMixin):
                 logging.warning("Tried setting " + change_type + " (" + str(is_checked) + ") to athlete with id '" + athlete_id + "' but this id could not be found")
             return 1
 
+    #
+    # ---- AIDA International API integration (read only) ----
+    #
+    # The API key belongs to the competition (AIDA generates a new key per
+    # event), so both settings live in the competition table and travel with
+    # the saved competition. All network I/O happens before any database
+    # write and the whole sync is applied in a single transaction, so a
+    # failed or malformed fetch never leaves partial state behind (there is
+    # no AIDA test environment - the excel workflow stays available as the
+    # fallback at all times). The sync never deletes local data and never
+    # touches locally entered results or OTs.
+    #
+
+    @property
+    def aida_event_id(self):
+        return self.aida_event_id_
+
+    @property
+    def has_aida_api_key(self):
+        return bool(self.aida_api_key_)
+
+    def getAidaStatus(self, data):
+        data["aida_event_id"] = self.aida_event_id_
+        data["aida_has_key"] = self.has_aida_api_key
+
+    def setAidaSettings(self, event_id, api_key):
+        """Store the AIDA event id and API key for this competition.
+
+        An empty api_key keeps the already stored key, so the event id can
+        be changed without re-entering the key (the frontend never learns
+        the stored key, it only knows whether one exists).
+        """
+        if self.id_ is None:
+            return 1, {"error_msg": "No competition loaded"}
+        if event_id is None or str(event_id).strip() == "":
+            self.aida_event_id_ = None
+        else:
+            try:
+                self.aida_event_id_ = int(str(event_id).strip())
+            except (TypeError, ValueError):
+                return 1, {"error_msg": "The AIDA event id must be a number"}
+        if api_key is not None and str(api_key).strip() != "":
+            self.aida_api_key_ = str(api_key).strip()
+        self.save()
+        data = {}
+        self.getAidaStatus(data)
+        return 0, data
+
+    def aidaClient(self):
+        return AidaApiClient(self.aida_api_key_)
+
+    def checkAidaConfigured(self):
+        if self.id_ is None:
+            return {"error_msg": "No competition loaded"}
+        if self.aida_event_id_ is None or not self.has_aida_api_key:
+            return {"error_msg": "Set the AIDA event id and API key first"}
+        return None
+
+    def testAidaConnection(self, client=None):
+        """Validate key, scope, event binding and connectivity in one call.
+
+        Uses the cheapest read endpoint (list of days) and returns the event
+        name and days so the admin can verify the key belongs to the right
+        event days before the competition.
+        """
+        error = self.checkAidaConfigured()
+        if error is not None:
+            return 1, error
+        try:
+            client = client if client is not None else self.aidaClient()
+            payload = client.getDays(self.aida_event_id_)
+        except AidaApiError as e:
+            return 1, {"error_msg": str(e)}
+        days = [str(d.get("date"))[:10] for d in payload["days"]]
+        return 0, {"event_name": payload.get("eventName", "unknown"),
+                   "days": days}
+
+    def syncFromAida(self, client=None):
+        """Read-only sync of this competition from the AIDA API.
+
+        Pulls days, registrations and start lists, then applies everything
+        as one atomic upsert. Athletes are matched by their AIDA UUID,
+        starts by their AIDA start id (falling back to athlete+discipline+
+        day). Local-only athletes and starts are reported but never
+        deleted; locally entered OTs, PBs, clubs and results are preserved.
+        Returns (0, report) on success and (1, {"error_msg": ...}) if
+        anything failed - in the failure case the database is unchanged.
+        """
+        error = self.checkAidaConfigured()
+        if error is not None:
+            return 1, error
+
+        # 1) fetch and validate everything before touching the database
+        try:
+            client = client if client is not None else self.aidaClient()
+            days_payload = client.getDays(self.aida_event_id_)
+            prereg_payload = client.getPreregistrations(self.aida_event_id_)
+            start_lists = []
+            for day in days_payload["days"]:
+                if day.get("isRestDay"):
+                    continue
+                start_lists.append(
+                    (day, client.getStartList(self.aida_event_id_, day["id"])))
+        except AidaApiError as e:
+            return 1, {"error_msg": str(e)}
+
+        report = {"athletes_added": 0, "athletes_updated": 0,
+                  "starts_added": 0, "starts_updated": 0,
+                  "days_synced": 0, "pbs_filled": 0,
+                  "warnings": [], "only_local": []}
+        athletes_in = self.normalizeAidaAthletes(
+            prereg_payload["preregistrations"], report["warnings"])
+        if len(athletes_in) == 0:
+            return 1, {"error_msg": "AIDA returned no valid registrations; "
+                                    "nothing was changed"}
+        pbs = self.fetchAidaPbs(client, athletes_in, report["warnings"])
+
+        # 2) apply atomically; any error rolls the whole sync back
+        try:
+            with self.db_.transaction():
+                self.applyAidaSync(days_payload, athletes_in, start_lists,
+                                   report)
+                self.applyAidaPbs(pbs, report)
+        except sqlite3.Error as e:
+            logging.error("AIDA sync failed, rolled back: %s", e)
+            return 1, {"error_msg": "Database error during sync; "
+                                    "no changes were applied"}
+        return 0, report
+
+    def normalizeAidaAthletes(self, entries, warnings):
+        """Validate the registration list into Compy's athlete fields.
+
+        Invalid entries are skipped with a warning instead of failing the
+        whole sync. Entries without an athleteId cannot be matched reliably
+        and are skipped as well.
+        """
+        athletes_in = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            aida_id = str(entry.get("athleteId") or "").strip()
+            first_name = str(entry.get("firstName") or "").strip()
+            last_name = str(entry.get("lastName") or "").strip()
+            label = (first_name + " " + last_name).strip() or aida_id or "?"
+            if aida_id == "" or first_name == "" or last_name == "":
+                warnings.append("Skipped registration with incomplete "
+                                "identity: " + label)
+                continue
+            gender = str(entry.get("diverGender") or "").strip().upper()[:1]
+            if gender not in ("M", "F"):
+                warnings.append("Skipped " + label + ": unknown gender")
+                continue
+            country = self.aidaCountryToIoc(entry)
+            if country is None:
+                warnings.append("Skipped " + label + ": unknown nationality")
+                continue
+            status = entry.get("status") or {}
+            documents = entry.get("documents") or {}
+            athletes_in.append({
+                "aida_id": aida_id,
+                "first_name": first_name,
+                "last_name": last_name,
+                "gender": gender,
+                "country": country,
+                "registered": bool(status.get("code") == "APP"),
+                "paid": bool(documents.get("paymentReceipt")),
+                "medical_checked": bool(documents.get("medicalCertificate")),
+            })
+        return athletes_in
+
+    # class level cache: building a CountryConverter is expensive
+    country_converter_ = None
+
+    @classmethod
+    def countryConverter(cls):
+        if cls.country_converter_ is None:
+            cls.country_converter_ = country_converter.CountryConverter()
+        return cls.country_converter_
+
+    def aidaCountryToIoc(self, entry):
+        """AIDA sends ISO alpha-3 / country names; Compy stores IOC codes."""
+        cc = self.countryConverter()
+        for value in (entry.get("diverNationalityAbrvAlpha3"),
+                      entry.get("diverNationality")):
+            if not value:
+                continue
+            ioc = cc.convert(names=str(value), to="IOC", not_found=None)
+            if isinstance(ioc, str) and self.cleanCountry(ioc) is not None:
+                return ioc
+        # last resort: the alpha-3 code itself if it looks like an IOC code
+        return self.cleanCountry(entry.get("diverNationalityAbrvAlpha3"))
+
+    def applyAidaSync(self, days_payload, athletes_in, start_lists, report):
+        # -- athletes: upsert by AIDA UUID, preserve locally stored club --
+        athlete_ids = {}
+        for a in athletes_in:
+            existing = self.db_.execute(
+                "SELECT id, club FROM athlete WHERE aida_id=?", a["aida_id"])
+            club = existing[0][1] if existing is not None else ""
+            in_comp = None if existing is None else self.db_.execute(
+                '''SELECT id FROM competition_athlete
+                   WHERE athlete_id=? AND competition_id=?''',
+                (existing[0][0], self.id_))
+            ath = athlete.Athlete.fromArgs(a["aida_id"], a["first_name"],
+                                           a["last_name"], a["gender"],
+                                           a["country"], club, self.db_)
+            ath.associateWithComp(self.id_)
+            athlete_ids[a["aida_id"]] = ath.id
+            report["athletes_added" if in_comp is None
+                   else "athletes_updated"] += 1
+            self.db_.execute(
+                '''UPDATE competition_athlete
+                   SET registered=?, paid=?, medical_checked=?
+                   WHERE competition_id=? AND athlete_id=?''',
+                (a["registered"], a["paid"], a["medical_checked"],
+                 self.id_, ath.id))
+
+        # -- athletes that exist locally but not on AIDA: report, never delete --
+        api_ids = set(athlete_ids.keys())
+        local = self.db_.execute(
+            '''SELECT a.aida_id, a.first_name, a.last_name FROM athlete a
+               INNER JOIN competition_athlete ca ON ca.athlete_id == a.id
+               WHERE ca.competition_id == ?''', self.id_)
+        if local is not None:
+            report["only_local"] = [l[1] + " " + l[2] for l in local
+                                    if l[0] not in api_ids]
+
+        # -- competition dates from the day list --
+        dates = sorted(set(self.cleanDay(str(d.get("date"))[:10], True)
+                           for d in days_payload["days"]) - {INVALID_DATE})
+        if len(dates) > 0:
+            self.start_date_ = dates[0]
+            self.end_date_ = dates[-1]
+
+        # -- blocks and starts per day --
+        for day, payload in start_lists:
+            day_date = self.cleanDay(str(day.get("date"))[:10], True)
+            if day_date == INVALID_DATE:
+                report["warnings"].append("Skipped day with invalid date: "
+                                          + str(day.get("date")))
+                continue
+            report["days_synced"] += 1
+            day_db = day_date.replace('-', '')
+            blocks = {}
+            for entry in payload["startList"]:
+                self.applyAidaStart(entry, day, day_db, blocks, report)
+        self.save()
+
+    def applyAidaStart(self, entry, day, day_db, blocks, report):
+        if not isinstance(entry, dict):
+            return
+        dis = str(entry.get("disciplineAbrv") or "").strip().upper()
+        label = (str(entry.get("diverFirstName") or "") + " "
+                 + str(entry.get("diverLastName") or "")).strip()
+        if dis not in DISCIPLINES:
+            report["warnings"].append("Skipped start of " + label
+                                      + ": unknown discipline '" + dis + "'")
+            return
+        self.disciplines_ |= self.disciplineListToInt([dis])
+
+        # block per (day, discipline), like the excel import; keep existing
+        # blocks so start list edits survive a re-sync
+        if dis not in blocks:
+            dis_int = self.disciplineListToInt([dis])
+            existing_block = self.db_.execute(
+                '''SELECT id FROM block
+                   WHERE competition_id=? AND day=? AND disciplines=?''',
+                (self.id_, day_db, dis_int))
+            if existing_block is not None:
+                blocks[dis] = existing_block[0][0]
+                self.db_.execute("UPDATE block SET aida_day_id=? WHERE id=?",
+                                 (day.get("id"), blocks[dis]))
+            else:
+                blocks[dis] = self.db_.insert(
+                    '''INSERT INTO block
+                       (competition_id, day, disciplines, aida_day_id)
+                       VALUES (?, ?, ?, ?)''',
+                    (self.id_, day_db, dis_int, day.get("id")))
+
+        # the start list carries no athlete UUID, so match by name+gender
+        gender = str(entry.get("diverGender") or "").strip().upper()[:1]
+        ca_id = self.db_.execute(
+            '''SELECT ca.id FROM competition_athlete ca
+               INNER JOIN athlete a ON ca.athlete_id == a.id
+               WHERE a.first_name=? AND a.last_name=? AND a.gender=?
+               AND ca.competition_id=?''',
+            (str(entry.get("diverFirstName") or "").strip(),
+             str(entry.get("diverLastName") or "").strip(),
+             gender, self.id_))
+        if ca_id is None:
+            report["warnings"].append("Skipped start of " + label
+                                      + ": not in the registration list")
+            return
+        ca_id = ca_id[0][0]
+
+        ap = self.aidaPerformance(entry.get("announcedPerformance"),
+                                  entry.get("performanceMeasurement"), dis)
+        lane = None
+        try:
+            if entry.get("lane") is not None:
+                lane = max(1, int(entry["lane"]))
+        except (TypeError, ValueError):
+            lane = None
+        aida_start_id = entry.get("startId")
+
+        # match an existing start by AIDA start id first, then by
+        # athlete+discipline+day (first sync of an excel-seeded comp)
+        existing = None
+        if aida_start_id is not None:
+            existing = self.db_.execute(
+                '''SELECT s.id FROM start s
+                   INNER JOIN competition_athlete ca
+                   ON ca.id == s.competition_athlete_id
+                   WHERE s.aida_start_id=? AND ca.competition_id=?''',
+                (aida_start_id, self.id_))
+        if existing is None:
+            existing = self.db_.execute(
+                '''SELECT s.id FROM start s
+                   INNER JOIN block b ON b.id == s.block
+                   WHERE s.competition_athlete_id=? AND s.discipline=?
+                   AND b.day=?''',
+                (ca_id, dis, day_db))
+        if existing is not None:
+            # update announcement data only; OT, PB and results stay local
+            self.db_.execute(
+                '''UPDATE start SET AP=?, aida_start_id=?,
+                   lane=COALESCE(?, lane) WHERE id=?''',
+                (ap, aida_start_id, lane, existing[0][0]))
+            report["starts_updated"] += 1
+        else:
+            self.db_.execute(
+                '''INSERT INTO start
+                   (competition_athlete_id, discipline, lane, block, OT, AP,
+                    aida_start_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (ca_id, dis, lane if lane is not None else 1, blocks[dis],
+                 u.convTime(INVALID_TIME), ap, aida_start_id))
+            report["starts_added"] += 1
+
+    def fetchAidaPbs(self, client, athletes_in, warnings):
+        """Fetch personal bests per athlete before the sync transaction.
+
+        A failed profile fetch only skips that athlete (with a warning), the
+        sync itself proceeds. Athletes that are already in the competition
+        with no empty PB left are skipped entirely, so repeated syncs do not
+        query one profile per athlete again. Returns
+        {aida_id: {discipline: pb}}.
+        """
+        pbs = {}
+        consecutive_failures = 0
+        for a in athletes_in:
+            if not self.needsAidaPbFetch(a["aida_id"]):
+                continue
+            try:
+                payload = client.getAthleteProfile(self.aida_event_id_,
+                                                   a["aida_id"])
+            except AidaApiError as e:
+                consecutive_failures += 1
+                warnings.append("No AIDA profile for " + a["first_name"] + " "
+                                + a["last_name"] + ": " + str(e))
+                if consecutive_failures >= 3:
+                    # the endpoint is probably unavailable for this event
+                    # (as of 2026-08 it 404s for every athlete while the
+                    # event has no start lists): collapse the per-athlete
+                    # warnings into one and stop probing
+                    del warnings[-consecutive_failures:]
+                    warnings.append(
+                        "Could not fetch athlete profiles from AIDA ("
+                        + str(consecutive_failures) + " attempts in a row "
+                        "failed, last error: " + str(e) + "); personal "
+                        "bests were not pre-filled")
+                    break
+                continue
+            consecutive_failures = 0
+            per_dis = {}
+            for entry in payload["profile"]["personalBests"]:
+                if not isinstance(entry, dict):
+                    continue
+                dis = str(entry.get("disciplineAbrv") or "").strip().upper()
+                pb = self.aidaPerformance(entry.get("reportedPerformance"),
+                                          entry.get("performanceMeasurement"),
+                                          dis)
+                if dis in DISCIPLINES and pb is not None:
+                    per_dis[dis] = pb
+            if len(per_dis) > 0:
+                pbs[a["aida_id"]] = per_dis
+        return pbs
+
+    def needsAidaPbFetch(self, aida_id):
+        """A profile is only worth fetching for athletes that are new to
+        the competition or still have a start without a PB. A start added
+        by the current sync gets its PB on the next sync."""
+        in_comp = self.db_.execute(
+            '''SELECT ca.id FROM competition_athlete ca
+               INNER JOIN athlete a ON a.id == ca.athlete_id
+               WHERE a.aida_id=? AND ca.competition_id=?''',
+            (aida_id, self.id_))
+        if in_comp is None:
+            return True
+        empty = self.db_.execute(
+            '''SELECT s.id FROM start s WHERE s.competition_athlete_id=?
+               AND (s.PB IS NULL OR s.PB='')''', in_comp[0][0])
+        return empty is not None
+
+    def applyAidaPbs(self, pbs, report):
+        """Fill start PBs that are still empty; local PBs are never touched."""
+        for aida_id, per_dis in pbs.items():
+            for dis, pb in per_dis.items():
+                empty = self.db_.execute(
+                    '''SELECT s.id FROM start s
+                       INNER JOIN competition_athlete ca
+                       ON ca.id == s.competition_athlete_id
+                       INNER JOIN athlete a ON a.id == ca.athlete_id
+                       WHERE a.aida_id=? AND ca.competition_id=?
+                       AND s.discipline=? AND (s.PB IS NULL OR s.PB='')''',
+                    (aida_id, self.id_, dis))
+                if empty is None:
+                    continue
+                for row in empty:
+                    self.db_.execute("UPDATE start SET PB=? WHERE id=?",
+                                     (pb, row[0]))
+                    report["pbs_filled"] += 1
+
+    def aidaPerformance(self, value, measurement, discipline):
+        """AIDA performance to Compy units (m, or s for STA).
+
+        STA values arrive either as a number or, from the records
+        endpoint, as "m:ss" (the live API sends e.g. "10:12" with
+        performanceMeasurement "time").
+        """
+        if value is None or value == "":
+            return None
+        if ":" in str(value):
+            parts = str(value).split(":")
+            try:
+                return float(int(parts[0])) * 60. + float(int(parts[1]))
+            except (IndexError, ValueError):
+                return None
+        try:
+            perf = float(value)
+        except (TypeError, ValueError):
+            return None
+        if discipline == "STA" and "min" in str(measurement or "").lower():
+            perf *= 60.
+        return perf
+
     def getSavedCompetitions(self):
         saved_comp_info = []
         comps = self.db_.execute("SELECT id, name, save_date FROM competition")
@@ -436,10 +896,12 @@ class CompyData(PdfReportMixin):
         self.db_.execute('''UPDATE competition
                             SET name=?, save_date=?, version=?, lane_style=?, comp_type=?, comp_file=?,
                             start_date=?, end_date=?, sponsor_img=?, selected_country=?,
-                            special_ranking_name=?, disciplines=? WHERE id=?''',
+                            special_ranking_name=?, disciplines=?, aida_event_id=?,
+                            aida_api_key=? WHERE id=?''',
                          (self.name_, datetime.now().isoformat(), self.version, self.lane_style, self.comp_type,
                           self.comp_file, self.start_date_, self.end_date_, sponsor_img_data,
                           self.selected_country_, self.special_ranking_name, self.disciplines_,
+                          self.aida_event_id_, self.aida_api_key_,
                           self.id_))
         logging.debug("Saved competition: " + self.name)
 
@@ -447,7 +909,8 @@ class CompyData(PdfReportMixin):
         #TODO on load find self.id_ if not, reset to None
         load_data = self.db_.execute('''SELECT name, version, lane_style, comp_type, comp_file,
                                         start_date, end_date, sponsor_img, selected_country,
-                                        special_ranking_name, publish_results
+                                        special_ranking_name, publish_results,
+                                        aida_event_id, aida_api_key
                                         FROM competition WHERE id=?''',
                                      comp_id)
         if load_data is None:
@@ -468,6 +931,8 @@ class CompyData(PdfReportMixin):
             self.selected_country_ = comp_data[8]
             self.special_ranking_name_ = comp_data[9]
             self.publish_results_ = comp_data[10]
+            self.aida_event_id_ = comp_data[11]
+            self.aida_api_key_ = comp_data[12]
             dis = self.db_.execute('SELECT disciplines FROM block WHERE competition_id==?', (self.id_))
             self.disciplines_ = 0
             if dis is not None:
@@ -739,6 +1204,25 @@ class CompyData(PdfReportMixin):
         else:
             return ""
 
+    def getRecord(self, country, cls, gender, discipline, tier):
+        """Record value for one tier ('NR', 'CR' or 'WR'), '' if unknown.
+
+        CR and WR are stored per country (the AIDA API resolves continent
+        membership server-side), so all tiers share the same lookup key.
+        """
+        if tier == "NR":
+            return self.getNr(country, cls, gender, discipline)
+        if self.tiered_records_ is None:
+            rows = self.db_.execute(
+                '''SELECT country, class, gender, discipline, tier, value
+                   FROM records WHERE federation=? AND tier != 'NR' ''',
+                self.comp_type)
+            self.tiered_records_ = {}
+            for r in (rows or []):
+                self.tiered_records_[(r[0], r[1], r[2], r[3], r[4])] = r[5]
+        return self.tiered_records_.get((country, cls, gender, discipline,
+                                         tier), "")
+
     def getResult(self, discipline, gender, country, with_empty=True):
         if self.comp_file is None:
             return -1, None
@@ -829,8 +1313,13 @@ class CompyData(PdfReportMixin):
             def check_nr(country, gender, rp, card):
                 if rp is None or card != "WHITE":
                     return ""
-                this_nr = self.getNr(country, "", gender, discipline)
-                return ", <b>NR</b>" if this_nr != "" and this_nr < rp else ""
+                # flag only the highest tier the performance beats
+                for tier in ("WR", "CR", "NR"):
+                    record = self.getRecord(country, "", gender, discipline,
+                                            tier)
+                    if record != "" and record < rp:
+                        return ", <b>" + tier + "</b>"
+                return ""
 
             if self.comp_type == "aida":
                 result = [{'Rank': i,
@@ -1212,22 +1701,96 @@ class CompyData(PdfReportMixin):
         else:
             return 0.
 
-    def updateNationalRecords(self):
+    def updateNationalRecords(self, client=None):
+        """Refresh the AIDA records used for the record flags.
+
+        With an API key configured the records come from the AIDA API (all
+        tiers NR/CR/WR, scoped to this competition's countries and
+        disciplines); without one the public records page is scraped as
+        before (NR only, all countries).
+        """
         # Do check if country converter is >= 1.2
         try:
-            self.nrs_ = u.getNationalRecordsAida()
+            if self.has_aida_api_key:
+                records, countries = self.fetchAidaRecords(client)
+            else:
+                records = [(key.country, key.cls, key.gender, key.discipline,
+                            "NR", value)
+                           for key, value in u.getNationalRecordsAida().items()]
+                countries = None  # the scraper covers all countries
             with self.db_.transaction():
-                self.db_.execute("DELETE FROM records WHERE federation='aida'")
-                for nr_key, nr_val in self.nrs_.items():
+                if countries is None:
+                    self.db_.execute(
+                        "DELETE FROM records WHERE federation='aida'")
+                else:
+                    # the records table is shared between competitions, so
+                    # only replace the rows of the countries just queried
+                    for country in countries:
+                        self.db_.execute('''DELETE FROM records
+                                         WHERE federation='aida' AND country=?''',
+                                         country)
+                for country, cls, gender, discipline, tier, value in records:
                     self.db_.execute('''INSERT INTO records
-                                     ('federation', 'country', 'class', 'gender', 'discipline', 'value')
-                                     VALUES (?, ?, ?, ?, ?, ?)''',
-                                     (nr_key.federation, nr_key.country, nr_key.cls, nr_key.gender,
-                                     nr_key.discipline, nr_val))
+                                     ('federation', 'country', 'class', 'gender',
+                                      'discipline', 'value', 'tier')
+                                     VALUES ('aida', ?, ?, ?, ?, ?, ?)''',
+                                     (country, cls, gender, discipline, value,
+                                      tier))
+            self.nrs_ = None  # reload lazily from the updated table
+            self.tiered_records_ = None
+        except AidaApiError as e:
+            # the client's messages are safe to show to the admin
+            return 1, {"error_msg": str(e)}
         except Exception as e:
-            logging.debug("Error", e)
+            logging.warning("Updating national records failed: %s", e)
             return 1, None
         return 0, None
+
+    def fetchAidaRecords(self, client=None):
+        """Fetch NR/CR/WR from the AIDA API for this competition's field.
+
+        Queries one (country, discipline, gender) combination at a time,
+        limited to the countries of the registered athletes and the
+        competition's disciplines. Returns (rows for the records table,
+        IOC codes of the countries that were queried).
+        """
+        client = client if client is not None else self.aidaClient()
+        rows = self.db_.execute(
+            '''SELECT DISTINCT a.country FROM athlete a
+               INNER JOIN competition_athlete ca ON ca.athlete_id == a.id
+               WHERE ca.competition_id == ?''', self.id_)
+        cc = self.countryConverter()
+        records = []
+        queried = []
+        for row in (rows or []):
+            ioc = row[0]
+            # the records endpoint wants 2-letter codes, Compy stores IOC
+            abrv = cc.convert(names=str(ioc), src="IOC", to="ISO2",
+                              not_found=None)
+            if not isinstance(abrv, str) or len(abrv) != 2:
+                logging.warning("No ISO2 code for country %s, "
+                                "skipping its records", ioc)
+                continue
+            queried.append(ioc)
+            for discipline in self.disciplines:
+                for gender in ("M", "F"):
+                    payload = client.getRecords(abrv, discipline, gender)
+                    for key, tier in (("nr", "NR"), ("cr", "CR"),
+                                      ("wr", "WR")):
+                        # assumption (unverified against the live API): the
+                        # first list entry is the current record
+                        entries = payload[key]
+                        if len(entries) == 0 \
+                           or not isinstance(entries[0], dict):
+                            continue
+                        value = self.aidaPerformance(
+                            entries[0].get("reportedPerformance"),
+                            entries[0].get("performanceMeasurement"),
+                            discipline)
+                        if value is not None:
+                            records.append((ioc, "", gender, discipline,
+                                            tier, value))
+        return records, queried
 
     def isJudgeInCompetition(self, judge_id):
         db_out = self.db_.execute(

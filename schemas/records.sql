@@ -7,5 +7,6 @@ CREATE TABLE records (
   class TEXT NOT NULL,
   gender TEXT NOT NULL,
   discipline TEXT NOT NULL,
-  value REAL NOT NULL
+  value REAL NOT NULL,
+  tier TEXT NOT NULL DEFAULT 'NR'
 );

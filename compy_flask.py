@@ -237,6 +237,21 @@ class CompyFlask:
         def nationalRecords():
             return self.nationalRecords()
 
+        @app.route('/aida/settings', methods=['POST'])
+        @admin_required
+        def aidaSettings():
+            return self.aidaSettings()
+
+        @app.route('/aida/test', methods=['POST'])
+        @admin_required
+        def aidaTest():
+            return self.aidaTest()
+
+        @app.route('/aida/sync', methods=['POST'])
+        @admin_required
+        def aidaSync():
+            return self.aidaSync()
+
         @app.route('/judge/<int:comp_id>/<int:judge_id>', methods=['GET'])
         def judgeComp(comp_id, judge_id):
             return self.getJudgeComp(comp_id, judge_id)
@@ -436,6 +451,7 @@ class CompyFlask:
         data["comp_type"] = comp.comp_type
         data["selected_country"] = comp.selected_country
         data["publish_results"] = comp.publish_results
+        comp.getAidaStatus(data)
         data["status"] = "success"
         data["status_msg"] = "Loaded competition with name " + comp_name
         logging.debug("Loaded comp " + comp_name + " with " + str(comp.number_of_athletes) + " athletes")
@@ -859,7 +875,79 @@ class CompyFlask:
         return data, 200
 
     def nationalRecords(self):
-        return self.handleRequest(request, None, CompyData.updateNationalRecords)
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
+        ret, content = comp.updateNationalRecords()
+        if ret != 0:
+            # like the /aida routes: 200 with an admin-readable message
+            msg = (content or {}).get("error_msg",
+                                      "Updating the records failed")
+            return {"status": "error", "status_msg": msg}, 200
+        return {"status": "success",
+                "status_msg": "National records updated"}, 200
+
+    def aidaSettings(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
+        content = request.json
+        if "aida_event_id" not in content:
+            logging.debug("Post request to aida/settings without aida_event_id")
+            return {}, 400
+        ret, data = comp.setAidaSettings(content.get("aida_event_id"),
+                                         content.get("aida_api_key"))
+        if ret == 0:
+            data["status"] = "success"
+            data["status_msg"] = "Saved AIDA API settings"
+        else:
+            data["status"] = "error"
+            data["status_msg"] = data.pop("error_msg")
+        return data, 200
+
+    def aidaTest(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
+        ret, data = comp.testAidaConnection()
+        if ret == 0:
+            data["status"] = "success"
+            data["status_msg"] = ("Connection OK: '" + data["event_name"]
+                                  + "' with " + str(len(data["days"]))
+                                  + " day(s): " + ", ".join(data["days"]))
+        else:
+            data["status"] = "error"
+            data["status_msg"] = data.pop("error_msg")
+        return data, 200
+
+    def aidaSync(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
+        ret, data = comp.syncFromAida()
+        if ret != 0:
+            return {"status": "error",
+                    "status_msg": data["error_msg"]}, 200
+        msg = ("Sync from AIDA complete: "
+               + str(data["athletes_added"]) + " athlete(s) added, "
+               + str(data["athletes_updated"]) + " updated; "
+               + str(data["starts_added"]) + " start(s) added, "
+               + str(data["starts_updated"]) + " updated; "
+               + str(data["days_synced"]) + " day(s)")
+        if len(data["only_local"]) > 0:
+            msg += ("<br>Only in Compy (kept, not on AIDA): "
+                    + ", ".join(data["only_local"]))
+        for warning in data["warnings"]:
+            msg += "<br>Warning: " + warning
+        data["status"] = "success"
+        data["status_msg"] = msg
+        # the sync changes athletes, blocks and starts: refresh everything
+        # the admin page displays, like an excel upload does
+        comp.getAthleteData(data)
+        comp.getJudgeData(data)
+        self.setSubmenuData(comp, data)
+        comp.setOTs(data)
+        return data, 200
 
     def getJudgeComp(self, comp_id, judge_id, return_json = False):
         judge_hash = request.args.get('hash')

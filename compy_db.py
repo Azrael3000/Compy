@@ -92,6 +92,33 @@ class CompyDB:
         if not flask.g.get("db_in_transaction", False):
             self.db.commit()
 
+    # columns added after the schema files were first released; migrate_db
+    # adds them to existing databases (init_db creates them from the schemas)
+    SCHEMA_MIGRATIONS = {
+        "competition": {"aida_event_id": "INTEGER", "aida_api_key": "TEXT"},
+        "block": {"aida_day_id": "INTEGER"},
+        "start": {"aida_start_id": "INTEGER"},
+        "records": {"tier": "TEXT NOT NULL DEFAULT 'NR'"},
+    }
+
+    def migrate_db(self):
+        """Add columns that are missing from an existing database.
+
+        Runs at every server start and is idempotent, so databases created
+        by older versions keep working without a destructive --init_db.
+        """
+        with self.app_.app_context():
+            for table, columns in self.SCHEMA_MIGRATIONS.items():
+                rows = self.execute("PRAGMA table_info(" + table + ")")
+                if rows is None:
+                    continue  # table does not exist yet (fresh db before init_db)
+                existing = [row[1] for row in rows]
+                for column, decl in columns.items():
+                    if column not in existing:
+                        logging.info("Migrating database: adding %s.%s", table, column)
+                        self.execute("ALTER TABLE " + table + " ADD COLUMN "
+                                     + column + " " + decl)
+
     def init_db(self):
         # resolve the schemas relative to the app root so that init_db also
         # works when the process was not started from the repository root

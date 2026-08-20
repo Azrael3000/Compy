@@ -349,12 +349,19 @@ $(document).ready(function() {
     $('#refresh_nrs').click(function() {
         showStatus("Update of national records started.");
         $('#refresh_nrs').prop("disabled", true);
-        let params = {comp_id: null};
+        // the comp_id selects the records source: AIDA API if this
+        // competition has an API key, the records web page otherwise
+        let params = withCompId();
         $.ajax({
             type: 'GET',
             url: '/national_records?' + $.param(params),
             success: function(data) {
-                showStatus("Update of national records completed.");
+                if (data.status === "error") {
+                    showStatus("Update of national records failed: "
+                               + data.status_msg);
+                } else {
+                    showStatus("Update of national records completed.");
+                }
             },
             error: function(data) {
                 showStatus("Update of national records failed.");
@@ -362,6 +369,68 @@ $(document).ready(function() {
             complete: function (data) {
                 console.log(data.status_msg);
                 $('#refresh_nrs').prop("disabled", false);
+            }
+        })
+    });
+    $('#aida_save_settings').click(function() {
+        let data = withCompId({
+            aida_event_id: $('#aida_event_id').val(),
+            aida_api_key: $('#aida_api_key').val()
+        });
+        $.ajax({
+            type: "POST",
+            url: "/aida/settings",
+            data: JSON.stringify(data),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data) {
+                console.log(data.status_msg);
+                showAidaStatus(data.status_msg);
+                populateAidaSettings(data);
+            }
+        })
+    });
+    $('#aida_test_button').click(function() {
+        showAidaStatus("Testing connection to AIDA...");
+        $('#aida_test_button').prop("disabled", true);
+        $.ajax({
+            type: "POST",
+            url: "/aida/test",
+            data: JSON.stringify(withCompId()),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data) {
+                console.log(data.status_msg);
+                showAidaStatus(data.status_msg);
+            },
+            complete: function(data) {
+                $('#aida_test_button').prop("disabled", false);
+            }
+        })
+    });
+    $('#aida_sync_button').click(function() {
+        showAidaStatus("Sync from AIDA started...");
+        $('#aida_sync_button').prop("disabled", true);
+        $.ajax({
+            type: "POST",
+            url: "/aida/sync",
+            data: JSON.stringify(withCompId()),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data) {
+                console.log(data.status_msg);
+                showAidaStatus(data.status_msg);
+                if (data.status == "success") {
+                    // the sync changes athletes, blocks and starts;
+                    // refresh the page content like an excel upload does
+                    populateAthletes(data);
+                    populateJudges(data);
+                    setOTs(data);
+                    initSubmenus(data, true);
+                }
+            },
+            complete: function(data) {
+                $('#aida_sync_button').prop("disabled", false);
             }
         })
     });
@@ -1352,6 +1421,25 @@ function showCompList(data) {
     $('#competition_list').html(content);
 }
 
+function showAidaStatus(msg) {
+    let element = document.getElementById('aida_status');
+    element.style.display = "block";
+    element.innerHTML = msg;
+}
+
+// the server only reports whether a key is stored; the key itself never
+// travels back to the browser
+function populateAidaSettings(data) {
+    if ('aida_event_id' in data) {
+        $('#aida_event_id').val(data.aida_event_id == null ? "" : data.aida_event_id);
+    }
+    if ('aida_has_key' in data) {
+        $('#aida_api_key').val("");
+        $('#aida_api_key').attr("placeholder",
+            data.aida_has_key ? "key stored (type to replace)" : "no key stored");
+    }
+}
+
 function blockModify(type, day = "", disciplines = [], block = -1)
 {
     let federation = $("input[name='comp_type']:checked").val();
@@ -2030,6 +2118,7 @@ function loadCompetition(comp_id, testAutoPlayExecute) {
             populateSpecialRanking(data);
             populateAthletes(data);
             populateJudges(data);
+            populateAidaSettings(data);
             initSubmenus(data, true);
             if ('comp_name' in data) {
                 $('#comp_name').val(data.comp_name);

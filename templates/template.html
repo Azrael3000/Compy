@@ -93,6 +93,17 @@
             </div>
         </form>
         <div id="file_upload_status" style="display:none"></div>
+        <div id="aida_integration">
+            <p>AIDA API (read only)</p>
+            <label for="aida_event_id">Event id</label>
+            <input type="number" id="aida_event_id" min="1"/>
+            <label for="aida_api_key">API key</label>
+            <input type="password" id="aida_api_key" autocomplete="off" placeholder="no key stored"/>
+            <button id="aida_save_settings" type="button">Save</button>
+            <button id="aida_test_button" type="button">Test connection</button>
+            <button id="aida_sync_button" type="button">Sync from AIDA</button>
+            <div id="aida_status" style="display:none"></div>
+        </div>
         <label>Choose Lane Style:</label>
         <div id="lane_style_chooser">
             <input type="radio" name="lane_style" value="numeric" id="numeric_radio" checked>
