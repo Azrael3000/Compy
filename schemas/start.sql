@@ -14,5 +14,6 @@ CREATE TABLE start (
   penalty FLOAT,
   remarks TEXT,
   judge_remarks TEXT,
-  dive_time INTEGER DEFAULT 0
+  dive_time INTEGER DEFAULT 0,
+  aida_start_id INTEGER
 );

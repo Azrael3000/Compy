@@ -14,5 +14,7 @@ CREATE TABLE competition (
   selected_country TEXT,
   disciplines INTEGER NOT NULL,
   special_ranking_name TEXT,
-  publish_results INTEGER NOT NULL DEFAULT 0
+  publish_results INTEGER NOT NULL DEFAULT 0,
+  aida_event_id INTEGER,
+  aida_api_key TEXT
 );

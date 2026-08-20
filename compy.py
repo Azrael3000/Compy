@@ -66,6 +66,9 @@ def compy(start_flask, init_db = False):
     if init_db:
         db.init_db()
 
+    # bring databases created by older versions up to date (idempotent)
+    db.migrate_db()
+
     # make sure a default competition exists on a fresh database;
     # per-request CompyData objects are created inside CompyFlask
     with app.app_context():

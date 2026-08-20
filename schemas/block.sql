@@ -4,5 +4,6 @@ CREATE TABLE block (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   competition_id INTEGER NOT NULL,
   day TEXT NOT NULL,
-  disciplines INTEGER NOT NULL
+  disciplines INTEGER NOT NULL,
+  aida_day_id INTEGER
 );
