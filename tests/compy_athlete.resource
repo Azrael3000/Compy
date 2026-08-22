@@ -8,7 +8,7 @@ ${TOTAL_ATHLETES}   id=total_athletes
 
 *** Keywords ***
 Goto Athletes
-    Click   id=athletes_button >> a
+    Click   id=athletes_button
     Get Element States  ${ATHLETES_TABLE}    contains    visible
 
 Get Athlete Country

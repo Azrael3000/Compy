@@ -16,7 +16,8 @@ import compy_aida_api
 import compy_data
 import compy_utilities as u
 from compy_constants import DISCIPLINES
-from compy_testing import CompyDataTestCase, CompyServerTestCase
+from compy_testing import (CompyDataTestCase, CompyServerTestCase,
+                           SubmenuPayloadAssertions)
 
 EVENT_ID = 4885
 API_KEY = "test-key-not-a-real-one"
@@ -883,19 +884,25 @@ class AidaRecordsTest(CompyDataTestCase):
             by_name = {r["Name"]: r for r in content["results"]}
             return by_name["Anna Berger"]["Remarks"]
 
+        # the flag is plain text (", NR" etc.); the react frontend escapes
+        # any markup, so the server no longer embeds html in the data
         for rp, flag in ((55, "NR"), (65, "CR"), (74, "WR")):
             self.assertEqual(
                 data.updateResult(s_id, rp, 0, "WHITE", "", "")[0], 0)
             remarks = annaRemarks()
-            self.assertIn("<b>" + flag + "</b>", remarks)
+            self.assertIn(", " + flag, remarks)
             for other in {"NR", "CR", "WR"} - {flag}:
-                self.assertNotIn("<b>" + other + "</b>", remarks)
+                self.assertNotIn(other, remarks)
 
-        # equalling a record or a non-white card is not flagged
-        for rp, card in ((50, "WHITE"), (74, "YELLOW")):
+        # equalling a record counts as a record (upstream 7b6955c: <=)
+        self.assertEqual(data.updateResult(s_id, 50, 0, "WHITE", "", "")[0], 0)
+        self.assertIn(", NR", annaRemarks())
+        # a non-white card or a performance below every record is not flagged
+        for rp, card in ((74, "YELLOW"), (49, "WHITE")):
             self.assertEqual(
                 data.updateResult(s_id, rp, 0, card, "", "")[0], 0)
-            self.assertNotIn("<b>", annaRemarks())
+            for flag in ("NR", "CR", "WR"):
+                self.assertNotIn(flag, annaRemarks())
 
     def test_api_refresh_keeps_other_countries_records(self):
         data = self.newComp("Aida records keep comp")
@@ -948,7 +955,7 @@ class AidaRecordsTest(CompyDataTestCase):
         self.assertEqual(data.getNr("AUT", "", "F", "CWT"), 48.0)
 
 
-class AidaEndpointTest(CompyServerTestCase):
+class AidaEndpointTest(SubmenuPayloadAssertions, CompyServerTestCase):
     """The new admin endpoints: guarded by the admin session, settings
     round-trip, and readable errors on an unconfigured competition. No test
     talks to the real AIDA server."""
@@ -1039,6 +1046,20 @@ class AidaEndpointTest(CompyServerTestCase):
         self.assertEqual(data["status"], "error")
         self.assertIn("rate limit", data["status_msg"])
 
+    def test_sync_returns_every_submenu_dataset(self):
+        """A sync replaces athletes, days and start lists wholesale, and the
+        admin page applies its response as a reset - so it has to carry the
+        whole submenu dataset back or the menus it omits are emptied."""
+        comp_id = self.newKeyedComp("Aida sync payload comp")
+
+        with unittest.mock.patch.object(compy_data.CompyData, "aidaClient",
+                                        return_value=defaultFakeClient()):
+            reply = self.adminSession().post(self.base_url + "/aida/sync",
+                                             json={"comp_id": comp_id})
+
+        self.assertEqual(reply.status_code, 200)
+        self.assertCarriesSubmenuData(reply.json())
+
     def test_sync_on_unconfigured_comp_reports_error(self):
         with self.app.app_context():
             data = compy_data.CompyData(self.db, self.app)
@@ -1081,7 +1102,11 @@ class AidaUploadEndpointTest(CompyServerTestCase):
             self.assertEqual(data["status"], "success")
             self.assertIn("Preview (nothing was sent): 1 result(s)", data["status_msg"])
             self.assertIn("2 without result yet", data["status_msg"])
-            self.assertIn("<td>4:10</td>", data["status_msg"])
+            # the table itself is rendered by the frontend from the rows
+            self.assertNotIn("<", data["status_msg"])
+            self.assertEqual(len(data["results"]), 1)
+            self.assertEqual(data["results"][0]["rp_display"], "4:10")
+            self.assertEqual(data["results"][0]["card"], "WHITE")
             self.assertFalse(hasattr(self.client, "posted"))
 
             reply = session.post(self.base_url + "/aida/upload_results",
@@ -1089,7 +1114,7 @@ class AidaUploadEndpointTest(CompyServerTestCase):
             data = reply.json()
             self.assertEqual(data["status"], "success")
             self.assertIn("1 result(s) uploaded", data["status_msg"])
-            self.assertIn("<td>42</td>", data["status_msg"])
+            self.assertEqual(data["results"][0]["points"], "42")
             self.assertEqual(len(self.client.posted), 1)
 
     def test_unconfigured_competition_reports_error(self):
