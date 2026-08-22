@@ -53,7 +53,7 @@ class TestPublicResultView(compy_testing.CompyServerTestCase):
 
     def publish(self, published):
         response = self.adminSession().request(
-            "UPDATE", self.base_url + "/publish_results",
+            "PATCH", self.base_url + "/publish_results",
             json={"publish_results": published, "comp_id": self.comp_id})
         self.assertEqual(response.status_code, 200)
 
@@ -68,28 +68,32 @@ class TestPublicResultView(compy_testing.CompyServerTestCase):
 
     def testResultsPageRequiresPublishing(self):
         self.publish(False)
-        response = requests.get(self.base_url + "/results",
+        response = requests.get(self.base_url + "/results_data",
                                 params={"comp_id": self.comp_id})
         self.assertEqual(response.status_code, 400)
         self.resultsList(1, expect_status=400)
 
     def testResultsPageShowsPublishedCompetition(self):
         self.publish(True)
-        response = requests.get(self.base_url + "/results",
+        response = requests.get(self.base_url + "/results_data",
                                 params={"comp_id": self.comp_id})
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Result View Open", response.text)
+        self.assertEqual(response.json()["data"]["comp_name"], "Result View Open")
 
     def testCompetitionListShowsOnlyPublished(self):
         # spectators without a link get a list of published competitions
         self.publish(True)
-        response = requests.get(self.base_url + "/results")
+        response = requests.get(self.base_url + "/results_data")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Result View Open", response.text)
+        names = [c["name"] for c in response.json()["data"]["comp_list"]]
+        self.assertIn("Result View Open", names)
         self.publish(False)
-        response = requests.get(self.base_url + "/results")
+        response = requests.get(self.base_url + "/results_data")
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn("Result View Open", response.text)
+        # with no published competition the payload carries no data at all
+        names = [c["name"]
+                 for c in response.json().get("data", {}).get("comp_list", [])]
+        self.assertNotIn("Result View Open", names)
 
     def testPublishedRankingMatchesEnteredResults(self):
         self.publish(True)

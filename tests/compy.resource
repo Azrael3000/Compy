@@ -14,7 +14,7 @@ ${BASE_URL}     http://${URL}:${PORT}/${PATH}
 ${ADMIN_PASSWORD}   compy-admin
 ${ADMIN_URL}    ${BASE_URL}/admin
 # Elements
-${SETTINGS_BUTTON}  id=settings_button >> a
+${SETTINGS_BUTTON}  id=settings_button
 ${COMP_NAME_FIELD}  id=comp_name
 ${SAVE_COMP_BUTTON}     id=save_comp
 ${COMPETITION_LIST}     id=competition_list >> li

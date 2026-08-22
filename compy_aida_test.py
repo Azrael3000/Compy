@@ -14,7 +14,8 @@ import requests
 import compy_aida_api
 import compy_data
 import compy_utilities as u
-from compy_testing import CompyDataTestCase, CompyServerTestCase
+from compy_testing import (CompyDataTestCase, CompyServerTestCase,
+                          SubmenuPayloadAssertions)
 
 EVENT_ID = 4885
 API_KEY = "test-key-not-a-real-one"
@@ -457,19 +458,22 @@ class AidaRecordsTest(CompyDataTestCase):
             by_name = {r["Name"]: r for r in content["results"]}
             return by_name["Anna Berger"]["Remarks"]
 
+        # the flag is plain text (", NR" etc.); the react frontend escapes
+        # any markup, so the server no longer embeds html in the data
         for rp, flag in ((55, "NR"), (65, "CR"), (74, "WR")):
             self.assertEqual(
                 data.updateResult(s_id, rp, 0, "WHITE", "", "")[0], 0)
             remarks = annaRemarks()
-            self.assertIn("<b>" + flag + "</b>", remarks)
+            self.assertIn(", " + flag, remarks)
             for other in {"NR", "CR", "WR"} - {flag}:
-                self.assertNotIn("<b>" + other + "</b>", remarks)
+                self.assertNotIn(other, remarks)
 
         # equalling a record or a non-white card is not flagged
         for rp, card in ((50, "WHITE"), (74, "YELLOW")):
             self.assertEqual(
                 data.updateResult(s_id, rp, 0, card, "", "")[0], 0)
-            self.assertNotIn("<b>", annaRemarks())
+            for flag in ("NR", "CR", "WR"):
+                self.assertNotIn(flag, annaRemarks())
 
     def test_api_refresh_keeps_other_countries_records(self):
         data = self.newComp("Aida records keep comp")
@@ -522,7 +526,7 @@ class AidaRecordsTest(CompyDataTestCase):
         self.assertEqual(data.getNr("AUT", "", "F", "CWT"), 48.0)
 
 
-class AidaEndpointTest(CompyServerTestCase):
+class AidaEndpointTest(SubmenuPayloadAssertions, CompyServerTestCase):
     """The new admin endpoints: guarded by the admin session, settings
     round-trip, and readable errors on an unconfigured competition. No test
     talks to the real AIDA server."""
@@ -611,6 +615,20 @@ class AidaEndpointTest(CompyServerTestCase):
         data = reply.json()
         self.assertEqual(data["status"], "error")
         self.assertIn("rate limit", data["status_msg"])
+
+    def test_sync_returns_every_submenu_dataset(self):
+        """A sync replaces athletes, days and start lists wholesale, and the
+        admin page applies its response as a reset - so it has to carry the
+        whole submenu dataset back or the menus it omits are emptied."""
+        comp_id = self.newKeyedComp("Aida sync payload comp")
+
+        with unittest.mock.patch.object(compy_data.CompyData, "aidaClient",
+                                        return_value=defaultFakeClient()):
+            reply = self.adminSession().post(self.base_url + "/aida/sync",
+                                             json={"comp_id": comp_id})
+
+        self.assertEqual(reply.status_code, 200)
+        self.assertCarriesSubmenuData(reply.json())
 
     def test_sync_on_unconfigured_comp_reports_error(self):
         with self.app.app_context():

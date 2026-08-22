@@ -1,0 +1,138 @@
+/* Public results page — ported from static/results.css. Uses the shared
+ * palette variables from index.css. */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background-image: linear-gradient(var(--medium), var(--dark));
+  height: 100%;
+  background-attachment: fixed;
+  color: var(--medium);
+}
+
+#compy_title {
+  width: 95vw;
+  font-size: 2vh;
+  color: var(--medium);
+  background: var(--dark);
+  padding-left: 5vw;
+}
+
+#header {
+  padding: 0vw 5vw;
+}
+
+#header #discipline,
+#header #gender,
+#header #country {
+  float: left;
+  width: 33%;
+}
+
+#header div,
+#content button {
+  border: 0.1vh solid var(--light);
+  background-color: var(--white);
+  color: var(--medium);
+  font-size: 3vh;
+  min-height: 5vh;
+  text-align: center;
+  line-height: 4vh;
+}
+
+#header div {
+  padding: 0 2%;
+}
+
+#content button {
+  width: 100%;
+  border-radius: 1.5vh;
+  margin-bottom: 3vh;
+}
+
+#header div:last-child {
+  border-radius: 0 0 1.5vh 1.5vh;
+  display: flex;
+}
+
+#header div div {
+  border: 0;
+  background: none;
+  word-break: break-word;
+  border-right: 0.1vh solid var(--light);
+}
+
+#header div div:last-child {
+  border-radius: 0;
+  border-right: 0;
+}
+
+#content {
+  padding: 3vw 5vw 3vw 5vw;
+}
+
+#content table {
+  width: 90vw;
+  margin-top: -2vh;
+  color: var(--dark);
+  font-size: 3vh;
+  line-height: 3.5vh;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+#content th,
+#content td {
+  text-align: left;
+  padding: 2vw;
+  border: 0.1vh solid var(--light);
+  background-color: var(--white);
+}
+
+#content th:first-child,
+#content tr.first > td:first-child {
+  border-top-left-radius: 1vh;
+}
+
+#content th:first-child,
+#content tr.last > td:first-child {
+  border-bottom-left-radius: 1vh;
+}
+
+#content th:last-child,
+#content tr.first > td:last-child {
+  border-top-right-radius: 1vh;
+}
+
+#content th:last-child,
+#content tr.last > td:last-child {
+  border-bottom-right-radius: 1vh;
+}
+
+.error {
+  background-color: var(--white);
+  color: var(--card-red);
+}
+
+#content td.YELLOW {
+  background-color: var(--card-yellow);
+}
+
+#content td.RED {
+  background-color: var(--card-red);
+}
+
+.sub > td:has(> .head) {
+  padding-top: 0;
+}
+
+.head {
+  font-size: 2vh;
+  color: var(--light);
+  line-height: 2.5vh;
+}
+
+.spacer {
+  height: 2vh;
+}

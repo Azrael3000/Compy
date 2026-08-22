@@ -2,6 +2,7 @@
 
 # Compiled output
 /dist
+/dist_reference
 /tmp
 /out-tsc
 /bazel-out
@@ -40,3 +41,6 @@ testem.log
 # System files
 .DS_Store
 Thumbs.db
+
+# typescript incremental build state
+*.tsbuildinfo

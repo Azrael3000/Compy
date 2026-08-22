@@ -1,0 +1,21 @@
+/* Venue clock display — ported from static/compy_clock.css */
+
+html,
+body {
+  background: black;
+}
+
+.clock-divider {
+  border-top: white solid;
+  animation: clock-expand 10s;
+  animation-timing-function: linear;
+}
+
+@keyframes clock-expand {
+  from {
+    width: 0;
+  }
+  to {
+    width: 98%;
+  }
+}

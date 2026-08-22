@@ -7,7 +7,7 @@ ${REGISTRATION_TABLE}   id=registration_table
 
 *** Keywords ***
 Goto Registration
-    Click   id=registration_button >> a
+    Click   id=registration_button
     Get Element States  ${REGISTRATION_TABLE}    contains    visible
 
 Verify Athletes In Registration Table
