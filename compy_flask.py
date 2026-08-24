@@ -31,16 +31,11 @@ from datetime import timedelta
 from functools import wraps
 from compy_data import CompyData
 from compy_config import CompyConfig
-from flask import Flask, render_template, request, send_file, Response, make_response, session, redirect, url_for
+from flask import Flask, render_template, request, send_file, send_from_directory, Response, make_response, session, redirect, url_for
 from os import path, mkdir
 from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
 from werkzeug.routing import IntegerConverter
-try:
-    import country_converter
-except ImportError:
-    print("Could not find country_converter. Install with 'pip3 install country_converter'")
-    exit(-1)
 
 class CompyFlask:
     """HTTP layer of Compy.
@@ -54,11 +49,14 @@ class CompyFlask:
     class SignedIntConverter(IntegerConverter):
         regex = r'-?\d+'
 
-    def __init__(self, app, db, start_flask):
+    def __init__(self, app, db, start_flask, port = 5000):
 
         self.app_ = app
         self.db_ = db
         self.config_ = CompyConfig()
+        # built react frontend (vite output); pages are switched over to it
+        # one screen at a time, see spaPage
+        self.dist_dir_ = path.join(path.dirname(path.abspath(__file__)), 'frontend', 'dist')
 
         app.config['UPLOAD_FOLDER'] = self.config_.upload_folder
         app.url_map.converters['signed_int'] = self.SignedIntConverter
@@ -94,6 +92,15 @@ class CompyFlask:
         @admin_required
         def admin():
             return self.admin()
+
+        @app.route('/app/<path:filename>', methods=['GET'])
+        def app_assets(filename):
+            return send_from_directory(self.dist_dir_, filename)
+
+        @app.route('/admin_data', methods=['GET'])
+        @admin_required
+        def admin_data():
+            return self.adminData()
 
         @app.route('/admin/login', methods=['GET', 'POST'])
         def login():
@@ -252,13 +259,16 @@ class CompyFlask:
         def aidaSync():
             return self.aidaSync()
 
+        # the html shell is served unconditionally; comp_id/judge_id only
+        # shape the url the judge's QR code points at, and the page then
+        # validates itself against /judge_json below
         @app.route('/judge/<int:comp_id>/<int:judge_id>', methods=['GET'])
         def judgeComp(comp_id, judge_id):
-            return self.getJudgeComp(comp_id, judge_id)
+            return self.spaPage('judge.html')
 
         @app.route('/judge_json/<int:comp_id>/<int:judge_id>', methods=['GET'])
         def judgeJsonComp(comp_id, judge_id):
-            return self.getJudgeComp(comp_id, judge_id, True)
+            return self.getJudgeComp(comp_id, judge_id)
 
         @app.route('/judge/athletes', methods=['GET'])
         def judgeAthlete():
@@ -274,12 +284,12 @@ class CompyFlask:
         def disciplines(federation):
             return self.disciplines(federation)
 
-        @app.route('/block', methods=['POST', 'UPDATE', 'DELETE'])
+        @app.route('/block', methods=['POST', 'PATCH', 'DELETE'])
         @admin_required
         def block():
             if request.method == 'POST':
                 return self.modifyBlock(True)
-            elif request.method == 'UPDATE':
+            elif request.method == 'PATCH':
                 return self.modifyBlock(False)
             elif request.method == 'DELETE':
                 return self.deleteBlock()
@@ -288,7 +298,11 @@ class CompyFlask:
         def clock(comp_id, current, offset):
             return self.getClock(comp_id, current, offset)
 
-        @app.route('/publish_results', methods=['UPDATE'])
+        @app.route('/clock_data/<int:comp_id>/<int:current>/<signed_int:offset>', methods=['GET'])
+        def clock_data(comp_id, current, offset):
+            return self.getClockData(comp_id, current, offset)
+
+        @app.route('/publish_results', methods=['PATCH'])
         @admin_required
         def publish_results():
             return self.updatePublishResults()
@@ -297,12 +311,16 @@ class CompyFlask:
         def results():
             return self.results()
 
+        @app.route('/results_data', methods=['GET'])
+        def results_data():
+            return self.resultsData()
+
         @app.route('/results_list', methods=['GET'])
         def resultsList():
             return self.resultsList()
 
         if start_flask:
-            app.run()
+            app.run(port = port)
 
     def version(self):
         # the version is cached on the CompyData class after the first read
@@ -326,7 +344,10 @@ class CompyFlask:
             filename = secure_filename(data_file.filename)
             ext = path.splitext(filename)[1].lower()
             if ext != ".xlsx":
-                status_msg = "File uploaded (" + filename + ") is not a *.xlsx file"
+                # report the original name: e.g. a file named just ".xlsx"
+                # is a dotfile without extension, which reads confusingly
+                # after secure_filename strips the leading dot
+                status_msg = "File uploaded ('" + data_file.filename + "') is not a *.xlsx file (a name like '.xlsx' alone does not count)"
             else:
                 status_msg = "File '" + filename + "' uploaded successfully"
                 fpath = path.join(self.app_.config['UPLOAD_FOLDER'], filename)
@@ -357,7 +378,10 @@ class CompyFlask:
             filename = secure_filename(data_file.filename)
             ext = path.splitext(filename)[1].lower()
             if ext != ".xlsx":
-                status_msg = "File uploaded (" + filename + ") is not a *.xlsx file"
+                # report the original name: e.g. a file named just ".xlsx"
+                # is a dotfile without extension, which reads confusingly
+                # after secure_filename strips the leading dot
+                status_msg = "File uploaded ('" + data_file.filename + "') is not a *.xlsx file (a name like '.xlsx' alone does not count)"
             else:
                 fpath = path.join(self.app_.config['UPLOAD_FOLDER'], filename)
                 data_file.save(fpath)
@@ -405,10 +429,13 @@ class CompyFlask:
         is_checked = content["checked"]
         change_type = content["type"]
         if comp.setRegistration(athlete_id, is_checked, change_type) == 0:
-            data = {"status": "success", "status_msg": "Successfully updated athlete with id '" + athlete_id + "' to value '" + str(is_checked) + "'"}
+            data = {"status": "success", "status_msg": "Successfully updated athlete with id '" + str(athlete_id) + "' to value '" + str(is_checked) + "'"}
         else:
-            data = {"status": "success", "status_msg": "Failed to update athlete with id '" + athlete_id + "' to value '" + str(is_checked) + "'"}
+            data = {"status": "success", "status_msg": "Failed to update athlete with id '" + str(athlete_id) + "' to value '" + str(is_checked) + "'"}
         data["disciplines"] = comp.getDisciplines()
+        # return the refreshed athlete list so the frontend checkboxes
+        # reflect the stored state (they are controlled inputs now)
+        comp.getAthleteData(data)
         return data, 200
 
     def changeCompName(self):
@@ -494,8 +521,10 @@ class CompyFlask:
         if ret == 0 and not start_list is None:
             data = {"status": "success", "status_msg": "Successfully updated start list", "start_list": start_list}
             comp.setOTs(data)
-            data["days_with_disciplines_lanes"] = comp.getDaysWithDisciplinesLanes()
-            data["blocks"] = comp.getBlocks()
+            # the full submenu set, not just days/blocks: the client rebuilds
+            # every submenu from a reset-carrying response, so a partial set
+            # empties the Results menus until the competition is reloaded
+            self.setSubmenuData(comp, data)
             return data, 200
         elif ret != 0 and not start_list is None:
             data = {"status": "success", "status_msg": "Failed database update", "start_list": start_list}
@@ -949,35 +978,27 @@ class CompyFlask:
         comp.setOTs(data)
         return data, 200
 
-    def getJudgeComp(self, comp_id, judge_id, return_json = False):
+    def getJudgeComp(self, comp_id, judge_id):
         judge_hash = request.args.get('hash')
         # the judge page gets its own CompyData; validating or loading it can
         # not interfere with any other page that is open at the same time
         comp = CompyData(self.db_, self.app_, comp_id)
         ret, comp_data = comp.getCompDataAndValidateJudge(comp_id, judge_id, judge_hash)
         if comp_data is None:
-            content = {"version": self.version()}
-            return make_response(render_template('404.html', **content), 404)
+            return {"status": "error", "error_msg": "Invalid judge credentials"}, 404
 
-        comp_name = comp_data['comp_name']
-        first_name = comp_data['first_name']
-        last_name = comp_data['last_name']
-        federation = comp_data['federation']
-
-        content = {"version": comp.version,
+        content = {"status": "success",
+                   "version": comp.version,
                    "comp_id": comp_id,
-                   "comp_name": comp_name,
+                   "comp_name": comp_data['comp_name'],
                    "judge_id": judge_id,
                    "judge_hash": judge_hash,
-                   "judge_first_name": first_name,
-                   "judge_last_name": last_name,
-                   "federation": federation,
+                   "judge_first_name": comp_data['first_name'],
+                   "judge_last_name": comp_data['last_name'],
+                   "federation": comp_data['federation'],
                    "days_with_disciplines_lanes": comp.getDaysWithDisciplinesLanes(),
                    "blocks": comp.getBlocks()}
-        if return_json:
-            return content, 200
-        else:
-            return render_template('judge.html', **content)
+        return content, 200
 
     def isValidJudge(self, request, comp):
         try:
@@ -992,8 +1013,9 @@ class CompyFlask:
     def getJudgeAthletes(self):
         comp = self.getData(request)
         if comp is None or not self.isValidJudge(request, comp):
-            content = {"version": self.version()}
-            return make_response(render_template('404.html', **content), 404)
+            # json, like every other judge endpoint: this is called by the
+            # react judge page, which cannot do anything with an html page
+            return {"status": "error", "error_msg": "Invalid judge credentials"}, 404
 
         return self.laneListNew(comp)
 
@@ -1037,8 +1059,10 @@ class CompyFlask:
         elif ret == 2:
             data = {"status": "success", "status_msg": "Could not edit block, does not exist"}
         if data is not None:
-            data["days_with_disciplines_lanes"] = comp.getDaysWithDisciplinesLanes()
-            data["blocks"] = comp.getBlocks()
+            # the full submenu set, not just days/blocks: the client applies
+            # this as a reset, and adding a block with a new discipline is
+            # exactly when 'disciplines' changes
+            self.setSubmenuData(comp, data)
             return data, 200
         else:
             return {}, 400
@@ -1062,32 +1086,41 @@ class CompyFlask:
         elif ret == 1:
             data = {"status": "success", "status_msg": "Could not remove block, does not exist"}
         if data is not None:
-            data["days_with_disciplines_lanes"] = comp.getDaysWithDisciplinesLanes()
-            data["blocks"] = comp.getBlocks()
+            # as in modifyBlock: removing the last block of a discipline drops
+            # that discipline, so the client needs the whole submenu set back
+            self.setSubmenuData(comp, data)
             return data, 200
         else:
             return {}, 400
 
     def getClock(self, comp_id, current, offset):
+        return self.spaPage('clock.html')
+
+    def getClockData(self, comp_id, current, offset):
+        """Data for the clock display.
+
+        The clock alternates between the current and the next four starts:
+        every poll flips the view, exactly like the periodic full page
+        reload it replaces. The effective view is returned as 'current' and
+        sent back by the client on its next poll.
+        """
         current = (current+1) % 2
-        # the clock page gets its own CompyData, so the periodic reload of an
-        # open clock display no longer changes any global state
+        # the clock page gets its own CompyData, so polling of an open
+        # clock display does not change any global state
         comp = CompyData(self.db_, self.app_, comp_id)
         if not comp.isValid:
-            return {}, 400
+            return self.badRequest("Failed to load competition")
         alist = comp.getFourStarts(current == 0, offset)
         if alist is None:
             current = (current+1) % 2
             alist = comp.getFourStarts(current == 0, offset)
-        url = request.base_url
-        refresh_url = url[:url.rfind('/', 0, url.rfind('/'))+1] + str(current) + "/" + str(offset)
-        content = {"comp_name": comp.name,
-                   "comp_id": comp_id,
-                   "alist": alist,
-                   "current": current,
-                   "refresh_url": refresh_url,
-                   "offset": offset}
-        return render_template('clock.html', **content)
+        return {"status": "success",
+                "version": comp.version,
+                "comp_name": comp.name,
+                "comp_id": comp_id,
+                "alist": alist,
+                "current": current,
+                "offset": offset}
 
     def checkAdminPassword(self, password):
         """Compare a login attempt against the configured admin password.
@@ -1131,24 +1164,39 @@ class CompyFlask:
     def unauthorized(self):
         return {"status": "error", "error_msg": "Authentication required"}, 401
 
+    def spaPage(self, name):
+        """Serve one of the built react pages (frontend/dist/<name>)."""
+        return send_file(path.join(self.dist_dir_, name))
+
     def admin(self):
-        all_countries = country_converter.CountryConverter().data["IOC"].dropna().to_list()
-        # the admin frontend loads competition 1 after the page is ready, so
-        # pre-fill the name field with that competition
+        return self.spaPage('admin.html')
+
+    def adminData(self):
+        """Bootstrap data for the admin page (json twin of the old jinja
+        payload). The frontend loads competition 1 after the page is ready,
+        so the name of that competition is included."""
         comp = CompyData(self.db_, self.app_, 1)
-        content = {"version": comp.version,
-                   "competitions": comp.getSavedCompetitions(),
-                   "comp_name": comp.name,
-                   "all_countries": all_countries,
-                   "record_sta": None}
-        return render_template('template.html', **content)
+        return {"status": "success",
+                "version": comp.version,
+                "competitions": comp.getSavedCompetitions(),
+                "comp_name": comp.name}
 
     def results(self):
+        return self.spaPage('results.html')
+
+    def resultsData(self):
+        """Bootstrap data for the public results page.
+
+        Without a comp_id: the list of published competitions. With one:
+        the menus (disciplines, countries) of that competition. This is the
+        json twin of the payload the jinja template used to inject.
+        """
         comp = self.getData(request, published_only = True)
         if comp is None:
             return self.badRequest("Failed to load competition")
         ret, content = comp.getResultContent()
-        return render_template('results.html', **content)
+        content["status"] = "success"
+        return content
 
     def updatePublishResults(self):
         return self.handleRequest(request, ['publish_results'], CompyData.updatePublishResults)

@@ -30,6 +30,33 @@ REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 TEST_COMPETITION_XLSX = os.path.join(REPO_ROOT, "test_competition.xlsx")
 ADMIN_PASSWORD = "compy-test-password"
 
+# The datasets setSubmenuData sends, and the contract every endpoint whose
+# response the admin page applies as a reset has to keep. Defined here rather
+# than per test file so adding a sixth dataset is a one-line change.
+SUBMENU_KEYS = ("days_with_disciplines_lanes", "blocks", "disciplines",
+                "countries", "result_countries")
+
+
+class SubmenuPayloadAssertions:
+    """Asserts a response carries the whole submenu dataset.
+
+    applyResponse(data, reset = True) in AdminApp clears every submenu and
+    repopulates it from the response alone, so for those endpoints a missing
+    dataset does not leave the old menus alone - it empties them. The
+    frontend types cannot catch that: every field is optional there, so a
+    response without 'disciplines' is as valid to the type checker as one
+    with it. That is why this is a runtime contract test.
+
+    Endpoints whose response is merged instead (applyResponse without the
+    reset flag) do not need this - a dataset they omit is simply left as it
+    was. Any of them that later switches to a reset inherits the contract.
+    """
+
+    def assertCarriesSubmenuData(self, data):
+        for key in SUBMENU_KEYS:
+            self.assertIn(key, data, "%s missing from the response" % key)
+            self.assertTrue(data[key], "%s came back empty" % key)
+
 
 def makeApp(database_path):
     app = flask.Flask("compy", root_path=REPO_ROOT)

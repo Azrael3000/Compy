@@ -1251,7 +1251,9 @@ class CompyData(PdfReportMixin):
 
             db_out = self.db_.execute(cmd, args)
             if db_out is None:
-                return -1, None
+                # no results entered yet is a valid state, not an error
+                # (mirrors the per-discipline branch below)
+                return 0, {'results': [], 'keys': []}
 
             res = {}
             for r in db_out:
@@ -1274,8 +1276,9 @@ class CompyData(PdfReportMixin):
                 res.pop(tr)
 
             res_list = sorted(list(res.values()), key=lambda r: -float(r['Points']))
-            # set ranks
-            res_list[0]['Rank'] = 1
+            # set ranks (res_list can be empty when every entry had 0 points)
+            if len(res_list) > 0:
+                res_list[0]['Rank'] = 1
             for i in range(len(res_list)-1):
                 if res_list[i]['Points'] != res_list[i+1]['Points']:
                     res_list[i+1]['Rank'] = i+2
@@ -1313,12 +1316,13 @@ class CompyData(PdfReportMixin):
             def check_nr(country, gender, rp, card):
                 if rp is None or card != "WHITE":
                     return ""
-                # flag only the highest tier the performance beats
+                # flag only the highest tier the performance beats; plain
+                # text, the react frontend escapes any markup
                 for tier in ("WR", "CR", "NR"):
                     record = self.getRecord(country, "", gender, discipline,
                                             tier)
                     if record != "" and record < rp:
-                        return ", <b>" + tier + "</b>"
+                        return ", " + tier
                 return ""
 
             if self.comp_type == "aida":
