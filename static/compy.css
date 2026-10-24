@@ -255,12 +255,12 @@ button.show:hover, button.sl_sort:hover, button.load_comp_button:hover {
    as the other remove/delete buttons (overrides the neutral .break look).
    A dedicated .danger class is used because .remove is already bound to the
    remove-athlete click handler in compy.js. */
-button.break.danger {
+button.break.danger, button#aida_upload_results_button {
     color: var(--card-red);
     border-color: var(--card-red);
 }
 
-button.break.danger:hover {
+button.break.danger:hover, button#aida_upload_results_button:hover {
     background: var(--card-red);
     color: var(--white);
 }

@@ -24,7 +24,7 @@
 #
 #  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-"""Read-only client for the AIDA International API v2.
+"""Client for the AIDA International API v2.
 
 Documentation: https://www.aidainternational.org/api-docs
 
@@ -35,8 +35,10 @@ turns every failure mode (network, HTTP status, envelope error, malformed
 payload) into an AidaApiError whose message is safe to show in the admin
 interface. The API key is never logged.
 
-Only read endpoints are implemented on purpose: the sync may never be able
-to modify anything on the AIDA side.
+The sync only uses the read endpoints and can never modify anything on the
+AIDA side. The only write operations are the two result endpoints
+(postResult / deleteResult), which touch nothing but the judged result of
+one existing start list row; they need a key with write scope.
 """
 
 import logging
@@ -72,34 +74,58 @@ class AidaApiClient:
 
     def get(self, path):
         """GET one API path and return the unwrapped response payload."""
+        return self.request("GET", path)
+
+    def request(self, method, path, data=None):
+        """Send one API request and return the unwrapped response payload.
+
+        data is sent form-urlencoded (what the write endpoints expect).
+        """
         url = self.base_url_ + path
         # never log headers: the Authorization header contains the key
-        logging.debug("AIDA API request: GET %s", path)
+        logging.debug("AIDA API request: %s %s", method, path)
         headers = {
             "Authorization": "Bearer " + self.api_key_,
             "User-Agent": "AIDA-Client",
             "Accept": "application/json",
         }
         try:
-            reply = self.session_.get(url, headers=headers,
-                                      timeout=AIDA_REQUEST_TIMEOUT)
+            reply = self.session_.request(method, url, headers=headers,
+                                          data=data,
+                                          timeout=AIDA_REQUEST_TIMEOUT)
         except requests.RequestException as e:
             logging.warning("AIDA API not reachable: %s", type(e).__name__)
             raise AidaApiError("Could not reach the AIDA server. Check the "
                                "internet connection (or use the excel file "
                                "workflow instead)")
         if reply.status_code in (401, 403):
-            raise AidaApiError("AIDA rejected the API key (HTTP "
+            if method == "GET":
+                raise AidaApiError("AIDA rejected the API key (HTTP "
+                                   + str(reply.status_code) + "). Check that "
+                                   "the key is correct, has read scope and "
+                                   "belongs to this event")
+            raise AidaApiError("AIDA refused the write (HTTP "
                                + str(reply.status_code) + "). Check that the "
-                               "key is correct, has read scope and belongs "
-                               "to this event")
+                               "key has write scope and belongs to this "
+                               "event, and that the event is not finalised "
+                               "on AIDA yet")
         if reply.status_code == 404:
             raise AidaApiError("AIDA could not find the requested data "
                                "(HTTP 404). Check the event id")
         if reply.status_code == 429:
             raise AidaApiError("AIDA rate limit reached (HTTP 429). Wait a "
                                "moment and try again")
-        if reply.status_code != 200:
+        if reply.status_code == 400 or reply.status_code == 422:
+            # a rejected write: the envelope usually says why
+            detail = ""
+            try:
+                detail = str(reply.json().get("errorMessage") or "")
+            except (ValueError, AttributeError):
+                pass
+            raise AidaApiError("AIDA rejected the request (HTTP "
+                               + str(reply.status_code) + ")"
+                               + (": " + detail if detail else ""))
+        if reply.status_code < 200 or reply.status_code >= 300:
             raise AidaApiError("AIDA server error (HTTP "
                                + str(reply.status_code) + "). Try again later")
         try:
@@ -178,6 +204,61 @@ class AidaApiClient:
         for tier in ("nr", "cr", "wr"):
             self.requireList(payload, tier)
         return payload
+
+    # ---- write endpoints (results only) ----
+
+    PENALTY_CARDS = {"WHITE": 1, "YELLOW": 2, "RED": 3}
+
+    def postResult(self, event_id, day_id, start_id, penalty_points,
+                   rp=None, judge_status=None, card=None):
+        """Write the judged result of one start list row.
+
+        rp: reported performance in AIDA units (meters, STA: seconds);
+            None means DNS.
+        judge_status: comma separated AIDA status names ("ok" alone, or
+            e.g. "dqsp,dqairways"); never "no tag" / "under ap", the
+            server appends those itself. None/"" sends no status.
+        card: "WHITE" / "YELLOW" / "RED" or None.
+        penalty_points: total penalty points (automatic + other), 0 if
+            none.
+        The server computes the points. Returns the unwrapped response
+        (startId, reportedPerformance, judgeStatus, penaltyCard,
+        penaltyPoints, points - all strings).
+        """
+        card_id = None
+        if card is not None:
+            card_id = self.PENALTY_CARDS.get(str(card).strip().upper())
+            if card_id is None:
+                raise AidaApiError("Invalid penalty card: " + str(card)[:20])
+        data = {"EventId": str(int(event_id)),
+                "EventDayId": str(int(day_id)),
+                "EventStartListId": str(int(start_id)),
+                "PenaltyPoints": self.formatNumber(penalty_points or 0)}
+        if rp is not None and rp != "":
+            data["RP"] = self.formatNumber(rp)
+        if judge_status:
+            data["judgeStatus"] = str(judge_status)
+        if card_id is not None:
+            data["PenaltyCard"] = str(card_id)
+        payload = self.request("POST", "/events/startlists", data)
+        if not isinstance(payload, dict) or payload.get("startId") is None:
+            raise AidaApiError("AIDA returned an unexpected response to the "
+                               "result upload")
+        return payload
+
+    def deleteResult(self, start_id):
+        """Clear the judged result of one start list row (the diver stays
+        on the start list). Idempotent on the AIDA side."""
+        return self.request("DELETE", "/events/startlists/"
+                            + str(int(start_id)) + "/result")
+
+    @staticmethod
+    def formatNumber(value):
+        """Numbers without a spurious ".0": AIDA echoes them as strings."""
+        number = float(value)
+        if number.is_integer():
+            return str(int(number))
+        return ("%.2f" % number).rstrip("0").rstrip(".")
 
     def requireList(self, payload, key):
         if not isinstance(payload, dict) or not isinstance(payload.get(key), list):

@@ -434,6 +434,33 @@ $(document).ready(function() {
             }
         })
     });
+    // results upload: the preview (dry run) matches the local starts to the
+    // AIDA start list and lists what would be sent without sending anything
+    let aidaUploadResults = function(dry_run) {
+        showAidaStatus(dry_run ? "Matching results against the AIDA start list..."
+                               : "Uploading results to AIDA...");
+        $('#aida_preview_results_button, #aida_upload_results_button').prop("disabled", true);
+        $.ajax({
+            type: "POST",
+            url: "/aida/upload_results",
+            data: JSON.stringify(withCompId({dry_run: dry_run})),
+            contentType: "application/json",
+            dataType: "json",
+            success: function(data) {
+                console.log(data.status_msg);
+                showAidaStatus(data.status_msg);
+            },
+            complete: function(data) {
+                $('#aida_preview_results_button, #aida_upload_results_button').prop("disabled", false);
+            }
+        })
+    };
+    $('#aida_preview_results_button').click(function() {
+        aidaUploadResults(true);
+    });
+    $('#aida_upload_results_button').click(function() {
+        aidaUploadResults(false);
+    });
     $('#upload_file_button').click(function() {
         let form_data = new FormData($('#upload_file')[0]);
         form_data.append('comp_id', _comp_id);
@@ -1022,7 +1049,9 @@ $(document).ready(function() {
             let pb = _sl[i].PB;
             if (_sl[i].Discipline == "STA") {
                 ap = ap.padStart(5, "0");
-                pb = pb.padStart(5, "0");
+                // an empty PB must stay empty: "".padStart gives "00000",
+                // which the time input rejects anyway
+                pb = pb == "" ? "" : pb.padStart(5, "0");
             }
             let ap_btn = `<input type="${input['type']}" step="${input['step']}" id="sl_edit_ap" value="${ap}"/>`;
             let pb_btn = `<input type="${input['type']}" step="${input['step']}" id="sl_edit_pb" value="${pb}"/>`;
@@ -1083,8 +1112,10 @@ $(document).ready(function() {
                 if (_sl[i].Discipline == "STA") {
                     let ap = $('#sl_edit_ap')[0].valueAsDate;
                     _sl[i].AP = dateToStr(ap);
+                    // valueAsDate is null for an empty time input; the PB
+                    // is optional, so keep it empty instead of throwing
                     let pb = $('#sl_edit_pb')[0].valueAsDate;
-                    _sl[i].PB = dateToStr(pb);
+                    _sl[i].PB = pb === null ? "" : dateToStr(pb);
                 } else {
                     _sl[i].AP = $('#sl_edit_ap').val();
                     _sl[i].PB = $('#sl_edit_pb').val();

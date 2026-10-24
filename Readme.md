@@ -30,7 +30,7 @@
 Compy is a competition organization tool for freediving competition. Its current features are:
 
  - Parse AIDA International Style Excel files
- - Read-only sync of registrations and start lists from the AIDA International API
+ - Sync of registrations and start lists from the AIDA International API, and upload of the judged results
  - Switch between CMAS and AIDA competitions (different countdown, different result view without points for CMAS)
  - Uploading of sponsor image for output on PDFs
  - Output of results, lane lists and start lists via PDF
@@ -64,14 +64,18 @@ and refreshed directly from the [AIDA International API](https://www.aidainterna
  - **Athlete list**: all registered divers with first/last name, gender and
    nationality (converted to the IOC three letter codes Compy uses),
    matched and updated by their AIDA athlete UUID.
- - **Registration tab checkboxes**: "registered" (AIDA status approved),
-   "paid" (payment receipt uploaded) and "medical checked" (medical
-   certificate uploaded) are pre-filled from AIDA.
+ - **Registration tab checkboxes**: "registered" (AIDA status "Ok" =
+   complete registration, or the documented "APP" = approved; "Exc" = for
+   non registered is kept as an athlete but not registered), "paid"
+   (payment receipt uploaded) and "medical checked" (medical certificate
+   uploaded) are pre-filled from AIDA.
  - **Competition days**: the start and end date of the competition are set
    from AIDA's day list (rest days are skipped).
  - **Start lists**: one block per day and discipline with each start's
-   lane and announced performance (STA converted to seconds). AIDA's start
-   ids are stored so repeated syncs update the right entries.
+   lane (AIDA's letter lanes A, B, ... become 1, 2, ...), official top and
+   announced performance (STA converted to seconds). AIDA's start ids are
+   stored so repeated syncs update the right entries. A day whose start
+   list is not published on AIDA yet is reported in the status message.
  - **Personal bests**: PBs that are still empty in Compy are pre-filled
    from the athletes' AIDA profiles (locally entered PBs are never
    overwritten). If a profile cannot be fetched the sync continues and
@@ -86,20 +90,44 @@ and refreshed directly from the [AIDA International API](https://www.aidainterna
 
  - It never deletes anything: athletes or starts that exist only in Compy
    are listed in the status message but kept.
- - Locally entered data is never overwritten: official tops (the API has no
-   OT field, assign OTs in Compy as before), clubs, PBs and all results
-   (RP, cards, penalties, remarks) stay as they are.
+ - Locally entered data is never overwritten: official tops set in Compy
+   (AIDA's official top is only taken while the OT is still unset), clubs,
+   PBs and all results (RP, cards, penalties, remarks) stay as they are -
+   results that are already on AIDA are not imported either.
  - Invalid entries from AIDA (missing UUID, unknown discipline, start of an
    unregistered diver) are skipped with a warning instead of failing the
-   sync. Note that AIDA start list entries carry no athlete UUID, so starts
-   are matched to athletes by name and gender.
+   sync. Starts are matched to athletes by the athlete UUID carried in the
+   row's `athleteProfileLink`; rows without it fall back to first name,
+   last name and gender, compared case-insensitively (the registration
+   list and the start list spell some names differently).
+
+### Results upload
+
+"Upload results to AIDA" posts the judged result of every start to AIDA
+(`POST /events/startlists`, the only write the app ever makes; the key
+needs **write** scope). AIDA only accepts a result for a row of its own
+start list, so the upload first matches each local start to the AIDA start
+list of the same day - by the AIDA start id stored by an earlier sync, else
+by name, gender and discipline (competitions seeded from the excel file have
+no AIDA ids). Starts that are not on the AIDA start list are listed and
+skipped; if AIDA has no start list for the event at all, nothing can be
+uploaded until it is created there. "Preview results upload" does the
+matching and shows what would be sent without sending anything.
+
+What is sent per start: RP (meters, STA in seconds; empty for a DNS), the
+penalty card, the total penalty points and the judge remarks as AIDA status
+codes (`ok` alone for a white card; `UNDER AP` and `NO TAG` are left out
+because the AIDA server appends them itself). AIDA computes the points.
+Uploading again overwrites, so corrections can simply be re-uploaded. A
+refused write (no write scope, key of another event, finalised event) stops
+the upload; a single rejected result is reported and the others still go
+through.
 
 ### Not covered by the API
 
  - Judges and clubs are not exposed by the API and are managed in Compy.
- - Results are still submitted to AIDA via the generated results excel file
-   ("Store results"); there is no test environment on the AIDA side, so
-   Compy does not write anything to the API.
+ - The results excel file ("Store results") remains available as the
+   fallback for submitting results.
 
 ### Records
 

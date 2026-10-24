@@ -179,10 +179,13 @@ class CompyData(PdfReportMixin):
 
     def laneStyleConverter(self, lane, invert=False):
         if invert:
-            if self.lane_style_ == "alphabetic":
-                return ord(lane) - 64
-            else: # numeric
-                return int(lane)
+            # accept both forms whatever the lane style is set to: the start
+            # list editor sends the configured style, the AIDA start list
+            # always sends letters ("A".."D")
+            lane = str(lane).strip()
+            if len(lane) == 1 and lane.isalpha():
+                return ord(lane.upper()) - 64
+            return int(lane)  # raises ValueError on garbage, as before
         else:
             if self.lane_style_ == "alphabetic":
                 return chr(lane + 64)
@@ -572,7 +575,10 @@ class CompyData(PdfReportMixin):
                 "last_name": last_name,
                 "gender": gender,
                 "country": country,
-                "registered": bool(status.get("code") == "APP"),
+                # documented code: APP (approved); the live API sends
+                # "Ok" = complete registration, "Exc" = for non registered
+                "registered": str(status.get("code") or "").upper()
+                              in ("APP", "OK"),
                 "paid": bool(documents.get("paymentReceipt")),
                 "medical_checked": bool(documents.get("medicalCertificate")),
             })
@@ -651,6 +657,14 @@ class CompyData(PdfReportMixin):
                 continue
             report["days_synced"] += 1
             day_db = day_date.replace('-', '')
+            day_info = payload.get("dayInfo") or {}
+            if len(payload["startList"]) == 0:
+                reason = " (not published on AIDA yet)" \
+                    if day_info.get("startListAvailable") is False \
+                       or day_info.get("published") is False else ""
+                report["warnings"].append(
+                    "No start list on AIDA for " + str(day.get("name") or "")
+                    + " " + day_date + reason)
             blocks = {}
             for entry in payload["startList"]:
                 self.applyAidaStart(entry, day, day_db, blocks, report)
@@ -687,30 +701,23 @@ class CompyData(PdfReportMixin):
                        VALUES (?, ?, ?, ?)''',
                     (self.id_, day_db, dis_int, day.get("id")))
 
-        # the start list carries no athlete UUID, so match by name+gender
-        gender = str(entry.get("diverGender") or "").strip().upper()[:1]
-        ca_id = self.db_.execute(
-            '''SELECT ca.id FROM competition_athlete ca
-               INNER JOIN athlete a ON ca.athlete_id == a.id
-               WHERE a.first_name=? AND a.last_name=? AND a.gender=?
-               AND ca.competition_id=?''',
-            (str(entry.get("diverFirstName") or "").strip(),
-             str(entry.get("diverLastName") or "").strip(),
-             gender, self.id_))
+        ca_id = self.aidaStartAthlete(entry)
         if ca_id is None:
             report["warnings"].append("Skipped start of " + label
                                       + ": not in the registration list")
             return
-        ca_id = ca_id[0][0]
 
         ap = self.aidaPerformance(entry.get("announcedPerformance"),
                                   entry.get("performanceMeasurement"), dis)
         lane = None
         try:
-            if entry.get("lane") is not None:
-                lane = max(1, int(entry["lane"]))
-        except (TypeError, ValueError):
+            if str(entry.get("lane") or "").strip() != "":
+                lane = max(1, self.laneStyleConverter(entry["lane"], True))
+        except ValueError:
             lane = None
+        # the live start list carries the official top ("10:00"); the
+        # documented shape does not, so it stays optional
+        ot = self.cleanTime(str(entry.get("officialTop") or "").strip())
         aida_start_id = entry.get("startId")
 
         # match an existing start by AIDA start id first, then by
@@ -731,11 +738,17 @@ class CompyData(PdfReportMixin):
                    AND b.day=?''',
                 (ca_id, dis, day_db))
         if existing is not None:
-            # update announcement data only; OT, PB and results stay local
+            # update announcement data only; PB and results stay local, and
+            # a locally set OT is only replaced while it is still unset
             self.db_.execute(
                 '''UPDATE start SET AP=?, aida_start_id=?,
                    lane=COALESCE(?, lane) WHERE id=?''',
                 (ap, aida_start_id, lane, existing[0][0]))
+            if ot != INVALID_TIME:
+                self.db_.execute(
+                    "UPDATE start SET OT=? WHERE id=? AND OT=?",
+                    (u.convTime(ot), existing[0][0],
+                     u.convTime(INVALID_TIME)))
             report["starts_updated"] += 1
         else:
             self.db_.execute(
@@ -744,8 +757,49 @@ class CompyData(PdfReportMixin):
                     aida_start_id)
                    VALUES (?, ?, ?, ?, ?, ?, ?)''',
                 (ca_id, dis, lane if lane is not None else 1, blocks[dis],
-                 u.convTime(INVALID_TIME), ap, aida_start_id))
+                 u.convTime(ot), ap, aida_start_id))
             report["starts_added"] += 1
+
+    def aidaStartAthlete(self, entry):
+        """The competition_athlete id of a start list row.
+
+        The live start list carries the athlete UUID inside
+        athleteProfileLink ("/apiv2/events/athletes/profile/<event>/<uuid>"),
+        which is the reliable match: the registration list spells names
+        differently (e.g. "verena fleißner" vs "Verena Fleißner" in the
+        start list). Falls back to first name, last name and gender,
+        compared case-insensitively.
+        """
+        uuid = self.aidaAthleteUuid(entry)
+        if uuid is not None:
+            ca_id = self.db_.execute(
+                '''SELECT ca.id FROM competition_athlete ca
+                   INNER JOIN athlete a ON ca.athlete_id == a.id
+                   WHERE lower(a.aida_id)=? AND ca.competition_id=?''',
+                (uuid, self.id_))
+            if ca_id is not None:
+                return ca_id[0][0]
+        gender = str(entry.get("diverGender") or "").strip().upper()[:1]
+        ca_id = self.db_.execute(
+            '''SELECT ca.id FROM competition_athlete ca
+               INNER JOIN athlete a ON ca.athlete_id == a.id
+               WHERE lower(trim(a.first_name))=? AND lower(trim(a.last_name))=?
+               AND a.gender=? AND ca.competition_id=?''',
+            (str(entry.get("diverFirstName") or "").strip().lower(),
+             str(entry.get("diverLastName") or "").strip().lower(),
+             gender, self.id_))
+        return None if ca_id is None else ca_id[0][0]
+
+    @staticmethod
+    def aidaAthleteUuid(entry):
+        """Athlete UUID of a start list / ranking row, from its
+        athleteProfileLink; None when the row carries none."""
+        link = str(entry.get("athleteProfileLink") or "")
+        uuid = link.rstrip("/").rsplit("/", 1)[-1].strip().lower()
+        if regex.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}"
+                           r"-[0-9a-f]{12}", uuid):
+            return uuid
+        return None
 
     def fetchAidaPbs(self, client, athletes_in, warnings):
         """Fetch personal bests per athlete before the sync transaction.
@@ -809,11 +863,13 @@ class CompyData(PdfReportMixin):
             return True
         empty = self.db_.execute(
             '''SELECT s.id FROM start s WHERE s.competition_athlete_id=?
-               AND (s.PB IS NULL OR s.PB='')''', in_comp[0][0])
+               AND (s.PB IS NULL OR s.PB='' OR s.PB=0)''', in_comp[0][0])
         return empty is not None
 
     def applyAidaPbs(self, pbs, report):
-        """Fill start PBs that are still empty; local PBs are never touched."""
+        """Fill start PBs that are still empty (NULL, '' or 0 - a PB of 0 is
+        never real and is what the old start list save wrote for an empty
+        one); PBs entered locally are never touched."""
         for aida_id, per_dis in pbs.items():
             for dis, pb in per_dis.items():
                 empty = self.db_.execute(
@@ -822,7 +878,7 @@ class CompyData(PdfReportMixin):
                        ON ca.id == s.competition_athlete_id
                        INNER JOIN athlete a ON a.id == ca.athlete_id
                        WHERE a.aida_id=? AND ca.competition_id=?
-                       AND s.discipline=? AND (s.PB IS NULL OR s.PB='')''',
+                       AND s.discipline=? AND (s.PB IS NULL OR s.PB='' OR s.PB=0)''',
                     (aida_id, self.id_, dis))
                 if empty is None:
                     continue
@@ -853,6 +909,200 @@ class CompyData(PdfReportMixin):
         if discipline == "STA" and "min" in str(measurement or "").lower():
             perf *= 60.
         return perf
+
+    # ---- results upload to AIDA (the only write operations) ----
+    #
+    # AIDA only accepts a result for a row of its own start list
+    # (EventStartListId), so the upload first matches every local start to
+    # the AIDA start list of the same day: by the AIDA start id stored by
+    # an earlier sync or upload, else by the athlete UUID (from the row's
+    # athleteProfileLink) and discipline, else by name, gender and
+    # discipline (a competition run from the excel file has no AIDA start
+    # ids at all). The match is stored so repeated uploads and later syncs
+    # find it directly.
+    # Every start with a judged result is (re)posted; AIDA overwrites, so
+    # the upload is idempotent and can be repeated after corrections.
+
+    # remark tokens the AIDA server adds itself from RP vs AP
+    AIDA_SERVER_STATUSES = ("UNDER AP", "NO TAG")
+
+    def hasResult(self, card, remarks):
+        """A start counts as judged once it has a card or is a DNS."""
+        return self.cleanCard(card) is not None or self.isDns(remarks)
+
+    def isDns(self, remarks):
+        return "DNS" in [t.strip().upper() for t in str(remarks or "").split(",")]
+
+    def aidaJudgeStatus(self, card, remarks):
+        """Compy remarks ("DQSP,DQAIRWAYS", "NO TAG,UNDER AP", "OK") to the
+        AIDA judgeStatus string: the same codes in lower case, without the
+        statuses the server appends itself, and "ok" alone for a white card.
+        """
+        if self.cleanCard(card) == "WHITE":
+            return "ok"
+        tokens = []
+        for token in str(remarks or "").split(","):
+            token = token.strip()
+            if token == "" or token == "-" or token.upper() == "OK" \
+               or token.upper() == "DNS" \
+               or token.upper() in self.AIDA_SERVER_STATUSES:
+                continue
+            tokens.append(token.lower())
+        return ",".join(tokens)
+
+    def aidaResultPayload(self, start):
+        """The result of one local start as postResult keyword arguments,
+        or None when the start has no judged result yet.
+
+        start: dict with discipline, RP, card, penalty, remarks.
+        """
+        card = self.cleanCard(start.get("card"))
+        if not self.hasResult(card, start.get("remarks")):
+            return None
+        if self.isDns(start.get("remarks")) or start.get("RP") is None:
+            # AIDA: an empty RP is a DNS; the status is sent as well since
+            # that is what the live start list shows for a DNS
+            return {"rp": None, "judge_status": "dns", "card": None,
+                    "penalty_points": 0}
+        penalty = self.cleanPenalty(start.get("penalty"))
+        if math.isnan(penalty):
+            penalty = 0.
+        return {"rp": float(start["RP"]),  # STA in seconds, like AIDA
+                "judge_status": self.aidaJudgeStatus(card, start.get("remarks")),
+                "card": card,
+                "penalty_points": penalty}
+
+    @staticmethod
+    def aidaNameKey(first_name, last_name, gender, discipline, day_db):
+        """Case- and whitespace-insensitive key for the name based match."""
+        return (" ".join(str(first_name or "").split()).casefold(),
+                " ".join(str(last_name or "").split()).casefold(),
+                str(gender or "").strip().upper()[:1],
+                str(discipline or "").strip().upper(), str(day_db))
+
+    def localStarts(self):
+        rows = self.db_.execute(
+            '''SELECT s.id, s.aida_start_id, a.first_name, a.last_name,
+                      a.gender, s.discipline, b.day, s.RP, s.card, s.penalty,
+                      s.remarks, s.OT, s.lane, a.aida_id
+               FROM start s
+               INNER JOIN competition_athlete ca
+               ON ca.id == s.competition_athlete_id
+               INNER JOIN athlete a ON a.id == ca.athlete_id
+               INNER JOIN block b ON b.id == s.block
+               WHERE ca.competition_id == ?
+               ORDER BY b.day, s.OT, s.lane''', self.id_)
+        if rows is None:
+            return []
+        keys = ("id", "aida_start_id", "first_name", "last_name", "gender",
+                "discipline", "day", "RP", "card", "penalty", "remarks",
+                "OT", "lane", "aida_id")
+        return [dict(zip(keys, row)) for row in rows]
+
+    def fetchAidaStartLists(self, client):
+        """{aida_start_id: (entry, day)}, {(uuid, discipline, day): ...} and
+        {name key: ...} for every row of every day's AIDA start list (rest
+        days skipped)."""
+        days_payload = client.getDays(self.aida_event_id_)
+        by_id, by_uuid, by_name = {}, {}, {}
+        for day in days_payload["days"]:
+            if day.get("isRestDay"):
+                continue
+            day_date = self.cleanDay(str(day.get("date"))[:10], True)
+            day_db = day_date.replace('-', '')
+            payload = client.getStartList(self.aida_event_id_, day["id"])
+            for entry in payload["startList"]:
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("startId") is not None:
+                    by_id[entry["startId"]] = (entry, day)
+                uuid = self.aidaAthleteUuid(entry)
+                dis = str(entry.get("disciplineAbrv") or "").strip().upper()
+                if uuid is not None:
+                    by_uuid.setdefault((uuid, dis, day_db), (entry, day))
+                key = self.aidaNameKey(entry.get("diverFirstName"),
+                                       entry.get("diverLastName"),
+                                       entry.get("diverGender"), dis, day_db)
+                by_name.setdefault(key, (entry, day))
+        return by_id, by_uuid, by_name
+
+    def uploadResultsToAida(self, client=None, dry_run=False):
+        """Post the judged results of this competition to AIDA.
+
+        dry_run only matches and reports what would be sent. Returns
+        (0, report) or (1, {"error_msg": ...}); the report lists per start
+        whether it was uploaded, failed, had no AIDA start list row to
+        attach to, or has no result yet. An authentication/permission
+        failure or a network loss aborts the upload (the remaining
+        results would fail the same way); a rejected single result is
+        reported and the upload continues.
+        """
+        error = self.checkAidaConfigured()
+        if error is not None:
+            return 1, error
+        try:
+            client = client if client is not None else self.aidaClient()
+            by_id, by_uuid, by_name = self.fetchAidaStartLists(client)
+        except AidaApiError as e:
+            return 1, {"error_msg": str(e)}
+        if len(by_id) == 0 and len(by_name) == 0:
+            return 1, {"error_msg": "AIDA has no start list for this event "
+                                    "yet, so there is nothing to attach the "
+                                    "results to. Create/publish the start "
+                                    "list on AIDA first"}
+
+        report = {"dry_run": bool(dry_run), "uploaded": 0, "no_result": 0,
+                  "results": [], "failed": [], "unmatched": [],
+                  "aborted": None}
+        for start in self.localStarts():
+            day_str = str(start["day"])
+            label = (start["first_name"] + " " + start["last_name"] + " "
+                     + start["discipline"] + " (" + day_str[:4] + "-"
+                     + day_str[4:6] + "-" + day_str[6:] + ")")
+            payload = self.aidaResultPayload(start)
+            if payload is None:
+                report["no_result"] += 1
+                continue
+            match = None
+            if start["aida_start_id"] is not None:
+                match = by_id.get(start["aida_start_id"])
+            if match is None and start["aida_id"]:
+                match = by_uuid.get((str(start["aida_id"]).strip().lower(),
+                                     start["discipline"], str(start["day"])))
+            if match is None:
+                match = by_name.get(self.aidaNameKey(
+                    start["first_name"], start["last_name"], start["gender"],
+                    start["discipline"], start["day"]))
+            if match is None:
+                report["unmatched"].append(label)
+                continue
+            entry, day = match
+            row = {"start": label, "discipline": start["discipline"],
+                   "aida_start_id": entry["startId"],
+                   "rp": payload["rp"], "judge_status": payload["judge_status"],
+                   "card": payload["card"],
+                   "penalty_points": payload["penalty_points"]}
+            if dry_run:
+                report["results"].append(row)
+                continue
+            if start["aida_start_id"] != entry["startId"]:
+                self.db_.execute("UPDATE start SET aida_start_id=? WHERE id=?",
+                                 (entry["startId"], start["id"]))
+            try:
+                reply = client.postResult(self.aida_event_id_, day["id"],
+                                          entry["startId"], **payload)
+            except AidaApiError as e:
+                message = str(e)
+                if message.startswith("AIDA refused the write") \
+                   or message.startswith("Could not reach"):
+                    report["aborted"] = message
+                    break
+                report["failed"].append(label + ": " + message)
+                continue
+            row["points"] = reply.get("points")
+            report["results"].append(row)
+            report["uploaded"] += 1
+        return 0, report
 
     def getSavedCompetitions(self):
         saved_comp_info = []
@@ -1129,10 +1379,13 @@ class CompyData(PdfReportMixin):
                 if discipline is None:
                     continue
                 ap = self.cleanPerf(startlist[i]["AP"], discipline)
-                pb = self.cleanPerf(startlist[i]["PB"], discipline)
+                # the PB is optional: the excel import leaves it empty and
+                # the editor sends every row back, so an empty PB must stay
+                # empty (NULL) instead of turning into 0 or 99:99
+                pb = self.cleanOptionalPerf(startlist[i].get("PB"), discipline)
                 if discipline == "STA":
                     ap = self.getMinFromTime(ap)
-                    pb = self.getMinFromTime(pb)
+                    pb = self.getMinFromTime(pb) if pb is not None else None
                 lane = self.cleanNumber(self.laneStyleConverter(startlist[i]["Lane"], True)) # TODO min/max
                 if int(startlist[i]["Id"]) < 0: # new start
                     self.db_.execute(
@@ -1623,6 +1876,19 @@ class CompyData(PdfReportMixin):
             return self.cleanNumber(perf, 0, 0)
         else: # cmas dynamic disciplines
             return self.cleanNumber(perf, 1, 0)
+
+    def cleanOptionalPerf(self, perf, discipline):
+        """cleanPerf for a performance that may be absent (the PB).
+
+        Returns None for an empty value and for an unparsable STA time, so
+        that nothing is stored instead of a bogus 0 or 99:99 (6039 s).
+        """
+        if perf is None or str(perf).strip() == "":
+            return None
+        perf = self.cleanPerf(perf, discipline)
+        if discipline == "STA" and perf == INVALID_TIME:
+            return None
+        return perf
 
     def cleanBlock(self, block):
         block = int(block)
