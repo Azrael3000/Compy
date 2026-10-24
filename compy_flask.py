@@ -252,6 +252,11 @@ class CompyFlask:
         def aidaSync():
             return self.aidaSync()
 
+        @app.route('/aida/upload_results', methods=['POST'])
+        @admin_required
+        def aidaUploadResults():
+            return self.aidaUploadResults()
+
         @app.route('/judge/<int:comp_id>/<int:judge_id>', methods=['GET'])
         def judgeComp(comp_id, judge_id):
             return self.getJudgeComp(comp_id, judge_id)
@@ -948,6 +953,56 @@ class CompyFlask:
         self.setSubmenuData(comp, data)
         comp.setOTs(data)
         return data, 200
+
+    def aidaUploadResults(self):
+        comp = self.getData(request)
+        if comp is None:
+            return self.badRequest("Failed to load competition")
+        content = request.json or {}
+        dry_run = bool(content.get("dry_run"))
+        ret, data = comp.uploadResultsToAida(dry_run=dry_run)
+        if ret != 0:
+            return {"status": "error",
+                    "status_msg": data["error_msg"]}, 200
+        data["status"] = "success"
+        data["status_msg"] = self.formatUploadReport(comp, data)
+        return data, 200
+
+    def formatUploadReport(self, comp, data):
+        """The upload report as the html shown in the admin's AIDA box."""
+        n_results = len(data["results"])
+        if data["dry_run"]:
+            msg = ("Preview (nothing was sent): " + str(n_results)
+                   + " result(s) would be uploaded to AIDA")
+        else:
+            msg = ("Upload to AIDA complete: " + str(data["uploaded"])
+                   + " result(s) uploaded")
+        msg += ("; " + str(len(data["failed"])) + " failed; "
+                + str(len(data["unmatched"])) + " not on the AIDA start "
+                "list; " + str(data["no_result"]) + " without result yet")
+        if data["aborted"]:
+            msg += "<br><b>Upload aborted: " + data["aborted"] + "</b>"
+        for failed in data["failed"]:
+            msg += "<br>Failed: " + failed
+        for unmatched in data["unmatched"]:
+            msg += "<br>Not on the AIDA start list: " + unmatched
+        if n_results > 0:
+            msg += "<br><br><table><tr><td>Start</td><td>RP</td>" \
+                   "<td>Card</td><td>Status</td><td>Penalty</td>" \
+                   + ("" if data["dry_run"] else "<td>AIDA points</td>") \
+                   + "</tr>"
+            for row in data["results"]:
+                rp = "DNS" if row["rp"] is None else \
+                     comp.convertPerformance(row["rp"], row["discipline"])
+                msg += ("<tr><td>" + row["start"] + "</td><td>" + rp
+                        + "</td><td>" + str(row["card"] or "") + "</td><td>"
+                        + str(row["judge_status"] or "") + "</td><td>"
+                        + str(row["penalty_points"]) + "</td>"
+                        + ("" if data["dry_run"] else
+                           "<td>" + str(row.get("points") or "") + "</td>")
+                        + "</tr>")
+            msg += "</table>"
+        return msg
 
     def getJudgeComp(self, comp_id, judge_id, return_json = False):
         judge_hash = request.args.get('hash')
