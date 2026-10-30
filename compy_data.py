@@ -1317,7 +1317,7 @@ class CompyData(PdfReportMixin):
                 for tier in ("WR", "CR", "NR"):
                     record = self.getRecord(country, "", gender, discipline,
                                             tier)
-                    if record != "" and record < rp:
+                    if record != "" and record <= rp:
                         return ", <b>" + tier + "</b>"
                 return ""
 
