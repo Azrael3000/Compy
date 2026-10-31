@@ -278,16 +278,19 @@ class TestJudgeEntryHttp(ResultEntryCompetition, compy_testing.CompyServerTestCa
         self.assertEqual(response.status_code, 401)
 
     def testJudgePageRendersWithValidHash(self):
+        # the react judge page bootstraps itself from /judge_json
         response = requests.get(
-            self.base_url + "/judge/%d/%d" % (self.comp_id, self.judge_id),
+            self.base_url + "/judge_json/%d/%d" % (self.comp_id, self.judge_id),
             params={"hash": self.judge_hash})
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Judge Entry Open", response.text)
-        self.assertIn("Judy Judge", response.text)
+        data = response.json()
+        self.assertEqual(data["comp_name"], "Judge Entry Open")
+        self.assertEqual(data["judge_first_name"], "Judy")
+        self.assertEqual(data["judge_last_name"], "Judge")
 
     def testJudgePageWithForgedHashIs404(self):
         response = requests.get(
-            self.base_url + "/judge/%d/%d" % (self.comp_id, self.judge_id),
+            self.base_url + "/judge_json/%d/%d" % (self.comp_id, self.judge_id),
             params={"hash": "deadbeef"})
         self.assertEqual(response.status_code, 404)
 

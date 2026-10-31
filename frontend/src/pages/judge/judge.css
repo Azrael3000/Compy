@@ -1,0 +1,269 @@
+/* Judge page — ported from static/judge.css. Uses the shared palette
+ * variables from index.css. */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background-image: linear-gradient(var(--medium), var(--dark));
+  height: 100%;
+  background-attachment: fixed;
+  color: var(--medium);
+}
+
+#compy_title {
+  width: 95vw;
+  font-size: 2vh;
+  color: var(--medium);
+  background: var(--dark);
+  padding-left: 5vw;
+}
+
+#competition {
+  color: var(--highlight);
+  font-size: 3vh;
+  line-height: 4vh;
+  padding: 1vw 5vw 1vw 5vw;
+  border-bottom: 0.1vh solid var(--highlight);
+}
+
+#judge {
+  color: var(--highlight);
+  font-size: 2vh;
+  line-height: 3vh;
+  padding: 1vw 5vw 1vw 5vw;
+  border-bottom: 0.1vh solid var(--highlight);
+}
+
+#judge_name {
+  font-weight: bold;
+}
+
+#content,
+#continue {
+  padding: 3vw 5vw 3vw 5vw;
+}
+
+#content button,
+#continue button {
+  width: 90vw;
+  border: 0.1vh solid var(--light);
+  background-color: var(--white);
+  color: var(--medium);
+  font-size: 3vh;
+  margin-bottom: 3vh;
+  border-radius: 1.5vh;
+  height: 5vh;
+}
+
+#content table {
+  width: 90vw;
+  border-spacing: 0 2vh;
+  border-collapse: separate;
+  margin-top: -2vh;
+  color: var(--dark);
+  font-size: 3vh;
+  line-height: 3.5vh;
+}
+
+#content th,
+#content td {
+  text-align: left;
+  padding: 2vw;
+  background-color: var(--white);
+}
+
+#content th:first-child,
+#content td:first-child {
+  border-top-left-radius: 1vh;
+  border-bottom-left-radius: 1vh;
+}
+
+#content th:last-child,
+#content td:last-child {
+  border-top-right-radius: 1vh;
+  border-bottom-right-radius: 1vh;
+}
+
+.info_all,
+#continue_msg {
+  background-color: var(--white);
+  border: 0.1vh solid var(--light);
+  border-radius: 1vh;
+  margin-bottom: 3vh;
+}
+
+#continue_msg {
+  padding: 3vw;
+}
+
+.info_all:after,
+.grouper:after {
+  content: '';
+  clear: both;
+  display: table;
+}
+
+.info_all > div:first-child {
+  padding-left: 3vw;
+}
+
+.info_piece {
+  float: left;
+}
+
+#info_ot {
+  width: 17vw;
+}
+
+#info_nat {
+  width: 14vw;
+}
+
+#info_name {
+  width: 55vw;
+}
+
+#info_RP,
+#info_card,
+#info_penalty {
+  width: 28vw;
+}
+
+#info_AP,
+#info_PB,
+#info_NR,
+#info_dis {
+  width: 21vw;
+}
+
+.info_head,
+.remark_title {
+  font-size: 2vh;
+  color: var(--light);
+  line-height: 2.5vh;
+}
+
+.info {
+  display: inline-block;
+}
+
+.info,
+#continue_msg,
+.card,
+.remark,
+#under_ap_penalty,
+.error {
+  font-size: 3vh;
+  line-height: 3.5vh;
+  color: var(--dark);
+}
+
+.error {
+  color: var(--card-red);
+}
+
+/* the shared banner (index.css) on the judge page's vh scale */
+.error_banner {
+  margin: 1vh 5vw;
+  font-size: 2vh;
+}
+
+.error_banner_close {
+  font-size: 3vh;
+}
+
+.card {
+  width: 25vw;
+  border: 0.1vw solid var(--medium);
+  border-radius: 1vh;
+  display: inline-block;
+  text-align: center;
+  margin-bottom: 1vh;
+}
+
+/* the old template had whitespace between the card spans; JSX drops it */
+.card.selector + .card.selector {
+  margin-left: 1vw;
+}
+
+.athlete_menu .white,
+.card.white {
+  background: var(--white);
+}
+
+.athlete_menu .yellow,
+.card.yellow {
+  background: var(--card-yellow);
+}
+
+.athlete_menu .red,
+.card.red {
+  background: var(--card-red);
+}
+
+.athlete_menu .unset {
+  background: var(--light);
+}
+
+.athlete_menu .dns {
+  text-decoration: line-through;
+}
+
+.card.highlight,
+.remark.highlight {
+  border: 0.5vw solid var(--dark);
+  font-weight: bold;
+}
+
+.remark_title {
+  padding-left: 0;
+  padding-top: 1vh;
+}
+
+.remark {
+  border: 0.1vw solid var(--medium);
+  border-radius: 1vh;
+  text-align: center;
+  display: inline-block;
+  padding: 0 1vw;
+  margin-left: 1vw;
+}
+
+#content input {
+  font-size: 3vh;
+  color: var(--medium);
+  margin-bottom: 1vh;
+  background-color: var(--white);
+  border: 0.1vh solid var(--light);
+}
+
+#penalty_input {
+  width: 25vw;
+}
+
+#under_ap_penalty {
+  margin-left: 2vw;
+}
+
+#content button.width50 {
+  width: 44vw;
+  float: left;
+  margin-right: 2vw;
+}
+
+.shift50 {
+  margin-left: 46vw;
+}
+
+.grouper button:last-child {
+  margin-right: 0;
+}
+
+#result_input {
+  min-height: 9.2vh;
+}
+
+.info_all {
+  min-height: 7.5vh;
+}

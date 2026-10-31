@@ -1,0 +1,514 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+/* The page frame lives on #root, not on the body. Radix locks scrolling by
+   copying the body's computed margins onto its padding and zeroing the
+   margins, which is a no-op on the full-width scroll container it expects.
+   With the max-width here the auto margins became inner padding instead and
+   every dialog resized the page underneath it. */
+#root {
+  padding: 0 20px 48px 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* ---- Header ---- */
+
+h1 {
+  /* same width as the content cards below */
+  margin: 0 0 12px 0;
+  border-radius: 0 0 var(--radius) var(--radius);
+  padding: 18px 20px;
+  background: linear-gradient(90deg, var(--dark), var(--medium));
+  color: var(--white);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+#timers {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+#timers #time,
+#timers #countdown {
+  color: var(--dark);
+  font-weight: 600;
+}
+
+/* ---- Main navigation (tab bar) ---- */
+
+/* The card chrome sits on the row, not on #main_nav. The clock and logout
+   links have to stay outside the tablist - a tablist's children have to be
+   tabs, and a screen reader would otherwise announce Logout as one - but
+   they still belong in the same card as the tabs. */
+#main_nav_row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 20px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 4px;
+}
+
+#main_nav {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  /* the tablist is a layout row inside that card, so the stock
+     tabsListVariants background and padding are dropped here */
+  background: none;
+  padding: 0;
+  /* the shadcn tabsListVariants stock height (h-9 = 36px, border-box)
+     is less than the ~38px the [role='tab'] padding + line-height
+     need; let this row size to its content instead */
+  height: auto;
+}
+
+/* keep the links legible as links rather than as two more tabs */
+#clock_button {
+  border-left: 1px solid var(--border);
+  margin-left: 4px;
+  padding-left: 4px;
+}
+
+#main_nav [role='tab'] {
+  flex: 1;
+  padding: 9px 6px;
+  border-radius: 6px;
+  color: var(--medium);
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+#main_nav [role='tab']:hover {
+  background: var(--highlight);
+}
+
+#main_nav [role='tab'][aria-selected='true'] {
+  font-weight: bold;
+}
+
+/* clock_button / logout_button are navigation links, not tabs, so they sit
+   outside #main_nav; restore the affordance they had from the old
+   `#main_nav td a { display: block; padding: 9px 6px; }` + `td:hover` rules */
+#clock_button a,
+#logout_button a {
+  display: block;
+  padding: 9px 6px;
+  color: var(--medium);
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+#clock_button a:hover,
+#logout_button a:hover {
+  background: var(--highlight);
+  color: var(--dark);
+}
+
+/* ---- Content sections (tabs) ---- */
+
+#settings,
+#judges,
+#athletes,
+#registration,
+#breaks,
+#start_lists,
+#lane_lists,
+#results,
+#records {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 18px;
+  margin-bottom: 24px;
+  /* keep wide tables inside the card instead of spilling over the edge */
+  overflow-x: auto;
+}
+
+#settings > p:first-child {
+  margin-top: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--dark);
+}
+
+#settings > div,
+#settings form > div {
+  margin-bottom: 14px;
+}
+
+#settings label {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* ---- Tables ---- */
+
+table {
+  border-collapse: collapse;
+}
+
+#judges_table,
+#athletes_table,
+#registration_table,
+#breaks_content table,
+#sl_content table,
+#ll_content table,
+#results_content table,
+.df_table {
+  width: 100%;
+  background: var(--card);
+  margin: 8px 0;
+}
+
+#judges_table td,
+#athletes_table td,
+#registration_table td,
+#breaks_content td,
+#sl_content td,
+#ll_content td,
+#results_content td,
+.df_table td,
+.df_table th,
+#breaks_content th,
+#sl_content th,
+#ll_content th,
+#results_content th {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+/* first row acts as a header in dynamically built tables */
+#judges_table tr:first-child td,
+#athletes_table tr:first-child td,
+#registration_table tr:first-child td,
+#breaks_content table tr:first-child td,
+#sl_content table tr:first-child td,
+#ll_content table tr:first-child td,
+#results_content table tr:first-child td,
+.df_table th {
+  background: var(--dark);
+  color: var(--white);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  border-bottom: none;
+}
+
+#judges_table tr:first-child td:first-child,
+#athletes_table tr:first-child td:first-child,
+#registration_table tr:first-child td:first-child {
+  border-top-left-radius: 6px;
+}
+
+#judges_table tr:first-child td:last-child,
+#athletes_table tr:first-child td:last-child,
+#registration_table tr:first-child td:last-child {
+  border-top-right-radius: 6px;
+}
+
+/* let inputs share the row width instead of forcing the table wider */
+#judges_table input[type='text'],
+#athletes_table input[type='text'],
+#registration_table input[type='text'] {
+  width: 100%;
+  min-width: 70px;
+}
+
+/* fixed name columns so the first added judge (with its wider action
+   buttons) does not reflow the whole table */
+#judges_table td:first-child,
+#judges_table td:nth-child(2) {
+  width: 40%;
+}
+
+#judges_table tr:nth-child(even),
+#athletes_table tr:nth-child(even),
+#registration_table tr:nth-child(even),
+#results_content table tr:nth-child(even),
+#sl_content table tr:nth-child(even),
+#ll_content table tr:nth-child(even),
+#breaks_content table tr:nth-child(even) {
+  background: #f7fafd;
+}
+
+/* ---- Inputs ---- */
+
+/* password/time/date were browser-default styled on the old page; tailwind's
+   preflight strips that, so they join the styled group here */
+input[type='text'],
+input[type='number'],
+input[type='password'],
+input[type='time'],
+input[type='date'],
+select {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--foreground);
+  margin: 2px 0;
+}
+
+input[type='text']:focus,
+input[type='number']:focus,
+input[type='password']:focus,
+input[type='time']:focus,
+input[type='date']:focus,
+select:focus {
+  outline: 2px solid var(--light);
+  outline-offset: 0;
+  border-color: var(--light);
+}
+
+input[type='file'] {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  margin: 4px 0;
+}
+
+/* tailwind's preflight strips the native file button; restyle it like the
+   other secondary buttons */
+input[type='file']::file-selector-button {
+  background: var(--card);
+  color: var(--medium);
+  border: 1px solid var(--light);
+  border-radius: 6px;
+  padding: 5px 12px;
+  margin-right: 10px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+input[type='file']::file-selector-button:hover {
+  background: var(--highlight);
+  color: var(--dark);
+}
+
+input[type='radio'],
+input[type='checkbox'] {
+  accent-color: var(--medium);
+}
+
+/* ---- Links ---- */
+
+a {
+  color: var(--medium);
+}
+
+a:hover {
+  color: var(--dark);
+}
+
+#sl_date_menu a,
+#sl_discipline_menu a,
+#ll_date_menu a,
+#ll_discipline_menu a,
+#ll_lane_menu a,
+#breaks_date_menu a,
+#result_discipline_menu a,
+#result_gender_menu a,
+#result_country_menu a {
+  display: inline-block;
+  padding: 4px 10px;
+  margin: 2px 2px 6px 0;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+#sl_date_menu a:hover,
+#sl_discipline_menu a:hover,
+#ll_date_menu a:hover,
+#ll_discipline_menu a:hover,
+#ll_lane_menu a:hover,
+#breaks_date_menu a:hover,
+#result_discipline_menu a:hover,
+#result_gender_menu a:hover,
+#result_country_menu a:hover {
+  background: var(--highlight);
+  border-color: var(--light);
+}
+
+/* competition list */
+
+#competition_list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+  max-width: 640px;
+}
+
+#competition_list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: var(--card);
+}
+
+/* status message */
+
+#file_upload_status {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: var(--highlight);
+  color: var(--dark);
+  border: 1px solid var(--light);
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* overlay */
+
+#overlay_box {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 20px;
+  /* hug the content instead of using a fixed size ... */
+  width: fit-content;
+  height: auto;
+  /* ... but never grow past the viewport; scroll inside if needed */
+  max-width: min(90vw, 640px);
+  max-height: 90vh;
+  overflow: auto;
+}
+
+/* keep wide form controls (e.g. the athlete select) from outgrowing the dialog */
+#overlay_box select,
+#overlay_box input[type='text'] {
+  max-width: 340px;
+}
+
+/* ---- Utilities (used by compy.js) ---- */
+
+.loader {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  position: relative;
+  animation: rotate 1s linear infinite;
+  display: inline-block;
+}
+
+.loader::before {
+  content: '';
+  box-sizing: border-box;
+  position: absolute;
+  inset: 0px;
+  border-radius: 50%;
+  border: 5px solid var(--dark);
+  animation: prixClipFix 2s linear infinite;
+}
+
+@keyframes rotate {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes prixClipFix {
+  0% {
+    clip-path: polygon(50% 50%, 0 0, 0 0, 0 0, 0 0, 0 0);
+  }
+  25% {
+    clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 0, 100% 0, 100% 0);
+  }
+  50% {
+    clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 100% 100%, 100% 100%);
+  }
+  75% {
+    clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 0 100%, 0 100%);
+  }
+  100% {
+    clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 0 100%, 0 0);
+  }
+}
+
+#save_comp {
+  display: none;
+}
+
+/* ---- Spacing restored for the react port ----
+   The jinja template had newlines between inline elements, which the
+   browser rendered as spaces; JSX drops those text nodes, and tailwind's
+   preflight also resets default margins (e.g. on <p>). The rhythm the old
+   page got for free is made explicit here. */
+
+#settings p,
+#aida_integration p {
+  margin: 14px 0;
+}
+
+#settings button + button,
+#overlay_box button + button,
+td button + button {
+  margin-left: 8px;
+}
+
+/* dialog forms: gap between the label column and the inputs */
+#overlay_box td {
+  padding: 3px 0;
+}
+
+#overlay_box td:first-child {
+  padding-right: 14px;
+}
+
+#settings input + button {
+  margin-left: 8px;
+}
+
+#aida_integration label {
+  margin-right: 4px;
+}
+
+#aida_integration input {
+  margin-right: 10px;
+}
+
+input[type='radio'] + label,
+input[type='checkbox'] + label {
+  margin-left: 4px;
+  margin-right: 12px;
+}

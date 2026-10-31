@@ -27,6 +27,25 @@
 from os import path,mkdir
 import logging
 
+import dotenv
+
+
+def loadEnvironment(env_path = None):
+    """Load the .env file as defaults, letting the real environment win.
+
+    override is deliberately False: a FLASK_* variable exported in the
+    shell has to beat the file, or the app cannot be pointed at another
+    database or port without editing .env. The ui test suite needs its own
+    server harness (compy_testing.makeApp) precisely because that used to
+    be impossible.
+
+    Returns whether a .env file was found and read, like load_dotenv does.
+    """
+    if env_path is None:
+        env_path = dotenv.find_dotenv(usecwd=True)
+    return dotenv.load_dotenv(env_path, override=False)
+
+
 class CompyConfig:
 
     def __init__(self):

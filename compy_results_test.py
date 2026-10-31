@@ -88,6 +88,13 @@ class TestSingleDisciplineRanking(compy_testing.CompyDataTestCase):
         self.assertEqual(ret, 0)
         self.assertEqual(content['results'], [])
 
+    def testOverallWithoutResultsIsEmptyNotAnError(self):
+        # an empty competition (or a gender without entries) is a valid
+        # state; the overall ranking used to answer with an error here
+        ret, content = self.data.getResult("Overall", "M", "International")
+        self.assertEqual(ret, 0)
+        self.assertEqual(content['results'], [])
+
     def testOverallExcludesZeroPointAthletes(self):
         ret, content = self.data.getResult("Overall", "F", "International")
         self.assertEqual(ret, 0)

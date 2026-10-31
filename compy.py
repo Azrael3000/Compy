@@ -42,6 +42,7 @@ except ImportError:
 import compy_flask
 import compy_data
 import compy_db
+import compy_config
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -50,13 +51,13 @@ app = Flask(__name__)
 def compy(start_flask, init_db = False):
     parser = argparse.ArgumentParser(prog='Compy', description='User interface for freediving competitions')
     parser.add_argument('--init_db', action='store_true', help="Initialize database. WARNING: Deletes all data")
+    parser.add_argument('--port', type=int, default=5000, help="Port to listen on (e.g. for a test instance next to a dev server)")
     args = parser.parse_args()
 
     init_db = init_db or args.init_db
 
-    # load local environment
-    env_path = dotenv.find_dotenv(usecwd=True)
-    if not dotenv.load_dotenv(env_path, override=True):
+    # load local environment; exported FLASK_* variables win over the file
+    if not compy_config.loadEnvironment():
         logging.error("Could not load .env file, make sure it exists (e.g. by copying from .env_sample")
         exit(-1)
 
@@ -74,7 +75,7 @@ def compy(start_flask, init_db = False):
     with app.app_context():
         compy_data.CompyData.ensureDefaultCompetition(db, app)
 
-    compy_flask.CompyFlask(app, db, start_flask)
+    compy_flask.CompyFlask(app, db, start_flask, args.port)
 
 start_flask = __name__ == '__main__'
 compy(start_flask)

@@ -55,7 +55,7 @@ class TestConcurrentPages(compy_testing.CompyServerTestCase):
         cls.judge_hash = response.json()["judge_url"].split("hash=")[1]
 
         # publish comp one for the public results pages
-        session.request("UPDATE", cls.base_url + "/publish_results",
+        session.request("PATCH", cls.base_url + "/publish_results",
                         json={"publish_results": True, "comp_id": cls.comp_one_id})
 
     # --- one round of requests per simulated page -------------------------
@@ -86,11 +86,11 @@ class TestConcurrentPages(compy_testing.CompyServerTestCase):
         assert len(response.json().get("athletes", [])) == 0, "comp2 athletes leaked from comp1"
 
     def clockDisplay(self, session, round_index):
-        # the clock page reloads itself; it used to switch the global competition
-        response = session.get(self.base_url + "/clock/%d/%d/0"
+        # the clock page polls this endpoint; it used to switch the global competition
+        response = session.get(self.base_url + "/clock_data/%d/%d/0"
                                % (self.comp_one_id, round_index % 2))
         assert response.status_code == 200, "clock -> %d" % response.status_code
-        assert "Comp One" in response.text, "clock does not show comp 1"
+        assert response.json().get("comp_name") == "Comp One", "clock does not show comp 1"
 
     def judgePhone(self, session, round_index):
         response = session.get(self.base_url + "/judge/athletes",
@@ -100,7 +100,7 @@ class TestConcurrentPages(compy_testing.CompyServerTestCase):
         assert response.status_code == 200, "judge athletes -> %d" % response.status_code
 
     def publicResultsPage(self, session, round_index):
-        response = session.get(self.base_url + "/results",
+        response = session.get(self.base_url + "/results_data",
                                params={"comp_id": self.comp_one_id})
         assert response.status_code == 200, "results -> %d" % response.status_code
         response = session.get(self.base_url + "/results_list",
@@ -176,6 +176,9 @@ class TestConcurrentPages(compy_testing.CompyServerTestCase):
                                         "judge_hash": "deadbeef", "day": self.first_day,
                                         "block": self.first_block, "lane": "1"})
         self.assertEqual(response.status_code, 404)
+        # the judge page is javascript and can only act on the json envelope
+        # every other judge endpoint answers with; it used to get an html page
+        self.assertEqual(response.json()["status"], "error")
         # ...and it must not have switched or broken anything
         response = self.adminSession().get(self.base_url + "/athletes",
                                            params={"comp_id": self.comp_one_id})
@@ -201,6 +204,17 @@ class TestConcurrentPages(compy_testing.CompyServerTestCase):
         response = self.adminSession().post(self.base_url + "/load_comp",
                                             json={"comp_id": self.comp_one_id})
         self.assertEqual(response.json()["comp_name"], "Comp One")
+
+    def testAdminDataShipsOnlyWhatTheAdminPageUses(self):
+        # all_countries fed the long-unreachable #records block; computing the
+        # IOC list on every admin page load was pure overhead
+        response = self.adminSession().get(self.base_url + "/admin_data")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertNotIn("all_countries", data)
+        self.assertIn("version", data)
+        self.assertIn("competitions", data)
+        self.assertIn("comp_name", data)
 
     def testWrongPasswordIsRejected(self):
         session = requests.Session()
