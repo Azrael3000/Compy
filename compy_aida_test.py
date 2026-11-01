@@ -891,8 +891,11 @@ class AidaRecordsTest(CompyDataTestCase):
             for other in {"NR", "CR", "WR"} - {flag}:
                 self.assertNotIn("<b>" + other + "</b>", remarks)
 
-        # equalling a record or a non-white card is not flagged
-        for rp, card in ((50, "WHITE"), (74, "YELLOW")):
+        # equalling a record counts as a record (7b6955c: <=)
+        self.assertEqual(data.updateResult(s_id, 50, 0, "WHITE", "", "")[0], 0)
+        self.assertIn("<b>NR</b>", annaRemarks())
+        # a non-white card or a performance below every record is not flagged
+        for rp, card in ((74, "YELLOW"), (49, "WHITE")):
             self.assertEqual(
                 data.updateResult(s_id, rp, 0, card, "", "")[0], 0)
             self.assertNotIn("<b>", annaRemarks())
